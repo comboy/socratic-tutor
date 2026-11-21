@@ -1,0 +1,287 @@
+// App shell: data, live updates, routing, toolbar, skills sidebar, theme, resizing, keys.
+// Inspector panels: panels.js · search: search.js · tutor status: tutor.js · views: learn/map/wiki/stats.
+import { h, $, $$, store, flatSkills, levelOf, overall, meter, levelScale, fmtLevel, LEVEL_NAMES, relDays, derive, daysAgo, lvClass, lvChip } from './util.js';
+import { configure } from './rich.js';
+import { icon, hydrateIcons } from './icons.js';
+import { openDock, renderDock, setDock, hoverCard, group } from './panels.js';
+import { openSearch } from './search.js';
+import { renderStatus, togglePopover } from './tutor.js';
+import { toggleFeedback } from './feedback.js';
+import { toggleAway, onJobs } from './away.js';
+import { renderNewTopic } from './newtopic.js';
+import * as learn from './learn.js';
+import * as mapView from './map.js';
+import * as tree from './tree.js';
+import * as wiki from './wiki.js';
+import * as stats from './stats.js';
+
+export const app = {
+  topics: [], topic: null, d: null, status: { phase: 'offline', queued: 0 },
+  view: 'learn', args: [], dockStack: [], learner: null,
+};
+const VIEWS = { learn, map: mapView, tree, wiki, stats };
+const VIEW_KEYS = { '1': 'learn', '2': 'map', '3': 'tree', '4': 'wiki', '5': 'stats' };
+
+// ---------------------------------------------------------------- data
+export async function getJSON(u) { const r = await fetch(u); if (!r.ok) throw new Error((await r.json()).error || r.status); return r.json(); }
+export async function send(kind, text, extra = {}) {
+  const r = await fetch('/api/send', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ topic: app.topic.slug, kind, text, ...extra }) });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error);
+  ingest([j]);
+  return j;
+}
+async function loadTopic(slug, keepJournal = false) {
+  const t = await getJSON('/api/topic/' + slug);
+  if (keepJournal && app.topic?.slug === slug) t.journal = app.topic.journal;
+  app.topic = t;
+  app.d = derive(t);
+  configure({ terms: t.glossary });
+  document.title = `${t.meta.title} · learn`;
+}
+function ingest(entries) {
+  const known = new Set(app.topic.journal.map(e => e.id));
+  const fresh = entries.filter(e => !known.has(e.id));
+  if (!fresh.length) return;
+  app.topic.journal.push(...fresh);
+  app.topic.journal.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
+  app.d = derive(app.topic);
+  if (fresh.some(e => e.role === 'tutor' && e.kind === 'message') && document.hidden) { unread++; document.title = `(${unread}) ${app.topic.meta.title} · learn`; }
+  VIEWS[app.view]?.onEntries?.(fresh);
+  if (fresh.some(e => e.kind === 'level' || e.kind === 'grade')) renderLeft();
+}
+let unread = 0;
+document.addEventListener('visibilitychange', () => { if (!document.hidden && app.topic) { unread = 0; document.title = `${app.topic.meta.title} · learn`; } });
+
+function connect() {
+  const es = new EventSource('/api/events');
+  es.onmessage = async ev => {
+    const m = JSON.parse(ev.data);
+    if (m.type === 'status') { app.status = m; renderStatus(); VIEWS[app.view]?.onStatus?.(); }
+    else if (m.type === 'entries' && m.topic === app.topic?.slug) ingest(m.entries);
+    else if (m.type === 'topic' && m.topic === app.topic?.slug) { await loadTopic(m.topic, true); renderLeft(); VIEWS[app.view]?.onTopic?.(m.part); renderDock(); }
+    else if (m.type === 'topics') { app.topics = await getJSON('/api/topics'); renderTopicSel(); }
+    else if (m.type === 'learner') { app.learner = null; VIEWS[app.view]?.onLearner?.(); onJobs(); }
+    else if (m.type === 'jobs') onJobs();
+    else if (m.type === 'reload-ui') uiChanged(m.file);
+  };
+  es.onerror = () => { app.status = { offline: true }; renderStatus(); };
+  es.onopen = async () => { if (app.topic) { const t = await getJSON('/api/topic/' + app.topic.slug); ingest(t.journal); } };
+}
+
+// ---------------------------------------------------------------- routing
+export function go(view, ...args) {
+  const hash = `#/${app.topic.slug}/${view}${args.length ? '/' + args.map(encodeURIComponent).join('/') : ''}`;
+  if (location.hash !== hash) location.hash = hash; else route();
+}
+async function route() {
+  const hash = location.hash.replace(/^#\/?/, '');
+  // #/new?goal=…: the new-topic page (also the first screen when there are no topics)
+  if (/^new(\?|$)/.test(hash) || !app.topics.length) {
+    app.view = 'new';
+    $$('.views button').forEach(b => b.classList.remove('on'));
+    document.body.dataset.view = 'new';
+    document.body.classList.toggle('no-topics', !app.topics.length);
+    renderTopicSel();
+    renderNewTopic($('#center'), new URLSearchParams(hash.split('?')[1] || '').get('goal') || '');
+    return;
+  }
+  document.body.classList.remove('no-topics');
+  const parts = hash.split('/').filter(Boolean).map(decodeURIComponent);
+  let [slug, view = 'learn', ...args] = parts;
+  if (!slug || !app.topics.some(t => t.slug === slug)) slug = store.get('topic', null);
+  if (!app.topics.some(t => t.slug === slug)) slug = app.topics[0]?.slug;
+  if (!VIEWS[view]) view = 'learn';
+  const switched = app.topic?.slug !== slug;
+  if (switched) { await loadTopic(slug); store.set('topic', slug); renderLeft(); renderTopicSel(); app.dockStack = []; renderDock(); }
+  const prev = app.view;
+  app.view = view; app.args = args;
+  $$('.views button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
+  document.body.dataset.view = view;
+  if (switched || prev !== view || !$('#center').firstChild || VIEWS[view].routeAlways) VIEWS[view].render($('#center'), app, args);
+  else VIEWS[view].update?.(args);
+  if (prev === 'new') renderTopicSel();
+}
+export async function refreshTopics() { app.topics = await getJSON('/api/topics'); renderTopicSel(); }
+export async function learner() { if (!app.learner) app.learner = await getJSON('/api/learner'); return app.learner; }
+window.addEventListener('hashchange', route);
+
+// ---------------------------------------------------------------- toolbar
+function renderTopicSel() {
+  $('#topicSel').replaceChildren(...app.topics.map(t => h('option', { value: t.slug, text: t.title, selected: t.slug === app.topic?.slug && app.view !== 'new' })),
+    h('option', { value: '__new', text: '+ New topic…', selected: app.view === 'new' }));
+}
+const THEMES = ['auto', 'light', 'dark'];
+function applyTheme(t) {
+  if (t === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
+  const b = $('#themeBtn');
+  b.replaceChildren(icon(t === 'auto' ? 'auto' : t === 'light' ? 'sun' : 'moon'));
+  b.title = `Theme: ${t === 'auto' ? 'follows the system' : t} (click to switch)`;
+}
+
+// ---------------------------------------------------------------- left: skills sidebar
+export function renderLeft() {
+  const m = app.topic.meta, el = $('#left');
+  const collapsed = store.get('collapsed:' + app.topic.slug, {});
+  const ov = overall(m);
+  const sel = app.dockStack[app.dockStack.length - 1];
+  const tree = h('div', { class: 'tree' });
+  for (const s of flatSkills(m.skills)) {
+    if (s.parent && collapsed[s.parent]) continue;
+    const lv = levelOf(s.node), kids = s.children?.length;
+    tree.append(h('div', {
+      class: `trow ${s.depth ? 'child' : 'parent'}` + (m.focus === s.id ? ' focus' : '') + (lv === 0 ? ' fog' : '') + (sel?.type === 'skill' && sel.id === s.id ? ' sel' : ''),
+      title: `${s.id} ${s.name} · level ${fmtLevel(lv)}/5${m.focus === s.id ? ' · current focus' : ''}`,
+      onclick: () => openDock('skill', s.id),
+    },
+      kids ? h('button', { class: 'tw' + (collapsed[s.id] ? '' : ' open'), title: collapsed[s.id] ? 'Expand' : 'Collapse',
+        onclick: e => { e.stopPropagation(); collapsed[s.id] = !collapsed[s.id]; store.set('collapsed:' + app.topic.slug, collapsed); renderLeft(); } }, icon('chev')) : h('span'),
+      h('span', { class: 'sid', text: s.id }),
+      h('span', { class: 'name', text: s.name }),
+      h('span', { class: 'right' }, m.focus === s.id ? h('span', { class: 'focus-tag', text: 'now' }) : null, kids ? meter(lv) : null, lvChip(lv))));
+  }
+  const lastCheck = lastChecks();
+  const due = flatSkills(m.skills).filter(s => !s.children?.length && (s.level || 0) >= 2)
+    .map(s => ({ s, last: lastCheck.get(s.id) || null })).map(x => ({ ...x, age: x.last ? daysAgo(x.last) : 999 }))
+    .filter(x => x.age >= 2).sort((a, b) => b.age - a.age || a.s.level - b.s.level);
+  // the tutor's own review notes (notes.json) come first: they say exactly what to re-test
+  const today = new Date().toISOString().slice(0, 10);
+  const noteDue = (app.topic.notes?.items || []).filter(n => n.kind === 'review' && n.status === 'open' && (!n.due || n.due <= today));
+  const noteSkills = new Set(noteDue.map(n => n.skill));
+  due.splice(0, due.length, ...noteDue.map(n => ({ note: n, s: (n.skill && flatSkills(m.skills).find(x => x.id === n.skill)) || { id: n.skill || '', name: '', level: 0 } })),
+    ...due.filter(x => !noteSkills.has(x.s.id)));
+  due.length = Math.min(due.length, 8);
+  const anyCollapsed = Object.values(collapsed).some(Boolean);
+  el.replaceChildren(
+    group('Progress', h('div', { class: 'prog ' + lvClass(ov) },
+      h('div', { class: 'prog-title', text: m.title, title: m.title }),
+      h('div', { class: 'prog-row' }, h('span', { class: 'prog-big' }, fmtLevel(Math.round(ov * 10) / 10), h('small', { text: ' / 5' })), h('span', { class: 'prog-name', text: LEVEL_NAMES[Math.round(ov)] })),
+      meter(ov, m.target, 'big'),
+      h('div', { class: 'prog-sub' }, h('span', { text: `Target ${m.target} · ${LEVEL_NAMES[m.target]}` }), h('span', { text: `${Math.round(ov / 5 * 100)}%` })))),
+    group(['Skills', h('span', { class: 'count', text: String(flatSkills(m.skills).filter(s => !s.children?.length).length) }), h('span', { class: 'spacer' }),
+      h('button', { class: 'linkish small', text: anyCollapsed ? 'Expand all' : 'Collapse all', onclick: () => {
+        const next = {}; if (!anyCollapsed) for (const s of m.skills) if (s.children?.length) next[s.id] = true;
+        store.set('collapsed:' + app.topic.slug, next); renderLeft();
+      } })],
+      m.skills?.length ? tree : h('div', { class: 'empty-row', text: 'No skills yet: the tutor maps the topic after your first answers.' }), h('div', { class: 'legend-row' }, levelScale())),
+    group(['Due for review', h('span', { class: 'count', text: due.length ? String(due.length) : '' })],
+      due.length ? h('div', { class: 'review-list' }, ...due.map(x => h('div', { class: 'rv' + (x.note ? ' rv-note' : '') },
+        lvChip(x.s.level),
+        h('span', { class: 'rv-name', text: x.note ? x.note.text : `${x.s.id} ${x.s.name}`, title: x.note ? x.note.text : x.s.name, onclick: () => x.s.id && openDock('skill', x.s.id) }),
+        h('button', { class: 'btn btn-small', title: 'Ask the tutor for a review question on this', onclick: () => learn.quickAction(x.note
+          ? `review ${x.s.id}: re-test me on note ${x.note.id} ("${x.note.text}")` : `review ${x.s.id} (${x.s.name}): give me a spaced-review question`) }, icon('quiz'), 'Quiz me'),
+        h('span', { class: 'rv-age', text: x.note ? `tutor’s note · ${x.s.id} ${x.s.name}` : x.last ? `checked ${relDays(x.last)}` : 'not checked in the web UI yet' }))))
+        : h('div', { class: 'empty-row', text: 'Nothing due. Skills at level 2+ appear here after a couple of days without a check.' })),
+  );
+}
+export function lastChecks() {
+  const out = new Map();
+  for (const e of app.topic.journal) if (e.kind === 'grade' && e.skill) out.set(String(e.skill), e.ts);
+  return out;
+}
+
+// ---------------------------------------------------------------- resizable panes
+function initResizers() {
+  const root = document.documentElement;
+  const w = store.get('widths', {});
+  if (w.left) root.style.setProperty('--left-w', w.left + 'px');
+  if (w.dock) root.style.setProperty('--dock-w', w.dock + 'px');
+  for (const rz of $$('.rz')) {
+    rz.addEventListener('mousedown', e => {
+      e.preventDefault();
+      const which = rz.dataset.rz;
+      rz.classList.add('drag'); document.body.classList.add('resizing');
+      const move = ev => {
+        const v = which === 'left' ? Math.max(220, Math.min(560, ev.clientX)) : Math.max(280, Math.min(760, window.innerWidth - ev.clientX));
+        root.style.setProperty(which === 'left' ? '--left-w' : '--dock-w', v + 'px');
+        w[which] = v;
+      };
+      const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); rz.classList.remove('drag'); document.body.classList.remove('resizing'); store.set('widths', w); };
+      document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+    });
+    rz.addEventListener('dblclick', () => { root.style.removeProperty(rz.dataset.rz === 'left' ? '--left-w' : '--dock-w'); delete w[rz.dataset.rz]; store.set('widths', w); });
+  }
+}
+function setLeft(open) { document.body.classList.toggle('left-closed', !open); store.set('leftOpen', open); $('#leftToggle').classList.toggle('on', open); }
+
+// ---------------------------------------------------------------- boot
+document.addEventListener('keydown', e => {
+  const typing = e.target.closest('input, textarea, select, [contenteditable]');
+  if ((e.key === 'k' && (e.metaKey || e.ctrlKey)) || (e.key === '/' && !typing)) { e.preventDefault(); openSearch(); return; }
+  if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (!app.topic) return;
+  if (VIEW_KEYS[e.key]) go(VIEW_KEYS[e.key]);
+  else if (e.key === 'a') { go('learn'); setTimeout(() => $('#answerBox')?.focus(), 30); e.preventDefault(); }
+  else if (e.key === 'q') { go('learn'); setTimeout(() => $('#askBox')?.focus(), 30); e.preventDefault(); }
+  else if (e.key === ']' || e.key === 'g') { setDock(!document.body.classList.contains('dock-open')); renderDock(); }
+  else if (e.key === '[') setLeft(document.body.classList.contains('left-closed'));
+});
+
+async function boot() {
+  hydrateIcons();
+  $('#topicSel').addEventListener('change', e => { location.hash = e.target.value === '__new' ? '#/new' : `#/${e.target.value}/${app.view === 'new' ? 'learn' : app.view}`; });
+  $$('.views button').forEach(b => b.addEventListener('click', () => go(b.dataset.view)));
+  $('#searchBtn').addEventListener('click', openSearch);
+  $('#status').addEventListener('click', togglePopover);
+  $('#feedbackBtn')?.addEventListener('click', toggleFeedback);
+  $('#awayBtn')?.addEventListener('click', toggleAway);
+  $('#reloadBtn')?.addEventListener('click', reloadKeepingPlace);
+  $('#dockBtn').addEventListener('click', () => { setDock(!document.body.classList.contains('dock-open')); renderDock(); });
+  $('#leftToggle').addEventListener('click', () => setLeft(document.body.classList.contains('left-closed')));
+  let theme = store.get('theme', 'auto');
+  applyTheme(theme);
+  $('#themeBtn').addEventListener('click', () => { theme = THEMES[(THEMES.indexOf(theme) + 1) % 3]; store.set('theme', theme); applyTheme(theme); });
+  configure({
+    hoverCard,
+    onRef: (type, id) => {
+      if (type === 'map') { go('map', id); return; }
+      if (type === 'wiki') { go('wiki', ...String(id).split('/')); return; }
+      openDock(type, id);
+    },
+  });
+  setDock(store.get('dockOpen', true));
+  setLeft(store.get('leftOpen', true));
+  initResizers();
+  app.topics = await getJSON('/api/topics');
+  app.status = await getJSON('/api/status');
+  renderStatus();
+  if (!/[?&]static\b/.test(location.search)) connect();   // ?static: no live updates (headless screenshots)
+  await route();
+  renderDock();
+  restorePlace();
+  onJobs();
+}
+
+// ---------------------------------------------------------------- UI code changed
+// Reload into the new code only when it can't disturb the learner: the tab is hidden, or nothing
+// was touched for a while. Otherwise show a Reload button and keep checking. Drafts are in
+// localStorage already; the scroll position survives the reload.
+let lastInput = Date.now(), reloadPending = false;
+for (const ev of ['keydown', 'mousedown', 'wheel', 'touchstart']) addEventListener(ev, () => { lastInput = Date.now(); }, { passive: true, capture: true });
+const IDLE_MS = 90e3;
+function canReloadNow() {
+  if (document.querySelector('.popover, .hovercard')) return false;
+  return document.hidden || Date.now() - lastInput > IDLE_MS;
+}
+function uiChanged() {
+  reloadPending = true;
+  if (canReloadNow()) return reloadKeepingPlace();
+  const b = $('#reloadBtn');
+  if (b) b.hidden = false;
+}
+setInterval(() => { if (reloadPending && canReloadNow()) reloadKeepingPlace(); }, 5000);
+document.addEventListener('visibilitychange', () => { if (reloadPending && document.hidden) reloadKeepingPlace(); });
+export function reloadKeepingPlace() {
+  const sc = $('#threadScroll') || $('.view-body');
+  try { sessionStorage.setItem('learn:place', JSON.stringify({ hash: location.hash, top: sc ? sc.scrollTop : 0, bottom: sc ? sc.scrollHeight - sc.scrollTop - sc.clientHeight < 80 : true })); } catch {}
+  location.reload();
+}
+function restorePlace() {
+  let p = null;
+  try { p = JSON.parse(sessionStorage.getItem('learn:place')); sessionStorage.removeItem('learn:place'); } catch {}
+  if (!p || p.hash !== location.hash || p.bottom) return;
+  const apply = () => { const sc = $('#threadScroll') || $('.view-body'); if (sc) sc.scrollTop = p.top; };
+  requestAnimationFrame(() => { apply(); setTimeout(apply, 150); });
+}
+boot().catch(e => { document.body.append(h('pre', { class: 'error', text: e.stack || e.message })); });

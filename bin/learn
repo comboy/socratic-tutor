@@ -1,0 +1,630 @@
+#!/usr/bin/env node
+// Learning workspace CLI. No dependencies. Run `bin/learn help`.
+'use strict';
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
+const S = require('../app/store');
+const T = require('../app/session');
+const { api, serverUp } = require('../app/client');
+
+const argv = process.argv.slice(2);
+let cmd = 'start';   // `bin/learn`, `bin/learn <topic>`, `bin/learn -c` all start
+
+function flags(args, spec) {
+  // spec: { name: 'string'|'bool' }
+  const out = { _: [] };
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--') { out['--'] = args.slice(i + 1); break; }
+    const m = a.match(/^--?([a-z-]+)(?:=(.*))?$/);
+    if (m && spec[m[1]]) {
+      if (spec[m[1]] === 'bool') out[m[1]] = true;
+      else out[m[1]] = m[2] != null ? m[2] : args[++i];
+    } else out._.push(a);
+  }
+  return out;
+}
+function die(msg) { console.error('learn: ' + msg); process.exit(1); }
+function readStdin() { try { return fs.readFileSync(0, 'utf8'); } catch { return ''; } }
+const list = s => (s ? String(s).split(',').map(x => x.trim()).filter(Boolean) : []);
+
+function defaultTopic() {
+  const sess = T.readSession();
+  if (process.env.LEARN_SESSION && sess?.id === process.env.LEARN_SESSION && sess.topic && S.listTopics().includes(sess.topic)) return sess.topic;
+  const last = S.lastEntry(e => e.role === 'user' && !e.imported);
+  if (last && S.listTopics().includes(last.topic)) return last.topic;
+  const t = S.listTopics();
+  if (t.length === 1) return t[0];
+  // most recently modified journal
+  let best = null, bt = 0;
+  for (const slug of t) for (const f of S.journalFiles(slug)) {
+    const m = fs.statSync(path.join(S.journalDir(slug), f)).mtimeMs;
+    if (m > bt) { bt = m; best = slug; }
+  }
+  return best || t[0] || null;
+}
+// Topic for a command: --topic, else a leading positional that names a topic, else the default.
+// strict: the first positional is a topic or a skill id, so a word that isn't a topic is a mistake.
+function topicOf(f, strict = false) {
+  let t = f.topic;
+  if (!t && f._.length && S.listTopics().includes(f._[0])) t = f._.shift();
+  else if (!t && strict && /^[a-z][a-z0-9-]*$/.test(f._[0] || '')) die(`unknown topic ${f._[0]} (topics: ${S.listTopics().join(', ') || 'none'})`);
+  t = t || defaultTopic();
+  if (!t) die('no topic yet; pass --topic');
+  if (!S.listTopics().includes(t)) die(`unknown topic ${t}`);
+  return t;
+}
+const ago = ms => ms < 90e3 ? 'just now' : ms < 90 * 60e3 ? `${Math.round(ms / 60e3)} min ago` : ms < 36 * 3600e3 ? `${Math.round(ms / 3600e3)} h ago` : `${Math.round(ms / 86400e3)} days ago`;
+const firstLine = (text, n = 110) => {
+  const h = String(text || '').match(/^#{1,3} +(.+)$/m);
+  const t = (h ? h[1] : String(text || '')).replace(/```[\s\S]*?```/g, '[code]').replace(/\$\$[\s\S]*?\$\$/g, '[formula]').replace(/[*_`#>]/g, '').replace(/\s+/g, ' ').trim();
+  return t.length > n ? t.slice(0, n - 1) + '…' : t;
+};
+
+// ---------------------------------------------------------------- commands
+const commands = {};
+
+commands.help = () => {
+  console.log(`bin/learn [topic] [-c] [-- agent args]   start web UI + tutor session (default)
+bin/learn serve                          web server only (http://localhost:${S.PORT})
+bin/learn demo [--real] [--port n]       try the UI on a throwaway copy of the demo data, with a fake tutor
+bin/learn test [--headed] [--keep]       acceptance tests (fixture data, fake tutor, headless Chrome)
+bin/learn away [jobs…] | away --list     background jobs while the learner is away (builder, reviewer, wiki, janitor)
+
+Tutor commands (docs/protocol.md). [t] = optional topic, defaults to the current one:
+bin/learn resume [t]                     everything needed to pick up a topic, in one compact print
+bin/learn wait                           block until the learner sends something
+bin/learn post [--topic t] [--skill ids] [--grade v] [--grade-skill id] [--note s] [--expect rubric] [--force]  < markdown
+bin/learn level [t] <skill> <0-5> "reason"
+bin/learn focus [t] <skill>              set the current focus
+bin/learn note <review|hole|parked|misconception> [--skill id] [--ref msg] [--due 3d] "text"
+bin/learn note done <id> ["outcome"]  ·  note list [--all]
+bin/learn summary [t] <skill> "- bullet with (msg:…) links"   append to a skill's summary
+bin/learn term add [t] "name" --short "…" [--skill id] [--full …] [--aliases a,b] [--parts …] [--see …] [--refs …] [--body "…" | --body - < file]
+bin/learn term show [t] <name>  ·  terms [t]
+bin/learn tree [t]                       print the skill tree as an outline · tree [t] --set < outline  (replace it)
+bin/learn log [t] "what happened"        append to today's entry in log.md
+bin/learn feedback "remark"              a note for the builder about the app or the process (not the lesson)
+bin/learn pending [t] · recent [n] [--topic t] · msgs [t] --skill id · status · show <id> · grep <regex> [--topic t]
+bin/learn check [t]                      validate topic files (JSON, skill ids, links, map) after editing
+bin/learn commit "message"               commit the learning data (data/ is its own git repo)
+bin/learn handoff [--topic t] [--reason s]   end this tutor session; a fresh one takes over
+bin/learn new <slug> "Title"             create an empty topic (the learner usually does this in the browser)
+bin/learn import <transcript.jsonl>... --topic t   import old terminal sessions
+
+Data lives in ${S.ROOT} (set LEARN_HOME to use another directory).`);
+};
+
+commands.serve = () => { S.ensureHome(); require('../app/server').start(); };
+
+// A throwaway copy of the fixture topics (or, with --real, of your own) served on another port with
+// the fake tutor: for trying UI changes without touching real data or a real tutor session.
+commands.demo = () => {
+  const f = flags(argv, { real: 'bool', port: 'string', keep: 'bool', 'no-open': 'bool', empty: 'bool' });
+  const os = require('os');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-demo-'));
+  const src = f.real ? S.TOPICS : path.join(S.CODE, 'test', 'fixture', 'topics');
+  if (!f.empty) fs.cpSync(src, path.join(home, 'topics'), { recursive: true });
+  const learner = f.real ? S.LEARNER : path.join(S.CODE, 'test', 'fixture', 'learner');
+  if (!f.empty && fs.existsSync(learner)) fs.cpSync(learner, path.join(home, 'learner'), { recursive: true });
+  const port = f.port || '4748';
+  console.log(`demo data: ${home}${f.keep ? ' (kept)' : ' (deleted on exit)'}\nfake tutor: type anything, it echoes. Ctrl+C to stop.`);
+  const env = { ...process.env, LEARN_HOME: home, LEARN_PORT: port, LEARN_CLAUDE: path.join(S.CODE, 'test', 'fake-tutor.mjs'), LEARN_NO_GIT: '1',
+    CLAUDE_CONFIG_DIR: path.join(home, 'claude'), LEARN_HANDOFF_TOKENS: process.env.LEARN_HANDOFF_TOKENS || '400000' };
+  const topic = f._[0] || (f.empty ? null : f.real ? defaultTopic() : 'demo');
+  const child = spawn(process.execPath, [__filename, 'start', ...(topic ? [topic] : []), ...(f['no-open'] ? ['--no-open'] : [])], { stdio: 'inherit', env });
+  process.on('SIGINT', () => {});
+  child.on('exit', code => { if (!f.keep) fs.rmSync(home, { recursive: true, force: true }); process.exit(code ?? 0); });
+};
+
+commands.test = () => {
+  const child = spawn(process.execPath, [path.join(S.CODE, 'test', 'acceptance.mjs'), ...argv], { stdio: 'inherit' });
+  child.on('exit', code => process.exit(code ?? 1));
+};
+
+commands.away = () => require('../app/jobs').cli(argv);
+
+commands.start = async () => {
+  const f = flags(argv, { c: 'bool', continue: 'bool', 'no-open': 'bool' });
+  if (T.launcherAlive()) die(`a tutor launcher is already running (pid ${T.readSession().launcherPid}); use the browser, or stop it first`);
+  await require('../app/launcher').start({
+    topic: f._[0] || defaultTopic(), resume: !!(f.c || f.continue), open: !f['no-open'], claudeArgs: f['--'] || [],
+  });
+};
+
+// ---------------------------------------------------------------- resume: the startup bundle
+commands.resume = () => {
+  const f = flags(argv, { topic: 'string', messages: 'string' });
+  const slug = topicOf(f, true);
+  const sess = T.readSession();
+  if (process.env.LEARN_SESSION && sess?.id === process.env.LEARN_SESSION && sess.topic !== slug) T.writeSession({ ...sess, topic: slug });
+  const meta = S.loadTopicMeta(slug), dir = S.topicDir(slug);
+  const J = S.readJournal(slug);
+  const out = [];
+  const sec = (title, body) => { if (body && String(body).trim()) out.push(`\n## ${title}\n${String(body).replace(/\s+$/, '')}`); };
+
+  const lastUser = [...J].reverse().find(e => e.role === 'user' && !e.imported);
+  const last = [...J].reverse().find(e => e.kind !== 'session');
+  const gapMs = last ? Date.now() - Date.parse(last.ts) : null;
+  let advice;
+  if (!meta.skills?.length) advice = 'NEW TOPIC: no skill tree yet. Follow docs/bootstrap.md (first reply fast: one line + diagnostic question 1; then write the tree).';
+  else if (gapMs == null) advice = 'No messages yet: introduce the plan briefly and ask the first question.';
+  else if (gapMs < 8 * 3600e3) advice = 'Short gap (hours, e.g. a restart): post one line and re-ask the pending question. No refresher.';
+  else if (gapMs < 7 * 86400e3) advice = 'A day or more away: short recap (link the earlier messages) + one spaced-review question from the due list, then continue.';
+  else advice = 'A week or more away: check that the prerequisite blocks of the current focus still hold before moving on.';
+  out.push(`# Resume: ${meta.title} (${slug})`);
+  out.push(`Last activity: ${last ? `${last.ts.slice(0, 16).replace('T', ' ')} (${ago(gapMs)})` : 'none'}${lastUser ? ` · last learner message ${lastUser.id}` : ''}`);
+  out.push(`→ ${advice}`);
+  if (meta.goal) out.push(`Goal (learner's words): ${meta.goal}`);
+
+  const prof = S.readText(path.join(S.LEARNER, 'profile.md'), '');
+  const know = S.readText(path.join(S.LEARNER, 'knowledge.md'), '');
+  const meaty = t => t.split('\n').some(l => /^\s*[-*]|^\w/.test(l) && !/^(Who|What|Keep|Shared)/.test(l));
+  // drop the title and intro paragraph, demote headings so they nest under this section
+  const body = t => t.replace(/^# [^\n]*\n[\s\S]*?(?=^## )/m, '').replace(/^## /gm, '### ').replace(/^### [^\n]*\n\s*(?=### |$(?![\s\S]))/gm, '');
+  sec('Learner profile (data/learner/profile.md, all topics)', meaty(prof) ? body(prof) : '(empty: add what you learn about how they like to be taught)');
+  if (meaty(know)) sec('Knowledge across topics (data/learner/knowledge.md)', body(know));
+
+  const prog = S.readText(path.join(dir, 'progress.md'), '');
+  const rh = prog.match(/^## Resume here[^\n]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m);
+  sec('Resume here (progress.md)', rh ? rh[1] : prog);
+
+  const tree = [];
+  const notes = S.readNotes(slug);
+  for (const fd of meta.foundations || []) tree.push(`  @${fd.id}  ${fd.name}  ${fd.level ?? '?'}${fd.topic ? `  (topic ${fd.topic})` : ''}  [foundation]`);
+  S.walkSkills(meta.skills, (s, parent) => {
+    const kids = s.children?.length;
+    const lv = kids ? (s.children.reduce((a, c) => a + (c.level || 0), 0) / s.children.length).toFixed(1) : String(s.level ?? 0);
+    const open = notes.items.filter(n => n.status === 'open' && n.skill === String(s.id)).length;
+    tree.push(`${parent ? '    ' : '  '}${s.id}  ${s.name}  ${lv}${s.needs?.length ? `  needs ${s.needs.join(',')}` : ''}${open ? `  (${open} note${open > 1 ? 's' : ''})` : ''}${meta.focus === s.id ? '   ◀ FOCUS' : ''}`);
+  });
+  sec(`Skill tree (target ${meta.target}; focus ${meta.focus || '-'}; levels via \`bin/learn level\`)`, tree.join('\n'));
+
+  const pend = S.pendingQuestion(J);
+  if (pend) {
+    const q = (pend.text.match(/^:::question[^\n]*\n([\s\S]*?)^:::\s*$/m) || [])[1] || pend.text.slice(-500);
+    const answered = J.filter(e => e.role === 'user' && e.ts > pend.ts && !e.imported);
+    sec(`Pending question ${pend.id}${pend.skills?.length ? ` (skill ${pend.skills.join(',')})` : ''}`, q.trim() +
+      (pend.expect ? `\nGood answer needs: ${pend.expect}` : '\n(no rubric stored: post questions with --expect "…")') +
+      (answered.length ? `\nLearner messages since: ${answered.map(e => `${e.id} [${e.kind}]`).join(', ')}` : ''));
+  } else sec('Pending question', 'none');
+
+  const today = S.localDate();
+  const open = notes.items.filter(n => n.status === 'open');
+  const fmt = n => `  ${n.id}${n.skill ? ` [${n.skill}]` : ''} ${n.text}${n.due ? ` (due ${n.due}${n.due <= today ? ', DUE' : ''})` : ''}${n.ref ? ` (msg:${n.ref})` : ''}`;
+  const byKind = k => open.filter(n => n.kind === k).sort((a, b) => (a.due || '9') < (b.due || '9') ? -1 : 1).map(fmt).join('\n');
+  sec('Notes: spaced review (re-test; close with `bin/learn note done <id> "outcome"`)', byKind('review'));
+  sec('Notes: open misconceptions', byKind('misconception'));
+  sec('Notes: suspected holes (probe when relevant, not urgent)', byKind('hole'));
+  sec('Notes: parked learner questions', byKind('parked'));
+
+  const gl = S.readGlossary(slug).map(g => g.term);
+  sec(`Glossary terms (${gl.length}; add with \`bin/learn term add\`, see one with \`term show\`)`, gl.join(', ') || '(none yet)');
+  const pages = S.readPages(slug);
+  if (pages.length) sec('Wiki pages (wiki:page/<name>)', pages.map(p => `${p.name}: ${p.title}`).join('\n'));
+  const fb = S.openFeedback().length;
+  if (fb) out.push(`\n(${fb} open feedback item(s) in data/feedback.md for the builder: not your job mid-lesson)`);
+
+  const n = Number(f.messages) || 6;
+  const vis = J.filter(e => ['message', 'answer', 'ask', 'action', 'start'].includes(e.kind) || e.kind === 'grade').slice(-n);
+  sec(`Last ${vis.length} journal entries (more: \`bin/learn recent 20\`, \`bin/learn show <id>\`)`, vis.map(e => {
+    if (e.kind === 'grade') return `${e.id} [grade] ${e.verdict} on ${e.target} (${e.skill || '-'}) ${e.note || ''}`;
+    const text = e.role === 'tutor' && e.text.length > 900 ? e.text.slice(0, 450) + ' … ' + e.text.slice(-400) : e.text;
+    return `${e.id} [${e.role === 'tutor' ? 'tutor' : e.kind}]\n${text.replace(/^/gm, '  ')}`;
+  }).join('\n'));
+  const q = S.inboxIds().length;
+  if (q) out.push(`\n(${q} learner message(s) queued: \`bin/learn wait\` returns them right away)`);
+  console.log(out.join('\n'));
+};
+
+// ---------------------------------------------------------------- the loop
+commands.wait = async () => {
+  S.ensureDir(S.INBOX);
+  const mine = process.env.LEARN_SESSION || null;
+  const stale = () => { const cur = T.readSession(); return mine && cur && cur.id !== mine; };
+  if (stale()) { console.log('(this tutor session was replaced by a newer one; not listening)'); return; }
+  process.on('exit', T.registerListener(mine));
+  for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, () => process.exit(130));
+
+  const claim = () => {
+    const files = fs.readdirSync(S.INBOX).filter(f => f.endsWith('.json')).sort();
+    const got = [];
+    for (const f of files) {
+      const src = path.join(S.INBOX, f), dst = src + '.' + process.pid;
+      try { fs.renameSync(src, dst); } catch { continue; }    // someone else took it
+      try { got.push(JSON.parse(fs.readFileSync(dst, 'utf8'))); } catch {}
+      fs.unlinkSync(dst);
+    }
+    return got;
+  };
+  let msgs = claim();
+  while (!msgs.length) {
+    await new Promise(res => {
+      let w; const t = setTimeout(done, 1000);
+      function done() { clearTimeout(t); if (w) w.close(); res(); }
+      try { w = fs.watch(S.INBOX, done); } catch {}
+    });
+    if (stale()) { console.log('(this tutor session was replaced by a newer one; stop listening)'); return; }
+    msgs = claim();
+  }
+  // tell the server the messages were picked up (UI shows "thinking")
+  try { await api('POST', '/api/picked', { ids: msgs.map(m => m.id) }); } catch {}
+  let handoff = false;
+  for (const m of msgs) {
+    const bits = [`id=${m.id}`, `topic=${m.topic}`];
+    if (m.replyTo) bits.push(`replying-to=${m.replyTo}`);
+    if (m.quote) bits.push(`quote=${m.quote}`);
+    console.log(`── ${String(m.kind).toUpperCase()}  ${bits.join('  ')} ──`);
+    console.log(m.text);
+    console.log();
+    if (T.isFreshTutorAction(m)) handoff = true;
+  }
+  // which topic is this session for? A message for another topic means a topic switch.
+  const sess = T.readSession();
+  const mineSess = sess && (!mine || sess.id === mine) ? sess : null;
+  const other = msgs.find(m => m.topic && mineSess && mineSess.topic && m.topic !== mineSess.topic);
+  if (mineSess && !mineSess.topic && msgs[0]?.topic) {
+    T.writeSession({ ...mineSess, topic: msgs[0].topic });
+    console.log(`(first message for topic ${msgs[0].topic}: run \`bin/learn resume ${msgs[0].topic}\` before replying${msgs.some(m => m.kind === 'start') ? '; START = new topic, follow docs/bootstrap.md' : ''})`);
+  }
+  if (other) {
+    console.log(`── TOPIC SWITCH ── The learner is now in topic "${other.topic}"${other.kind === 'start' ? ' (a NEW topic)' : ''}; this session is for "${mineSess.topic}". Don't reply. Instead:
+  1. Update "Resume here" in ${mineSess.topic}'s progress.md if anything changed, and \`bin/learn commit "…"\`.
+  2. Run \`bin/learn handoff --topic ${other.topic} --reason "topic switch"\`. A fresh tutor picks up ${other.topic} with these messages queued for it.`);
+    return;
+  }
+  const ctx = mine && T.contextTokens(mine);
+  const turns = !ctx && mineSess ? S.readJournal(mineSess.topic || msgs[0].topic).filter(e => e.role === 'tutor' && e.kind === 'message' && e.ts > mineSess.startedAt).length : 0;
+  if (handoff) console.log(HANDOFF_STEPS('The learner asked for a fresh tutor.'));
+  else if (ctx && ctx.tokens >= T.HANDOFF_TOKENS)
+    console.log(HANDOFF_STEPS(`Your context is at ~${Math.round(ctx.tokens / 1000)}k tokens (handoff threshold ${Math.round(T.HANDOFF_TOKENS / 1000)}k). Reply to the message above first.`));
+  else if (!ctx && turns >= T.HANDOFF_MESSAGES)
+    console.log(HANDOFF_STEPS(`This session has posted ${turns} messages (handoff after ${T.HANDOFF_MESSAGES} when the context size is unknown). Reply to the message above first.`));
+  else console.log(`(reply: bin/learn post … ; then re-run \`bin/learn wait\` in the background${ctx ? `; context ~${Math.round(ctx.tokens / 1000)}k tokens` : ''})`);
+};
+const HANDOFF_STEPS = why => `── HANDOFF ── ${why} Then, instead of re-arming wait:
+  1. Update progress.md "Resume here": where we are, what you planned next, the learner's current state of mind. (The pending question and its rubric come from the journal if you posted it with --expect; reviews/holes/parked from notes.json.) Update skill summaries if you taught something new.
+  2. \`bin/learn commit "…"\` if there are changes.
+  3. Run \`bin/learn handoff\`. A fresh tutor session takes over automatically; the learner sees "switching tutor".`;
+
+commands.handoff = async () => {
+  const f = flags(argv, { topic: 'string', reason: 'string', force: 'bool' });
+  if (!T.launcherAlive()) die('no bin/learn launcher is running, so nothing can start a fresh tutor. Ask the learner to restart `bin/learn` in a terminal.');
+  T.requestHandoff({ reason: f.reason || 'context refresh', topic: f.topic || defaultTopic(), force: !!f.force, by: process.env.LEARN_SESSION || null });
+  console.log('handoff requested: this session ends in a moment and a fresh tutor takes over. Do nothing else.');
+};
+
+// Claude Code SessionStart hook (matcher "compact"): if a web tutor session was just compacted,
+// remind it how the loop works. Prints nothing for any other session.
+function readHookInput() { try { return JSON.parse(readStdin() || '{}'); } catch { return {}; } }
+commands.hook = () => {
+  const input = readHookInput();
+  const cur = T.readSession();
+  if (!cur || !input.session_id || input.session_id !== cur.id) return;
+  console.log(`You are the web tutor started by bin/learn (session ${cur.id}); your context was just compacted.
+Before anything else: re-read docs/protocol.md (the loop), run \`bin/learn resume${cur.topic ? ' ' + cur.topic : ''}\`, and make sure \`bin/learn wait\` is running in the background (start it if unsure — a stale one exits by itself).
+Then consider \`bin/learn handoff\` after your next reply: a fresh session is cleaner than a compacted one.`);
+};
+
+commands.post = async () => {
+  const f = flags(argv, { topic: 'string', skill: 'string', grade: 'string', 'grade-skill': 'string', note: 'string', file: 'string', expect: 'string', force: 'bool' });
+  const text = (f.file ? fs.readFileSync(f.file, 'utf8') : readStdin()).replace(/\s+$/, '');
+  const verdicts = ['correct', 'partial', 'wrong', 'skipped'];
+  if (f.grade && !verdicts.includes(f.grade)) die(`--grade must be one of ${verdicts.join('|')}`);
+  if (!text && !f.grade) die('nothing to post (markdown on stdin)');
+  const topic = f.topic || defaultTopic();
+  if (!topic) die('no topic; pass --topic');
+  if (!S.listTopics().includes(topic)) die(`unknown topic ${topic}`);
+  const skills = list(f.skill);
+  const meta = S.loadTopicMeta(topic);
+  for (const id of [...skills, f['grade-skill']].filter(Boolean)) if (!S.findSkill(meta, id)) die(`no skill ${id} in ${topic}`);
+  const question = S.hasQuestion(text);
+  if (text) {
+    const probs = require('../app/check').linkChecker(topic)(text);
+    const errs = probs.filter(p => p.error);
+    for (const p of probs) console.error(`${p.error ? 'error' : 'warning'}: link ${p.type}:${p.id}: ${p.why}`);
+    if (errs.length && !f.force) die('not posted: fix the links above (or pass --force). `bin/learn msgs --skill <id>` lists real message ids.');
+    if (question && (text.match(/^:::question\b/gm) || []).length > 1) console.error('warning: more than one :::question block; only one is tracked as pending');
+    if (f.expect && !question) console.error('warning: --expect given but the message has no :::question block');
+  }
+
+  const entries = [];
+  const lastUser = S.lastEntry(e => e.topic === topic && e.role === 'user' && !e.imported, [topic]);
+  if (f.grade) {
+    const target = S.lastEntry(e => e.topic === topic && e.role === 'user' && e.kind === 'answer', [topic]);
+    if (!target) die('no answer to grade');
+    entries.push({ role: 'tutor', kind: 'grade', target: target.id, questionId: target.replyTo || null,
+      verdict: f.grade, skill: f['grade-skill'] || skills[0] || null, note: f.note || '' });
+  }
+  if (text) entries.push({ role: 'tutor', kind: 'message', text, skills, question,
+    replyTo: lastUser ? lastUser.id : null, ...(f.expect && question ? { expect: f.expect } : {}) });
+
+  let saved;
+  if (await serverUp()) saved = await api('POST', '/api/append', { topic, entries });
+  else saved = S.appendJournal(topic, entries);
+  for (const e of saved) console.log(`posted ${e.kind} ${e.id}${e.kind === 'grade' ? ` (${e.verdict} → ${e.target})` : ''}${e.question ? ` [question${e.expect ? ' + rubric' : ', no --expect rubric'}]` : ''}`);
+};
+
+// ---------------------------------------------------------------- state commands
+commands.level = async () => {
+  const f = flags(argv, {});
+  const topic = topicOf(f, true);
+  const [skill, lvl, ...reason] = f._;
+  if (!skill || lvl == null) die('usage: level [topic] <skill> <0-5> "reason"');
+  if (!(Number(lvl) >= 0 && Number(lvl) <= 5)) die('level must be 0-5');
+  const meta = S.loadTopicMeta(topic);
+  const fd = (meta.foundations || []).find(x => x.id === skill.replace(/^@/, ''));
+  if (fd) { fd.level = Number(lvl); S.saveTopicMeta(topic, meta); console.log(`${topic} foundation ${fd.id}: level ${lvl}`); return; }
+  const e = (await serverUp())
+    ? await api('POST', '/api/level', { topic, skill, level: Number(lvl), reason: reason.join(' ') })
+    : S.setLevel(topic, skill, lvl, reason.join(' '));
+  console.log(`${topic} ${skill}: ${e.from} → ${e.to}`);
+};
+
+commands.focus = () => {
+  const f = flags(argv, {});
+  const topic = topicOf(f, true);
+  const meta = S.loadTopicMeta(topic);
+  if (!f._[0]) { console.log(meta.focus || '(none)'); return; }
+  if (!S.findSkill(meta, f._[0])) die(`no skill ${f._[0]} in ${topic}`);
+  meta.focus = f._[0];
+  S.saveTopicMeta(topic, meta);
+  console.log(`${topic} focus: ${f._[0]}`);
+};
+
+commands.note = () => {
+  const f = flags(argv, { topic: 'string', skill: 'string', ref: 'string', due: 'string', all: 'bool' });
+  const sub = f._.shift();
+  const topic = topicOf(f);
+  if (sub === 'done' || sub === 'close') {
+    const [id, ...outcome] = f._;
+    if (!id) die('usage: note done <id> ["outcome"]');
+    const it = S.closeNote(topic, id, outcome.join(' '));
+    console.log(`closed ${it.id} (${it.kind}): ${it.text}`);
+  } else if (sub === 'list' || !sub) {
+    for (const n of S.readNotes(topic).items.filter(n => f.all || n.status === 'open'))
+      console.log(`${n.id} ${n.kind}${n.skill ? ` [${n.skill}]` : ''}${n.status === 'done' ? ' (done' + (n.outcome ? ': ' + n.outcome : '') + ')' : ''}${n.due ? ` due ${n.due}` : ''}: ${n.text}`);
+  } else {
+    if (f.skill && !S.findSkill(S.loadTopicMeta(topic), f.skill)) die(`no skill ${f.skill} in ${topic}`);
+    if (f.ref && !S.findEntry(f.ref, topic)) die(`no message ${f.ref}`);
+    const it = S.addNote(topic, { kind: sub, text: f._.join(' '), skill: f.skill, ref: f.ref, due: S.parseDue(f.due) });
+    console.log(`added ${it.id} (${it.kind}${it.skill ? ', ' + it.skill : ''}${it.due ? ', due ' + it.due : ''})`);
+  }
+};
+
+commands.summary = () => {
+  const f = flags(argv, { topic: 'string' });
+  const topic = topicOf(f, true);
+  const [id, ...rest] = f._;
+  const meta = S.loadTopicMeta(topic), s = id && S.findSkill(meta, id);
+  if (!s) die('usage: summary [topic] <skill> "- bullet"');
+  const add = rest.join(' ').trim();
+  if (!add) { console.log(s.summary || '(no summary)'); return; }
+  const probs = require('../app/check').linkChecker(topic)(add).filter(p => p.error);
+  if (probs.length) die(probs.map(p => `link ${p.type}:${p.id}: ${p.why}`).join('\n'));
+  s.summary = (s.summary ? s.summary.replace(/\s+$/, '') + '\n' : '') + (add.startsWith('-') ? add : '- ' + add);
+  S.saveTopicMeta(topic, meta);
+  console.log(`${topic} ${id} summary: ${s.summary.split('\n').length} line(s)`);
+};
+
+commands.term = () => {
+  const f = flags(argv, { topic: 'string', skill: 'string', short: 'string', full: 'string', aliases: 'string', parts: 'string', see: 'string', refs: 'string', size: 'string', body: 'string' });
+  const sub = f._.shift();
+  const topic = topicOf(f);
+  const name = f._.join(' ');
+  if (sub === 'show') {
+    const n = name.toLowerCase();
+    const g = S.readGlossary(topic).find(t => t.term.toLowerCase() === n || t.aliases.some(a => a.toLowerCase() === n));
+    if (!g) die(`no term "${name}"`);
+    console.log([`## ${g.term}`, g.full && `full: ${g.full}`, g.aliases.length && `aliases: ${g.aliases.join(', ')}`, g.skills.length && `skill: ${g.skills.join(', ')}`,
+      g.parts.length && `parts: ${g.parts.join(', ')}`, g.see.length && `see: ${g.see.join(', ')}`, g.refs.length && `refs: ${g.refs.join(', ')}`, g.short, g.body && '\n' + g.body].filter(Boolean).join('\n'));
+  } else if (sub === 'add') {
+    if (f.skill) for (const s of list(f.skill)) if (!S.findSkill(S.loadTopicMeta(topic), s)) die(`no skill ${s} in ${topic}`);
+    const body = f.body === '-' ? readStdin() : f.body || '';
+    S.addTerm(topic, { term: name, short: f.short, body, full: f.full, skill: f.skill, aliases: list(f.aliases), parts: list(f.parts), see: list(f.see), refs: list(f.refs), size: f.size });
+    const missing = list(f.parts).filter(p => !S.readGlossary(topic).some(g => [g.term, ...g.aliases].some(x => x.toLowerCase() === p.toLowerCase())));
+    console.log(`added "${name}" to ${topic}/glossary.md${missing.length ? ` (parts not in the glossary yet: ${missing.join(', ')})` : ''}`);
+  } else die('usage: term add|show …');
+};
+commands.terms = () => { const f = flags(argv, { topic: 'string' }); console.log(S.readGlossary(topicOf(f, true)).map(g => g.term).join(', ')); };
+
+// The skill tree as an indented outline (round-trips through `tree --set`):
+//   @linalg Linear algebra: vectors, dot products   ← foundation (outside this topic)
+//   4 Attention
+//     4.1 Q, K, V & dot-product scores <- 2.1, linalg
+commands.tree = () => {
+  const f = flags(argv, { topic: 'string', set: 'bool', prune: 'bool' });
+  const topic = topicOf(f, true);
+  const meta = S.loadTopicMeta(topic);
+  if (!f.set) {
+    const lines = (meta.foundations || []).map(x => `@${x.id} ${x.name}`);
+    S.walkSkills(meta.skills, (s, p) => lines.push(`${p ? '  ' : ''}${s.id} ${s.name}${s.needs?.length ? ' <- ' + s.needs.join(', ') : ''}`));
+    console.log(lines.join('\n') || '(empty: write one with `bin/learn tree --set < outline`)');
+    return;
+  }
+  const old = new Map(); S.walkSkills(meta.skills, s => old.set(String(s.id), s));
+  const oldF = new Map((meta.foundations || []).map(x => [x.id, x]));
+  const roots = [], foundations = [], stack = [], seen = new Set();
+  for (const raw of readStdin().split('\n')) {
+    if (!raw.trim() || /^\s*#/.test(raw)) continue;
+    const indent = raw.match(/^\s*/)[0].replace(/\t/g, '  ').length;
+    const fm = raw.trim().match(/^@([a-z][\w-]*)\s+(.+)$/i);
+    if (fm) { foundations.push({ ...(oldF.get(fm[1]) || {}), id: fm[1], name: fm[2].trim() }); continue; }
+    const m = raw.trim().match(/^(\d+(?:\.\d+)*)\s+(.+?)(?:\s+<-\s*(.*))?$/);
+    if (!m) die(`can't parse outline line: ${raw.trim()}`);
+    const [, id, name, needs] = m;
+    if (seen.has(id)) die(`duplicate id ${id}`);
+    seen.add(id);
+    const node = { ...(old.get(id) || {}), id, name: name.trim() };
+    delete node.children;
+    if (needs != null) { if (needs.trim()) node.needs = list(needs); else delete node.needs; }
+    while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
+    if (stack.length) (stack[stack.length - 1].node.children ||= []).push(node); else roots.push(node);
+    stack.push({ indent, node });
+  }
+  const dropped = [...old.keys()].filter(id => !seen.has(id));
+  if (dropped.length && !f.prune) die(`the outline drops skills ${dropped.join(', ')}; add them back or pass --prune`);
+  for (const n of roots) S.walkSkills([n], s => { if (s.children?.length) delete s.level; else s.level ??= 0; });
+  meta.skills = roots;
+  if (foundations.length || meta.foundations) meta.foundations = foundations;
+  if (meta.focus && !seen.has(String(meta.focus))) meta.focus = null;
+  S.saveTopicMeta(topic, meta);
+  const { problems } = require('../app/check').checkTopic(topic);
+  console.log(`${topic}: ${seen.size} skills, ${foundations.length} foundations${problems.length ? '\n' + problems.map(p => '  ✗ ' + p).join('\n') : ''}`);
+};
+
+commands.log = () => {
+  const f = flags(argv, { topic: 'string' });
+  const topic = topicOf(f);
+  const text = f._.join(' ').trim();
+  if (!text) die('usage: log [topic] "what happened"');
+  S.appendLog(topic, text);
+  console.log(`logged to ${topic}/log.md`);
+};
+
+commands.feedback = () => {
+  const f = flags(argv, { topic: 'string' });
+  const text = f._.join(' ').trim();
+  const topic = f.topic || defaultTopic();
+  const r = S.appendFeedback(text, topic || '', process.env.LEARN_SESSION ? 'tutor' : 'cli');
+  console.log(`added to ${r.file}`);
+};
+
+commands.commit = () => {
+  const msg = argv.join(' ').trim();
+  console.log(S.commitData(msg || `Update learning data ${S.localDate()}`));
+};
+
+commands.pending = () => {
+  const f = flags(argv, { topic: 'string' });
+  const topic = topicOf(f, true);
+  const p = S.pendingQuestion(S.readJournal(topic));
+  if (!p) { console.log('(no pending question)'); return; }
+  console.log(`${p.id}${p.skills?.length ? ' skill ' + p.skills.join(',') : ''}\n${p.text}${p.expect ? `\n\nGood answer needs: ${p.expect}` : ''}`);
+};
+
+commands.msgs = () => {
+  const f = flags(argv, { topic: 'string', skill: 'string', all: 'bool' });
+  const topic = topicOf(f, true);
+  const tags = S.readJSON(path.join(S.topicDir(topic), 'tags.json'), {}) || {};
+  const want = new Set();
+  if (f.skill) { const s = S.findSkill(S.loadTopicMeta(topic), f.skill); if (!s) die(`no skill ${f.skill}`); S.walkSkills([s], x => want.add(String(x.id))); }
+  for (const e of S.readJournal(topic)) {
+    if (e.role !== 'tutor' || e.kind !== 'message') continue;
+    const sk = [...(e.skills || []), ...(tags[e.id] || [])].map(String);
+    if (want.size && !sk.some(x => want.has(x))) continue;
+    console.log(`${e.id}${sk.length ? ` [${[...new Set(sk)].join(',')}]` : ''}${e.question ? ' ?' : ''} ${firstLine(e.text)}`);
+  }
+};
+
+commands.check = () => {
+  const { checkTopic } = require('../app/check');
+  const f = flags(argv, { quiet: 'bool' });
+  const topics = f._[0] ? [f._[0]] : S.listTopics();
+  let failed = false;
+  for (const slug of topics) {
+    if (!S.listTopics().includes(slug)) die(`unknown topic ${slug}`);
+    const { problems, warnings } = checkTopic(slug);
+    console.log(`${slug}: ${problems.length ? problems.length + ' problem(s)' : 'ok'}${warnings.length ? `, ${warnings.length} warning(s)` : ''}`);
+    for (const p of problems) console.log('  ✗ ' + p);
+    if (!f.quiet) for (const w of warnings) console.log('  · ' + w);
+    failed ||= problems.length > 0;
+  }
+  process.exitCode = failed ? 1 : 0;
+};
+
+commands.recent = () => {
+  const f = flags(argv, { topic: 'string' });
+  const n = Number(f._[0]) || 12;
+  const topic = f.topic || defaultTopic();
+  if (!topic) die('no topic');
+  const J = S.readJournal(topic).slice(-n);
+  for (const e of J) {
+    if (e.kind === 'session') { console.log(`\n── ${e.text} · ${e.ts.slice(0, 16).replace('T', ' ')} ──`); continue; }
+    if (e.kind === 'level') { console.log(`${e.id} [level] ${e.skill}: ${e.from} → ${e.to} ${e.reason || ''}`); continue; }
+    if (e.kind === 'grade') { console.log(`${e.id} [grade] ${e.verdict} on ${e.target} (${e.skill || '-'}) ${e.note || ''}`); continue; }
+    const tag = e.role === 'tutor' ? `tutor${e.question ? ' ?' : ''}` : `${e.kind}${e.replyTo ? ' → ' + e.replyTo : ''}`;
+    const text = e.role === 'tutor' && e.text.length > 700 ? e.text.slice(0, 350) + ' … ' + e.text.slice(-300) : e.text;
+    console.log(`${e.id} [${tag}]${e.skills?.length ? ' skills=' + e.skills.join(',') : ''}\n${text.replace(/^/gm, '  ')}`);
+  }
+  const queued = S.inboxIds();
+  console.log(queued.length ? `\n(${queued.length} message(s) queued for \`bin/learn wait\`)` : '');
+};
+
+commands.status = async () => {
+  const up = await serverUp();
+  console.log(`server: ${up ? 'up at http://localhost:' + S.PORT : 'down'} · data: ${S.ROOT}`);
+  const inbox = fs.existsSync(S.INBOX) ? fs.readdirSync(S.INBOX).filter(f => f.endsWith('.json')) : [];
+  console.log(`inbox: ${inbox.length} pending · feedback: ${S.openFeedback().length} open`);
+  for (const slug of S.listTopics()) {
+    const m = S.loadTopicMeta(slug);
+    const j = S.readJournal(slug);
+    const p = S.pendingQuestion(j);
+    console.log(`topic ${slug}: ${m.title} — ${j.length} journal entries; focus ${m.focus || '-'}${p ? `; pending question ${p.id}` : ''}`);
+  }
+};
+
+commands.show = () => {
+  const e = S.findEntry(argv[0] || '', defaultTopic());
+  if (!e) die('not found');
+  console.log(`${e.id} ${e.role} ${e.kind} ${e.ts}\n\n${e.text || JSON.stringify(e, null, 2)}${e.expect ? `\n\n(rubric: ${e.expect})` : ''}`);
+};
+
+commands.grep = () => {
+  const f = flags(argv, { topic: 'string' });
+  if (!f._[0]) die('usage: grep <regex>');
+  const re = new RegExp(f._[0], 'i');
+  for (const slug of f.topic ? [f.topic] : S.listTopics())
+    for (const e of S.readJournal(slug)) {
+      if (!e.text || !re.test(e.text)) continue;
+      const i = e.text.search(re);
+      const snip = e.text.slice(Math.max(0, i - 60), i + 100).replace(/\s+/g, ' ');
+      console.log(`${S.listTopics().length > 1 && !f.topic ? slug + '/' : ''}${e.id} [${e.role}] …${snip}…`);
+    }
+};
+
+commands.new = () => {
+  const [slug, ...title] = argv;
+  if (!slug || !/^[a-z0-9][a-z0-9-]*$/.test(slug)) die('usage: new <slug> "Title"');
+  console.log('created ' + S.createTopic(slug, title.join(' ') || slug));
+};
+
+commands.import = () => {
+  const f = flags(argv, { topic: 'string' });
+  if (!f.topic || !f._.length) die('usage: import <transcript.jsonl>... --topic t');
+  const all = [];
+  f._.forEach((file, si) => {
+    let turn = null;
+    const flush = () => { if (turn && turn.text.trim()) all.push(turn); turn = null; };
+    all.push({ role: 'system', kind: 'session', text: `Terminal session (imported from ${path.basename(file)})`, ts: null, _file: si });
+    const startIdx = all.length - 1;
+    for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+      if (!line.trim()) continue;
+      let d; try { d = JSON.parse(line); } catch { continue; }
+      if (!['user', 'assistant'].includes(d.type) || d.isSidechain || d.isMeta) continue;
+      const c = d.message && d.message.content;
+      let txt = typeof c === 'string' ? c : (c || []).filter(b => b.type === 'text').map(b => b.text).join('\n\n');
+      txt = (txt || '').trim();
+      if (!txt || /^<(command|local-command|system-reminder|task-notification)/.test(txt) || /^Caveat:/.test(txt)) continue;
+      const role = d.type === 'user' ? 'user' : 'tutor';
+      if (turn && turn.role === role) { turn.text += '\n\n' + txt; continue; }
+      flush();
+      turn = { role, kind: 'message', text: txt, ts: d.timestamp, imported: true };
+    }
+    flush();
+    all[startIdx].ts = all[startIdx + 1] ? all[startIdx + 1].ts : new Date().toISOString();
+  });
+  all.sort((a, b) => a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0);
+  const byDate = new Map();
+  for (const e of all) { delete e._file; const dt = S.localDate(new Date(e.ts)); (byDate.get(dt) || byDate.set(dt, []).get(dt)).push(e); }
+  let n = 0;
+  for (const [dt, es] of byDate) { n += S.appendJournal(f.topic, es, dt).length; }
+  console.log(`imported ${n} entries into ${f.topic} (${[...byDate.keys()].join(', ')})`);
+};
+
+if (argv[0] && !argv[0].startsWith('-')) {
+  if (commands[argv[0]]) cmd = argv.shift();
+  else if (!S.listTopics().includes(argv[0])) die(`unknown command or topic "${argv[0]}"; try bin/learn help`);
+}
+Promise.resolve(commands[cmd]()).catch(e => die(e.message));

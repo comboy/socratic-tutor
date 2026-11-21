@@ -1,0 +1,33 @@
+{
+  "title": "Cell biology (demo)",
+  "target": 4,
+  "focus": null,
+  "created": "2026-01-10",
+  "skills": [
+    {
+      "id": "1",
+      "name": "Cell structure",
+      "children": [
+        { "id": "1.1", "name": "Membranes", "level": 0 },
+        { "id": "1.2", "name": "Organelles", "level": 0 }
+      ]
+    },
+    {
+      "id": "2",
+      "name": "Energy",
+      "children": [
+        { "id": "2.1", "name": "ATP", "level": 0 },
+        { "id": "2.2", "name": "Respiration", "level": 0 },
+        { "id": "2.3", "name": "Photosynthesis", "level": 0 }
+      ]
+    },
+    {
+      "id": "3",
+      "name": "Division",
+      "children": [
+        { "id": "3.1", "name": "Mitosis", "level": 0 },
+        { "id": "3.2", "name": "Meiosis", "level": 0 }
+      ]
+    }
+  ]
+}

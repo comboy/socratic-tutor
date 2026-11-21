@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>learn</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%233b6fb6'/><path d='M9 23V9h3v11h7v3z' fill='white'/></svg>">
+<script>try { const t = JSON.parse(localStorage.getItem('learn:theme')); if (t && t !== 'auto') document.documentElement.dataset.theme = t; } catch {}</script>
+<link rel="stylesheet" href="/vendor/katex/katex.min.css">
+<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/tree.css">
+<script src="/vendor/d3.min.js"></script>
+<script src="/vendor/marked.min.js"></script>
+<script src="/vendor/katex/katex.min.js"></script>
+</head>
+<body>
+<header class="toolbar">
+  <button id="leftToggle" class="tb-icon" data-icon="left" title="Show/hide the skills sidebar  ["></button>
+  <div class="app-mark">learn</div>
+  <label class="topic-pick" title="Topic"><select id="topicSel"></select></label>
+  <div class="seg views" role="tablist">
+    <button data-view="learn" data-icon="learn" title="Conversation  (1)">Learn</button>
+    <button data-view="map" data-icon="map" title="Concept map: how it works  (2)">Map</button>
+    <button data-view="tree" data-icon="tree" title="Skill tree: what builds on what, and what you're ready for  (3)">Tree</button>
+    <button data-view="wiki" data-icon="wiki" title="Overview, cheat sheet, glossary, skills, your learner model, sessions  (4)">Wiki</button>
+    <button data-view="stats" data-icon="stats" title="Progress statistics  (5)">Stats</button>
+  </div>
+  <span class="spacer"></span>
+  <button id="searchBtn" class="search-field" data-icon="search" title="Search terms, skills, map and every message"><span>Search everything…</span><kbd>/</kbd></button>
+  <button id="reloadBtn" class="btn btn-small reload-btn" data-icon="auto" hidden title="The app was updated (new features or fixes). Reload to use them; drafts and your place are kept. It also reloads by itself when you're idle.">Updated · reload</button>
+  <button id="status" class="status" type="button"></button>
+  <button id="awayBtn" class="tb-icon away-btn" data-icon="away" title="I'm away: let background agents build your feedback, review sessions, write wiki pages"></button>
+  <button id="feedbackBtn" class="tb-icon" data-icon="feedback" title="Feedback on the app or the process (saved for the builder, the tutor doesn’t see it)"></button>
+  <button id="themeBtn" class="tb-icon" title="Theme"></button>
+  <button id="dockBtn" class="tb-icon" data-icon="right" title="Show/hide the reference panel  ]"></button>
+</header>
+<main class="layout">
+  <aside id="left" class="left"></aside>
+  <div class="rz rz-left" data-rz="left" title="Drag to resize"></div>
+  <section id="center" class="center"></section>
+  <div class="rz rz-dock" data-rz="dock" title="Drag to resize"></div>
+  <aside id="dock" class="dock"></aside>
+</main>
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

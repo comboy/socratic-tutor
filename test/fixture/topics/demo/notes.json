@@ -1,0 +1,44 @@
+{
+  "next": 5,
+  "items": [
+    {
+      "id": "n1",
+      "kind": "review",
+      "skill": "4.3",
+      "text": "Why the mask is needed during training but costs nothing at inference",
+      "ref": "2026-01-05.2",
+      "created": "2026-11-21",
+      "status": "open",
+      "due": "2026-01-07"
+    },
+    {
+      "id": "n2",
+      "kind": "hole",
+      "skill": "3.2",
+      "text": "Temperature: thinks it changes the ranking of tokens (synthetic)",
+      "ref": null,
+      "created": "2026-11-21",
+      "status": "open"
+    },
+    {
+      "id": "n3",
+      "kind": "parked",
+      "skill": "4.4",
+      "text": "How big is the KV cache for a long chat?",
+      "ref": null,
+      "created": "2026-11-21",
+      "status": "open"
+    },
+    {
+      "id": "n4",
+      "kind": "misconception",
+      "skill": "6.1",
+      "text": "Mixed up loss and accuracy (synthetic)",
+      "ref": null,
+      "created": "2026-11-21",
+      "status": "done",
+      "closed": "2026-11-21",
+      "outcome": "resolved with the coin-flip example"
+    }
+  ]
+}
