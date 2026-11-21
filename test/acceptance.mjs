@@ -468,6 +468,40 @@ async function main() {
     const t = await page.eval(`document.querySelector('#dock').innerText`);
     assert(/needs/i.test(t) && /unlocks/i.test(t) && /4\.4/.test(t) && /Why the mask/.test(t), t.slice(0, 400));
   });
+  await test('skill tree: a deep tree packs into branch panels that fit; Tiers / Branches toggle', async () => {
+    // synthetic 10 branches × 4 skills, chained across branches: 40 tiers deep in the Tiers layout
+    const tj = path.join(HOME, 'topics/cells/topic.json'), orig = fs.readFileSync(tj, 'utf8');
+    const skills = Array.from({ length: 10 }, (_, b) => ({ id: String(b + 1), name: `Branch ${b + 1}`, children: Array.from({ length: 4 }, (_, i) => ({
+      id: `${b + 1}.${i + 1}`, name: `Skill ${b + 1}.${i + 1}`, level: (b + i) % 5,
+      needs: i ? [`${b + 1}.${i}`, ...(i === 2 && b ? [`${b}.3`, 'maths'] : [])] : b ? [`${b}.4`] : ['maths'] })) }));
+    fs.writeFileSync(tj, JSON.stringify({ ...JSON.parse(orig), skills, foundations: [{ id: 'maths', name: 'Maths', level: 2 }] }, null, 2));
+    try {
+      await page.eval(`localStorage.removeItem('learn:treeLayout'); localStorage.removeItem('learn:treeZoomBranches')`);
+      await page.nav(`${BASE}/#/cells/tree`, 1200);
+      await page.waitFor(`document.querySelectorAll('.tree-node').length === 41`, { timeout: 5000 });
+      const st = await page.eval(`(() => { const s = document.querySelector('.tree-stage'), b = document.querySelector('.tree-body');
+        return { mode: [...s.classList].find(c => c.startsWith('mode-')), on: document.querySelector('.tree-mode .on')?.dataset.mode,
+          panels: document.querySelectorAll('.tree-lane').length, cols: new Set([...document.querySelectorAll('.tree-lane')].map(l => l.style.left)).size,
+          zoom: document.querySelector('#treeZoomLvl').textContent, chips: document.querySelectorAll('.tree-x').length,
+          hidden: [...document.querySelectorAll('.tree-edge.x')].every(e => getComputedStyle(e).opacity === '0'),
+          fits: s.getBoundingClientRect().width <= b.clientWidth + 1 }; })()`);
+      assert(st.mode === 'mode-branches' && st.on === 'branches', 'deep tree defaults to branches: ' + JSON.stringify(st));
+      assert(st.panels === 11 && st.cols >= 3, 'packed into columns: ' + JSON.stringify(st));
+      assert(parseInt(st.zoom) >= 60 && st.fits, 'readable and fits the width: ' + JSON.stringify(st));
+      assert(st.chips > 10 && st.hidden, 'cross-branch links are chips, edges hidden: ' + JSON.stringify(st));
+      await page.shot('tree-branches-deep');
+      await page.eval(`document.querySelector('.tree-node[data-id="5.3"]').dispatchEvent(new MouseEvent('mouseenter'))`);
+      await page.waitFor(`[...document.querySelectorAll('.tree-edge.x.up')].filter(e => getComputedStyle(e).opacity === '1').length >= 2`, { timeout: 2000 });
+      await page.shot('tree-branches-hover');
+      await page.eval(`document.querySelector('.tree-node[data-id="5.3"]').dispatchEvent(new MouseEvent('mouseleave'))`);
+      await page.eval(`document.querySelector('.tree-mode [data-mode="tiers"]').click()`);
+      await page.waitFor(`document.querySelector('.tree-stage.mode-tiers') && document.querySelectorAll('.tree-lane').length === 41`, { timeout: 3000 });
+      assert(await page.eval(`JSON.parse(localStorage['learn:treeLayout'])`) === 'tiers', 'choice remembered');
+      await page.eval(`document.querySelector('.tree-mode [data-mode="branches"]').click()`);
+      await page.waitFor(`document.querySelector('.tree-stage.mode-branches')`, { timeout: 3000 });
+      await page.eval(`localStorage.removeItem('learn:treeLayout')`);
+    } finally { fs.writeFileSync(tj, orig); }
+  });
   await test('UI code change: reload waits while the learner is active, keeps the draft', async () => {
     await page.nav(`${BASE}/#/demo/learn`, 1000);
     await page.eval(`document.querySelector('#askBox').focus()`); await page.type('half-typed');

@@ -1,18 +1,22 @@
-// Skill tree view: a Civilization-style tech tree of the topic's leaf skills. Columns are tiers
-// (rank = 1 + max rank of a skill's `needs`), foundations (knowledge from outside the topic) sit in
-// their own lane on the left. Prerequisites are soft: the tree shows readiness, it never locks.
-// Without any `needs` in topic.json the branches are simply laid out as columns.
+// Skill tree view of the topic's leaf skills, in two layouts. "Tiers": a Civilization-style tech
+// tree, columns are tiers (rank = 1 + max rank of a skill's `needs`), foundations (knowledge from
+// outside the topic) in their own lane on the left. "Branches": compact, one panel per top-level
+// branch packed to fit the window, links across branches as chips and on hover. Until the learner
+// picks one, the layout that shows the whole tree bigger wins. Prerequisites are soft: the tree
+// shows readiness, it never locks. Without any `needs` in topic.json it is always "Branches".
 import { h, store, flatSkills, levelOf, lvChip, lvClass, levelScale, fmtLevel, LEVEL_NAMES } from './util.js';
 import { openDock } from './panels.js';
 /* global d3 */
 
-const NW = 176, NH = 56, CG = 68, RG = 12, RH = NH + RG, HH = 40, PAD = 18, LANE = 10;
+const NWT = 176, NWB = 200, NH = 56, CG = 68, RG = 12, RH = NH + RG, HH = 40, PAD = 18, LANE = 10;
 const READY = 2, MASTERED = 4;
+let NW = NWT;   // card width: set by the layout last run (wider cards in Branches, there is room)
 const SHORT = ['not covered', 'heard of it', 'can follow', 'with help', 'independent', 'can teach'];
-const ZKEY = 'treeZoom';
+const ZKEYS = { tiers: 'treeZoom', branches: 'treeZoomBranches' }, MKEY = 'treeLayout';
+const zkey = () => ZKEYS[ui?.mode] || ZKEYS.tiers;
 
 let appRef = null, selected = null, branchHl = '', branchSlug = null;
-let ui = null;   // { stage, sizer, body, W, H, nodes, edges, popover }
+let ui = null;   // { mode, k, stage, sizer, body, W, H, nodes, edges, popover }
 
 export const routeAlways = true;
 
@@ -100,6 +104,7 @@ export function buildGraph(meta) {
 // Columns + coordinates. Barycentre sweeps reorder each column; positions are the isotonic (PAV)
 // fit of "mean neighbour y" under the no-overlap constraint, so cards sit near what they connect to.
 function layout(G) {
+  NW = NWT;
   const all = [...G.nodes.values()];
   const fnd = all.filter(n => n.kind === 'f');
   const skills = all.filter(n => n.kind === 's');
@@ -145,6 +150,59 @@ function layout(G) {
   });
   return { cols, W: PAD * 2 + cols.length * (NW + CG) - CG, H: maxY + PAD + 8 };
 }
+// Compact layout: one panel per branch (foundations first), cards stacked in id order, panels
+// packed into as many newspaper-style columns as fit the window best. Arcs in the left gutter link
+// skills inside a branch; links across branches show as chips on the card and as edges on hover.
+const GUT = 22, PG = 34, PVG = 16, PHEAD = 40, PBOT = 10;
+export function layoutBranches(G, bw, bh) {
+  NW = NWB;
+  const PW = GUT + NW + 10;
+  const all = [...G.nodes.values()];
+  const panels = [];
+  const fnd = all.filter(n => n.kind === 'f');
+  if (fnd.length) panels.push({ key: 'f', label: 'Foundations', sub: 'external', nodes: fnd, kind: 'f' });
+  G.tops.forEach((t, i) => {
+    const ns = all.filter(n => n.kind === 's' && n.bi === i).sort((a, b) => cmpId(a.id, b.id));
+    const done = ns.filter(n => n.state === 'mastered').length;
+    if (ns.length) panels.push({ key: 'b' + i, label: `${t.id} ${t.name || ''}`.trim(), sub: done ? `${done}/${ns.length} mastered` : `${ns.length} skill${ns.length === 1 ? '' : 's'}`, nodes: ns, kind: 'b', bi: i });
+  });
+  for (const p of panels) p.h = PHEAD + p.nodes.length * RH - RG + PBOT;
+  let best = null;
+  for (let k = 1; k <= panels.length; k++) {
+    const cols = partition(panels.map(p => p.h), k, PVG);
+    const W = PAD * 2 + cols.length * PW + (cols.length - 1) * PG;
+    const H = PAD * 2 + Math.max(...cols.map(c => c.h));
+    const z = Math.min(bw / W, bh / H);
+    if (!best || z > best.z + 1e-6) best = { k, cols, W, H, z };
+  }
+  best.cols.forEach((c, ci) => {
+    let y = PAD;
+    for (let i = c.from; i < c.to; i++) {
+      const p = panels[i];
+      p.x = PAD + ci * (PW + PG); p.y = y;
+      p.nodes.forEach((n, j) => { n.x = p.x + GUT; n.y = p.y + PHEAD + j * RH; });
+      y += p.h + PVG;
+    }
+  });
+  return { panels, W: best.W, H: best.H, k: best.k, fit: best.z, PW };
+}
+// split heights (in order) into k contiguous columns minimising the tallest one
+function partition(hs, k, gap) {
+  const n = hs.length, pre = [0];
+  hs.forEach(v => pre.push(pre.at(-1) + v));
+  const span = (i, j) => pre[j] - pre[i] + (j - i - 1) * gap;
+  const cost = Array.from({ length: k + 1 }, () => new Array(n + 1).fill(Infinity)), cut = cost.map(r => r.map(() => 0));
+  cost[0][0] = 0;
+  for (let c = 1; c <= k; c++) for (let j = 1; j <= n; j++) for (let i = c - 1; i < j; i++) {
+    const v = Math.max(cost[c - 1][i], span(i, j));
+    if (v < cost[c][j]) { cost[c][j] = v; cut[c][j] = i; }
+  }
+  const cols = [];
+  for (let c = k, j = n; c > 0; c--) { const i = cut[c][j]; if (j > i) cols.unshift({ from: i, to: j, h: span(i, j) }); j = i; }
+  return cols;
+}
+export function tiersFit(G, bw, bh) { const L = layout(G); return Math.min(bw / L.W, bh / L.H); }
+
 function pav(d, gap) {   // min Σ(y_i - d_i)² s.t. y_{i+1} - y_i ≥ gap
   const blocks = [];
   d.forEach((v, i) => {
@@ -159,26 +217,42 @@ function pav(d, gap) {   // min Σ(y_i - d_i)² s.t. y_{i+1} - y_i ≥ gap
 }
 
 // ---------------------------------------------------------------- zoom
-function setZoom(z) {
+function setZoom(z, keep = true) {
   if (!ui) return;
   z = Math.max(0.3, Math.min(2.5, z));
-  store.set(ZKEY, z);
+  if (keep) store.set(zkey(), z);
+  ui.z = z;
   ui.sizer.style.width = ui.W * z + 'px';
   ui.sizer.style.height = ui.H * z + 'px';
   ui.stage.style.transform = `scale(${z})`;
   if (ui.zl) ui.zl.textContent = Math.round(z * 100) + '%';
   closePop();
 }
-const zoomBy = f => setZoom(store.get(ZKEY, 1) * f);
+const zoomBy = f => setZoom((ui?.z ?? 1) * f);
 function zoomFit() {
   if (!ui) return;
-  const bw = ui.body.clientWidth - 2 * 16, bh = ui.body.clientHeight - 2 * 16;
+  const [bw, bh] = avail(ui.body);
   setZoom(Math.min(bw / ui.W, bh / ui.H, 1.5));
 }
+// room for the tree inside the view (fallback before the view has a size)
+function avail(body) {
+  const w = body.clientWidth - 2 * 16, hh = body.clientHeight - 2 * 16;
+  return w > 200 && hh > 150 ? [w, hh] : [1100, 700];
+}
+// Branches layout packs panels for the window size: re-pack when a resize changes the column count
+let resizeT = 0;
+addEventListener('resize', () => {
+  clearTimeout(resizeT);
+  resizeT = setTimeout(() => {
+    if (ui?.mode !== 'branches' || !ui.body.isConnected) return;
+    const [bw, bh] = avail(ui.body);
+    if (layoutBranches(ui.G, bw, bh).k !== ui.k) onTopic();
+  }, 200);
+});
 function scrollToNode(id, smooth = false) {
   const n = ui?.nodes.get(id);
   if (!n) return;
-  const z = store.get(ZKEY, 1), b = ui.body, s = ui.sizer;
+  const z = ui.z ?? 1, b = ui.body, s = ui.sizer;
   const left = s.offsetLeft + (n.x + NW / 2) * z - b.clientWidth / 2, top = s.offsetTop + (n.y + NH / 2) * z - b.clientHeight / 2;
   b.scrollTo({ left: Math.max(0, left), top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' });
 }
@@ -199,6 +273,9 @@ function draw(center, app, keep = false) {
   const brSel = h('select', { class: 'tree-select', title: 'Highlight one branch', onchange: e => { branchHl = e.target.value; applyBranch(); } },
     h('option', { value: '', text: 'All branches' }),
     ...G.tops.map((t, i) => h('option', { value: String(i), text: `${t.id} ${t.name || ''}`, selected: branchHl === String(i) })));
+  const modeSeg = h('div', { class: 'seg seg-small tree-mode', title: 'Layout of the tree' });
+  for (const [id, label, title] of [['tiers', 'Tiers', 'Tech-tree columns: each tier needs the ones to its left'], ['branches', 'Branches', 'Compact: one panel per branch, links across branches on hover']])
+    modeSeg.append(h('button', { 'data-mode': id, title, text: label, onclick: () => { store.set(MKEY, id); closePop(); draw(center, appRef); } }));
   const bar = h('div', { class: 'view-bar tree-bar' },
     h('h1', { text: 'Skill tree' }),
     h('span', { class: 'zoom' },
@@ -207,6 +284,7 @@ function draw(center, app, keep = false) {
       h('button', { class: 'icon-btn', title: 'Zoom in', text: '+', onclick: () => zoomBy(1.15) }),
       h('button', { class: 'btn btn-tiny', text: 'Fit', title: 'Fit the whole tree in the window', onclick: zoomFit }),
       h('button', { class: 'btn btn-tiny', text: '100%', onclick: () => setZoom(1) })),
+    G.hasNeeds ? modeSeg : null,
     G.focus && G.nodes.has(G.focus) ? h('button', { class: 'btn btn-tiny', text: 'Now', title: `Scroll to the current skill (${G.focus})`, onclick: () => scrollToNode(G.focus, true) }) : null,
     G.tops.length > 1 ? brSel : null,
     h('span', { class: 'spacer' }),
@@ -215,10 +293,10 @@ function draw(center, app, keep = false) {
       !G.hasNeeds ? null : h('span', { class: 'tree-key', title: 'Some prerequisite is still below level 2 (you can still study it: prerequisites are soft)' }, h('span', { class: 'tree-mark early' }, warnIcon()), `early ${counts.early}`),
       h('span', { class: 'tree-key mastered', title: 'Level 4+ (independent)' }, h('i'), `mastered ${counts.mastered}`),
       !(meta.foundations || []).length ? null : h('span', { class: 'tree-key fnd', title: 'Knowledge from outside this topic' }, h('i'), 'foundation'),
-      !G.hasNeeds ? null : h('span', { class: 'tree-key edges', title: 'Hover or select a skill: blue = what it needs, purple = what it unlocks' }, h('b', { class: 'up' }), 'needs', h('b', { class: 'down' }), 'unlocks')),
+      !G.hasNeeds ? null : h('span', { class: 'tree-key edges', title: 'Hover or select a skill: blue = what it needs, purple = what it unlocks. In the Branches layout, links across branches show only then (and as chips on the card).' }, h('b', { class: 'up' }), 'needs', h('b', { class: 'down' }), 'unlocks')),
     levelScale());
   const hints = [];
-  if (!G.hasNeeds) hints.push(h('div', { class: 'tree-hint' }, 'No prerequisites recorded yet: the tutor adds ', h('code', { text: 'needs' }), ' to topic.json. Showing one column per branch.'));
+  if (!G.hasNeeds) hints.push(h('div', { class: 'tree-hint' }, 'No prerequisites recorded yet: the tutor adds ', h('code', { text: 'needs' }), ' to topic.json. Showing one panel per branch.'));
   if (G.missing.length) hints.push(h('div', { class: 'tree-hint warn' }, `Unknown prerequisite id${G.missing.length > 1 ? 's' : ''} in needs (not a skill or foundation): `, h('code', { text: G.missing.join(', ') })));
   center.replaceChildren(h('div', { class: 'view tree-view' }, bar, hints.length ? h('div', { class: 'tree-hints' }, ...hints) : null, body));
   if (!G.nodes.size || ![...G.nodes.values()].some(n => n.kind === 's')) {
@@ -227,19 +305,30 @@ function draw(center, app, keep = false) {
     return;
   }
 
-  const L = layout(G);
-  const stage = h('div', { class: 'tree-stage', style: { width: L.W + 'px', height: L.H + 'px' } });
+  const [bw, bh] = avail(body);
+  let mode = G.hasNeeds ? store.get(MKEY, null) : 'branches', L;
+  if (mode !== 'tiers' && mode !== 'branches') {   // not chosen yet: whichever shows the whole tree bigger
+    const tf = tiersFit(G, bw, bh);
+    L = layoutBranches(G, bw, bh);
+    mode = tf > L.fit ? 'tiers' : 'branches';
+  }
+  if (mode === 'tiers') L = layout(G);
+  else if (!L) L = layoutBranches(G, bw, bh);
+  for (const b of modeSeg.children) b.classList.toggle('on', b.dataset.mode === mode);
+  const stage = h('div', { class: `tree-stage mode-${mode}`, style: { width: L.W + 'px', height: L.H + 'px' } });
   const sizer = h('div', { class: 'tree-sizer' }, stage);
   body.append(h('div', { class: 'tree-canvas' }, sizer));
-  ui = { stage, sizer, body, W: L.W, H: L.H, nodes: G.nodes, zl, edges: [], G, popover: null };
+  ui = { mode, k: L.k, center, stage, sizer, body, W: L.W, H: L.H, nodes: G.nodes, zl, edges: [], G, popover: null };
 
-  // lanes (column backgrounds) with headers
-  L.cols.forEach((c, ci) => {
+  // lanes (column backgrounds or branch panels) with headers
+  const lane = (c, ci, x, y, w, hh) => {
     const br = c.kind === 'b' ? `var(--r${c.bi % 6})` : null;
-    stage.append(h('div', { class: `tree-lane ${c.kind === 'f' ? 'fnd' : ''} ${ci % 2 ? 'odd' : ''}`, style: { left: c.x - LANE + 'px', top: PAD - 8 + 'px', width: NW + 2 * LANE + 'px', height: L.H - PAD + 'px', ...(br ? { '--br': br } : {}) } },
+    stage.append(h('div', { class: `tree-lane ${c.kind === 'f' ? 'fnd' : ''} ${ci % 2 ? 'odd' : ''}`, 'data-lane': c.key, style: { left: x + 'px', top: y + 'px', width: w + 'px', height: hh + 'px', ...(br ? { '--br': br } : {}) } },
       h('div', { class: 'tree-lane-h' + (br ? ' br' : ''), title: c.label + ' · ' + c.sub },
         h('span', { class: 'tree-lane-t', text: c.label }), h('span', { class: 'tree-lane-s', text: c.sub }))));
-  });
+  };
+  if (mode === 'tiers') L.cols.forEach((c, ci) => lane(c, ci, c.x - LANE, PAD - 8, NW + 2 * LANE, L.H - PAD));
+  else L.panels.forEach(p => lane(p, 0, p.x, p.y, L.PW, p.h));
 
   // edges
   const svg = d3.select(stage).append('svg').attr('class', 'tree-edges').attr('width', L.W).attr('height', L.H).attr('viewBox', `0 0 ${L.W} ${L.H}`);
@@ -256,13 +345,33 @@ function draw(center, app, keep = false) {
     ins.forEach((m, i) => inPort.set(m + '>' + n.id, port(ins, i)));
   }
   const eg = svg.append('g');
+  const inBranch = (a, n) => mode === 'branches' && a.kind === 's' && a.bi === n.bi;
   for (const n of G.nodes.values()) for (const m of n.needs) {
     const a = G.nodes.get(m), k = m + '>' + n.id;
-    const x1 = a.x + NW, y1 = a.y + outPort.get(k), x2 = n.x - 2, y2 = n.y + inPort.get(k);
-    const c = Math.max(30, Math.min(110, (x2 - x1) / 2));
+    let d, cross = false;
+    if (inBranch(a, n)) {   // arc in the panel's left gutter
+      const y1 = a.y + NH * (a.y < n.y ? 0.66 : 0.34), y2 = n.y + NH * (a.y < n.y ? 0.34 : 0.66);
+      const cx = n.x - Math.min(GUT - 4, 6 + 4 * Math.round(Math.abs(n.y - a.y) / RH));
+      d = `M${a.x},${y1} C${cx},${y1} ${cx},${y2} ${n.x - 2},${y2}`;
+    } else if (mode === 'branches') {   // across branches: only drawn while highlighted
+      cross = true;
+      const y1 = a.y + NH / 2, y2 = n.y + NH / 2;
+      if (Math.abs(a.x - n.x) < 1) {
+        const x = a.x + NW, c = 26 + Math.min(40, Math.abs(y2 - y1) / 8);
+        d = `M${x},${y1} C${x + c},${y1} ${x + c},${y2} ${x + 2},${y2}`;
+      } else {
+        const fwd = a.x < n.x, x1 = fwd ? a.x + NW : a.x, x2 = fwd ? n.x - 2 : n.x + NW + 2;
+        const c = Math.max(30, Math.min(110, Math.abs(x2 - x1) / 2)) * (fwd ? 1 : -1);
+        d = `M${x1},${y1} C${x1 + c},${y1} ${x2 - c},${y2} ${x2},${y2}`;
+      }
+    } else {
+      const x1 = a.x + NW, y1 = a.y + outPort.get(k), x2 = n.x - 2, y2 = n.y + inPort.get(k);
+      const c = Math.max(30, Math.min(110, (x2 - x1) / 2));
+      d = `M${x1},${y1} C${x1 + c},${y1} ${x2 - c},${y2} ${x2},${y2}`;
+    }
     const weak = (a.level ?? 0) < READY;
-    const p = eg.append('path').attr('d', `M${x1},${y1} C${x1 + c},${y1} ${x2 - c},${y2} ${x2},${y2}`)
-      .attr('class', 'tree-edge' + (a.kind === 'f' ? ' fnd' : '') + (weak ? ' weak' : ''));
+    const p = eg.append('path').attr('d', d)
+      .attr('class', 'tree-edge' + (a.kind === 'f' ? ' fnd' : '') + (weak ? ' weak' : '') + (cross ? ' x' : ''));
     ui.edges.push({ from: m, to: n.id, el: p.node() });
   }
 
@@ -296,7 +405,7 @@ function draw(center, app, keep = false) {
       h('span', { class: 'tree-n-bot' },
         isF && n.level == null ? h('span', { class: 'lv l0', text: '?', title: 'level not estimated' }) : lvChip(lv),
         h('span', { class: 'tree-lvname', text: isF && n.level == null ? 'not estimated' : SHORT[Math.round(lv)] }),
-        ...marks));
+        ...marks, ...(mode === 'branches' && !isF ? xChips(n) : [])));
     n.el = el;
     stage.append(el);
   }
@@ -304,7 +413,8 @@ function draw(center, app, keep = false) {
   ui.onKey = ev => { if (ev.key === 'Escape') closePop(); };
   body.addEventListener('keydown', ui.onKey);
 
-  setZoom(store.get(ZKEY, 1));
+  const z0 = store.get(zkey(), null);
+  setZoom(z0 ?? (mode === 'branches' ? Math.min(1, L.fit) : 1), z0 != null);
   applyBranch();
   hot(selected);
   if (selected && G.nodes.get(selected)?.kind === 's') markSel(selected);
@@ -314,6 +424,18 @@ function draw(center, app, keep = false) {
     if (selected && G.nodes.get(selected)?.kind === 'f') openFoundation(selected);
     else if (selected && G.nodes.has(selected)) openDock('skill', selected);
   });
+}
+
+// chips for prerequisites in other branches (their edges only show on hover in this layout)
+function xChips(n) {
+  const G = ui.G, xs = n.needs.map(m => G.nodes.get(m)).filter(a => a.kind === 'f' || a.bi !== n.bi)
+    .sort((a, b) => (a.kind === 'f') - (b.kind === 'f') || cmpId(a.id, b.id));
+  if (!xs.length) return [];
+  const show = xs.length > 3 ? xs.slice(0, 2) : xs;
+  const tip = 'From other branches:\n' + xs.map(a => `• ${a.kind === 'f' ? a.name + ' (foundation)' : a.id + ' ' + a.name} · level ${a.level == null ? '?' : fmtLevel(a.level)}`).join('\n');
+  return [h('span', { class: 'tree-xs', title: tip },
+    ...show.map(a => h('span', { class: 'tree-x ' + (a.kind === 'f' ? 'fnd ' : '') + lvClass(a.level ?? 0), style: a.kind === 'f' ? {} : { '--br': `var(--r${a.bi % 6})` }, text: a.id })),
+    xs.length > show.length ? h('span', { class: 'tree-x more', text: '+' + (xs.length - show.length) }) : null)];
 }
 
 function warnIcon() {
@@ -372,7 +494,7 @@ function openFoundation(id) {
   const n = ui.G.nodes.get(id);
   if (!n) return;
   selected = id; markSel(id); hot(id);
-  const f = n.f, z = store.get(ZKEY, 1);
+  const f = n.f, z = ui.z ?? 1;
   const lv = n.level;
   const go = f.topic
     ? h('button', { class: 'btn btn-primary', text: 'Open topic', title: `Go to the “${f.topic}” topic`, onclick: () => { location.hash = '#/' + f.topic; } })

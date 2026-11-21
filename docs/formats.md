@@ -142,7 +142,9 @@ Optional per-skill fields (all rendered as markdown, so `msg:` links work everyw
 
 ### Skill dependencies: `needs` and `foundations` (topic.json)
 
-The Tree view draws the skills as a tech tree. Its edges come from `needs`:
+The Tree view draws the skills as a tech tree ("Tiers", columns by depth) or compactly
+("Branches", one panel per top-level branch, links across branches shown on hover). Its edges come
+from `needs`:
 
 ```json
 {

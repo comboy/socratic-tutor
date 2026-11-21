@@ -93,3 +93,13 @@
 .tree-pop-deps .muted { margin-right: 4px; }
 .tree-pop-deps .chip { border-left: 3px solid var(--lvc); }
 .tree-pop-act { display: flex; justify-content: flex-end; padding-top: 4px; border-top: 1px solid var(--line-soft); margin-top: 2px; padding-top: 10px; }
+
+/* Branches layout: panels per branch, in-branch arcs in the gutter, cross-branch links on hover */
+.tree-mode { margin-left: 2px; }
+.mode-branches .tree-lane { box-shadow: var(--shadow); background: color-mix(in srgb, var(--band) 55%, var(--main)); }
+.mode-branches .tree-lane.fnd { box-shadow: none; }
+.tree-stage .tree-edge.x:not(.up):not(.down) { opacity: 0; }
+.tree-xs { flex: none; display: inline-flex; gap: 3px; margin-left: auto; }
+.tree-x { display: inline-flex; align-items: center; height: 15px; padding: 0 4px 0 3px; border: 1px solid var(--line); border-left: 3px solid var(--br, var(--line)); border-radius: 3px; font: 600 9.5px var(--mono); color: var(--muted); background: var(--well); }
+.tree-x.fnd { border-left: 1px dashed var(--muted); border-style: dashed; font-family: var(--sans); }
+.tree-x.more { border-left-width: 1px; }
