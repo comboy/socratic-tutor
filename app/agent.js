@@ -15,15 +15,15 @@ const os = require('os');
 const path = require('path');
 const S = require('./store');
 
-// Tools a headless Claude job may use without asking (it runs unattended).
-const JOB_TOOLS = ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Agent', 'TodoWrite',
-  ...['bin/learn', './bin/learn', 'git', 'node', 'ls', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'sed', 'awk', 'sort', 'diff', 'mkdir', 'mv', 'cp', 'rm', 'touch', 'echo', 'printf', 'jq', 'python3']
-    .map(c => `Bash(${c}:*)`)];
-
-// The tutor runs in a terminal nobody watches (the learner is in the browser), so a permission
-// prompt would stall it. It gets the same tools as jobs, plus read-only web access. Config
-// "tutorPermissions": "ask" turns this off (Claude Code then asks in the terminal as usual).
-const TUTOR_TOOLS = [...JOB_TOOLS, 'WebSearch', 'WebFetch'];
+// Permissions. The tutor runs in a terminal nobody watches (the learner is in the browser) and jobs
+// run headless, so a permission prompt would stall either one. Both run in Claude Code's "auto"
+// mode by default: it allows ordinary work (any tool, e.g. building a visualization) and blocks
+// risky actions, without asking. Config: "tutorPermissionMode" / "jobPermissionMode" pick another
+// mode, "tutorTools" / "jobTools" add an --allowedTools list, "tutorPermissions": "ask" leaves
+// the tutor to Claude Code's own settings.
+function perms(mode, tools) {
+  return [...(mode ? ['--permission-mode', mode] : []), ...(tools?.length ? ['--allowedTools', ...tools] : [])];
+}
 
 const claude = {
   name: 'claude',
@@ -35,12 +35,13 @@ const claude = {
     const lean = S.config().agentMcp ? [] : ['--strict-mcp-config'];
     const sess = kind === 'resume' ? (resumeId ? ['--resume', resumeId] : ['--continue']) : ['--session-id', id];
     const c = S.config();
-    const perms = c.tutorPermissions === 'ask' ? [] : ['--permission-mode', c.tutorPermissionMode || 'acceptEdits', '--allowedTools', ...(c.tutorTools || TUTOR_TOOLS)];
-    return [...sess, ...lean, ...perms, prompt];
+    const p = c.tutorPermissions === 'ask' ? [] : perms(c.tutorPermissionMode || 'auto', c.tutorTools);
+    // "--" ends the options: --allowedTools takes any number of values and would swallow the prompt.
+    return [...sess, ...lean, ...p, '--', prompt];
   },
   headless({ prompt }) {
     const c = S.config();
-    return ['-p', prompt, '--permission-mode', c.jobPermissionMode || 'acceptEdits', '--allowedTools', ...(c.jobTools || JOB_TOOLS),
+    return ['-p', prompt, ...perms(c.jobPermissionMode || 'auto', c.jobTools),
       ...(c.agentMcp ? [] : ['--strict-mcp-config'])];
   },
   env: () => ({ ENABLE_CLAUDEAI_MCP_SERVERS: S.config().agentMcp ? undefined : 'false' }),
@@ -112,4 +113,4 @@ function contextTokens(id) {
   return null;
 }
 
-module.exports = { agent, agentEnv, contextTokens, JOB_TOOLS };
+module.exports = { agent, agentEnv, contextTokens };

@@ -79,7 +79,9 @@ async function main() {
     assert(st.launcher, 'launcher not detected');
     const s = sessions();
     assert(s.length === 1 && s[0].args.includes('--session-id'), 'claude started with --session-id: ' + JSON.stringify(s[0]?.args?.slice(0, 2)));
-    assert(s[0].args.includes('--permission-mode') && s[0].args.includes('Bash(bin/learn:*)'), 'tutor runs without permission prompts');
+    const pm = s[0].args.indexOf('--permission-mode');
+    assert(pm >= 0 && s[0].args[pm + 1] === 'auto', 'tutor runs in auto mode (no permission prompts)');
+    assert(s[0].args.at(-2) === '--', 'prompt comes after "--" so no variadic option can swallow it');
     assert(/post nothing until the learner writes/.test(s[0].args.at(-1)), 'idle prompt');
     await sleep(800);
     assert(!journal().some(e => e.role === 'tutor' && e.ts > new Date(Date.now() - 60e3).toISOString()), 'the idle tutor posted something');

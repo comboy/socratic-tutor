@@ -220,8 +220,8 @@ A checklist: `- [ ] 2026-11-21 (learner, llms · learn): text`. The builder job 
   "handoffMessages": 80,
   "awayJobs": ["builder", "reviewer"],
   "agentMcp": false,
-  "jobPermissionMode": "acceptEdits",
-  "tutorPermissions": "auto"
+  "tutorPermissionMode": "auto",
+  "jobPermissionMode": "auto"
 }
 ```
 
@@ -232,10 +232,11 @@ A checklist: `- [ ] 2026-11-21 (learner, llms · learn): text`. The builder job 
 - `awayJobs`: default jobs for the "I'm away" button / `bin/learn away`.
 - `agentMcp`: `true` keeps the agent's MCP servers in tutor sessions (off by default: they cost
   context and the tutor doesn't use them).
-- `tutorPermissions`: the tutor runs in a terminal nobody watches, so by default it gets the same
-  tools as background jobs (`bin/learn`, git, file edits in the repo, read-only shell tools, web
-  search) without permission prompts (`--permission-mode acceptEdits --allowedTools …`, see
-  `app/agent.js`). `"ask"` turns that off; `tutorTools` replaces the tool list.
+- `tutorPermissions`: the tutor runs in a terminal nobody watches and jobs run headless, so by
+  default both run in Claude Code's auto mode (`--permission-mode auto`: any tool, risky actions
+  blocked, no prompts; see `app/agent.js`). `tutorPermissionMode` / `jobPermissionMode` pick
+  another mode, `tutorTools` / `jobTools` add an `--allowedTools` list, and `"ask"` leaves the
+  tutor to Claude Code's own settings.
 
 
 ### pages/<name>.md (optional)
