@@ -230,10 +230,33 @@ function drawComposer(keepFocus) {
     h('div', { class: 'box-f' }, h('span', { class: 'hint', text: 'Tip: select text in any message to ask about it.' }),
       h('button', { class: 'btn btn-ask', onclick: sendQ }, 'Ask ', h('kbd', { text: '⌘↵' }))));
   composer.replaceChildren(grip(), h('div', { class: 'composer-inner' },
+    welcomeBack(),
     h('div', { class: 'boxes' }, answer, ask),
     h('div', { class: 'quick' }, ...QUICK.flatMap(([label, text, ic, title], i) => [i === 6 ? h('span', { class: 'sep' }) : null,
       h('button', { class: 'btn btn-small', title, onclick: () => quickAction(text) }, icon(ic), label)]))));
   if (keepFocus && active) document.getElementById(active)?.focus();
+}
+// "Welcome back": after a gap, the learner decides whether they want a recap (the tutor doesn't post
+// one unasked). Hidden after a short gap, once used or dismissed, or while a reply is pending.
+function welcomeBack() {
+  const J = app.topic.journal;
+  const last = [...J].reverse().find(e => e.kind !== 'session' && !e.imported) || [...J].reverse().find(e => e.kind !== 'session');
+  if (!last) return null;
+  const gap = Date.now() - Date.parse(last.ts);
+  const key = 'welcomeBack:' + app.topic.slug;
+  if (gap < 8 * 3600e3 || store.get(key, '') === last.id) return null;
+  const days = Math.round(gap / 86400e3);
+  const ago = gap < 36 * 3600e3 ? `${Math.round(gap / 3600e3)} hours` : `${days} days`;
+  const focus = app.topic.meta.focus && skillById(app.topic.meta, app.topic.meta.focus);
+  const week = gap >= 7 * 86400e3;
+  const dismiss = () => { store.set(key, last.id); drawComposer(); };
+  const ask = text => { store.set(key, last.id); quickAction(text); };
+  return h('div', { class: 'welcome-back' },
+    icon('learn'),
+    h('div', { class: 'wb-text' }, h('b', { text: 'Welcome back. ' }), `Your last session here was ${ago} ago${focus ? `; you were on ${focus.id} ${focus.name}` : ''}.`),
+    h('button', { class: 'btn btn-small btn-primary', title: 'The tutor recaps where you were, linking the earlier explanations, then asks one review question',
+      onclick: () => ask(`welcome back (${ago} away): recap where we were, linking the earlier messages, then one spaced-review question${week ? '; check that the building blocks of the current focus still hold' : ''}`) }, icon('notes'), week ? 'Recap + check the basics' : 'Recap + review question'),
+    h('button', { class: 'btn btn-small', title: 'No recap: carry on where you left off', onclick: dismiss }, 'Just continue'));
 }
 // Drag the composer's top edge to make it taller; double-click returns to automatic size.
 function setComposerH(px) {

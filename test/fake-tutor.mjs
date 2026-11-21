@@ -2,7 +2,7 @@
 // Stands in for `claude` (LEARN_CLAUDE=test/fake-tutor.mjs) in tests and `bin/learn demo`.
 // It follows the real protocol (bin/learn wait / post / handoff), so the launcher, server and UI
 // are exercised end to end. Behaviour:
-//   - first start: posts a welcome with a question; handoff start: posts nothing
+//   - starts idle and posts nothing until the learner writes (like the real tutor)
 //   - every learner message gets an "Echo" reply with a new question; answers get graded
 //   - a message containing STALL-ONCE is left unanswered the first time (simulates a stuck tutor)
 //   - writes a fake Claude transcript with growing token usage, so the context meter and the
@@ -68,7 +68,6 @@ function parse(out) {
 const stalled = () => { try { return new Set(fs.readFileSync(path.join(HOME, 'state', 'fake-stalled'), 'utf8').split('\n')); } catch { return new Set(); } };
 
 async function main() {
-  if (!isHandoff && !/restarted/.test(prompt) && !/no topics yet/.test(prompt)) post(`Hello from the **fake tutor** (demo mode). Nothing here is a real Claude session.\n\n:::question\nType anything in the answer box: it will be echoed back and graded *correct*.\n:::`);
   for (;;) {
     const out = await wait();
     if (/replaced by a newer one/.test(out)) { log({ event: 'stale-wait' }); await hang(); }

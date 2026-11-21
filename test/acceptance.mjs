@@ -73,13 +73,22 @@ async function main() {
   launcher = spawn(process.execPath, [BIN, 'start', 'demo', '--no-open'], { env: ENV, stdio: ['ignore', log, log] });
 
   console.log('\nLauncher & protocol');
-  await test('launcher starts the server and the (fake) tutor, which posts and listens', async () => {
+  await test('launcher starts the server and an idle (fake) tutor: no topic, posts nothing, listens', async () => {
     await until(() => api('/api/ping').catch(() => null), 'server');
     const st = await until(async () => { const s = await api('/api/status'); return s.phase === 'listening' && s; }, 'listening');
     assert(st.launcher, 'launcher not detected');
     const s = sessions();
     assert(s.length === 1 && s[0].args.includes('--session-id'), 'claude started with --session-id: ' + JSON.stringify(s[0]?.args?.slice(0, 2)));
-    assert(journal().at(-1).text?.includes('fake tutor'), 'welcome message posted');
+    assert(s[0].args.includes('--permission-mode') && s[0].args.includes('Bash(bin/learn:*)'), 'tutor runs without permission prompts');
+    assert(/post nothing until the learner writes/.test(s[0].args.at(-1)), 'idle prompt');
+    await sleep(800);
+    assert(!journal().some(e => e.role === 'tutor' && e.ts > new Date(Date.now() - 60e3).toISOString()), 'the idle tutor posted something');
+    assert(JSON.parse(fs.readFileSync(path.join(HOME, 'state/session.json'), 'utf8')).topic === null, 'session has no topic yet');
+  });
+  await test('running bin/learn again is harmless: it reports the running instance', async () => {
+    const out = learn('start', '--no-open');
+    assert(/already running/.test(out), out);
+    assert(sessions().length === 1, 'a second tutor was started');
   });
   await test('topics API lists fixture topics', async () => {
     const t = await api('/api/topics');
@@ -87,7 +96,7 @@ async function main() {
   });
   await test('bin/learn recent / show / grep work against LEARN_HOME', async () => {
     const r = learn('recent', '5', '--topic', 'demo');
-    assert(/fake tutor/.test(r), r);
+    assert(/\[tutor/.test(r), r);
     assert(/2026-01-05\.1 /.test(learn('show', '2026-01-05.1')), 'show');
     assert(learn('grep', 'softmax', '--topic', 'demo').split('\n').length > 2, 'grep');
   });
@@ -208,12 +217,23 @@ async function main() {
     await page.mouse('mouseMoved', 5, 5); await sleep(600);
     assert(await page.eval(`document.querySelectorAll('.hovercard').length === 0`), 'cards close when leaving');
   });
+  await test('welcome back bar after a long gap: offers a recap, "Just continue" dismisses it', async () => {
+    await page.nav(`${BASE}/#/demo/learn`, 1000);
+    const t = await page.eval(`document.querySelector('.welcome-back')?.innerText || ''`);
+    assert(/Welcome back/.test(t) && /days ago/.test(t) && /Recap \+ check the basics/.test(t), t);
+    await page.shot('welcome-back');
+    await page.eval(`[...document.querySelectorAll('.welcome-back button')].find(b => /Just continue/.test(b.textContent)).click()`);
+    await page.waitFor(`!document.querySelector('.welcome-back')`, { timeout: 2000 });
+    await page.nav(`${BASE}/#/demo/learn`, 900);
+    assert(await page.eval(`!document.querySelector('.welcome-back')`), 'dismissal not remembered');
+  });
   await test('composer shows the whole pending question', async () => {
-    // the fake tutor's welcome replaced the fixture's pending question; both must show fully
+    // the fixture's pending question must show in full
     const q = await page.eval(`document.querySelector('.box-q')?.innerText || ''`);
-    assert(/Type anything/.test(q), 'box-q: ' + q.slice(0, 80));
-    const clipped = await page.eval(`(() => { const b = document.querySelector('.box-q'); return b.scrollHeight > b.clientHeight + 2; })()`);
-    assert(!clipped, 'question preview is clipped');
+    assert(q.length > 20, 'box-q: ' + q.slice(0, 80));
+    // a long question may be capped in height, but then it must scroll (nothing hidden for good)
+    const r = await page.eval(`(() => { const b = document.querySelector('.box-q'); return { clipped: b.scrollHeight > b.clientHeight + 2, scrolls: getComputedStyle(b).overflowY === 'auto' }; })()`);
+    assert(!r.clipped || r.scrolls, 'question preview is clipped and not scrollable');
   });
 
   console.log('\nTalking to the tutor');
@@ -226,6 +246,12 @@ async function main() {
     await page.waitFor(`[...document.querySelectorAll('.thread .msg')].some(m => m.innerText.includes('Echo (answer): my test answer'))`);
     await page.waitFor(`document.querySelector('.thread .verdict-correct')`);
     assert(await page.eval(`localStorage['learn:draft:answer:demo'] === '""'`), 'draft not cleared');
+  });
+  await test('the first message adopts its topic: the idle session loads demo, no extra session', async () => {
+    const sess = JSON.parse(fs.readFileSync(path.join(HOME, 'state/session.json'), 'utf8'));
+    assert(sess.topic === 'demo' && sessions().length === 1, JSON.stringify(sess));
+    const started = journal().filter(e => e.kind === 'session' && e.text === 'Session started' && e.ts > sess.startedAt);
+    assert(started.length === 1, 'one "Session started" entry: ' + started.length);
   });
   await test('ask box with ⌘↵ keeps working after a redraw', async () => {
     await page.click('#askBox');

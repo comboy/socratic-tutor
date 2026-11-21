@@ -66,7 +66,8 @@ const firstLine = (text, n = 110) => {
 const commands = {};
 
 commands.help = () => {
-  console.log(`bin/learn [topic] [-c] [-- agent args]   start web UI + tutor session (default)
+  console.log(`bin/learn                                web UI + idle tutor + browser; the only command the learner needs
+                                         (already running? it just opens the browser)
 bin/learn serve                          web server only (http://localhost:${S.PORT})
 bin/learn demo [--real] [--port n]       try the UI on a throwaway copy of the demo data, with a fake tutor
 bin/learn test [--headed] [--keep]       acceptance tests (fixture data, fake tutor, headless Chrome)
@@ -125,11 +126,18 @@ commands.test = () => {
 
 commands.away = () => require('../app/jobs').cli(argv);
 
+// `bin/learn` is the only command the learner needs, and running it again is harmless: if the
+// tutor is already running it just opens the browser.
 commands.start = async () => {
   const f = flags(argv, { c: 'bool', continue: 'bool', 'no-open': 'bool' });
-  if (T.launcherAlive()) die(`a tutor launcher is already running (pid ${T.readSession().launcherPid}); use the browser, or stop it first`);
+  if (T.launcherAlive()) {
+    const url = `http://localhost:${S.PORT}/${f._[0] ? '#/' + f._[0] : ''}`;
+    console.log(`learn is already running (tutor launcher pid ${T.readSession().launcherPid}): ${url}`);
+    if (!f['no-open']) { try { require('child_process').execFileSync('open', [url]); } catch {} }
+    return;
+  }
   await require('../app/launcher').start({
-    topic: f._[0] || defaultTopic(), resume: !!(f.c || f.continue), open: !f['no-open'], claudeArgs: f['--'] || [],
+    topic: f._[0] || null, resume: !!(f.c || f.continue), open: !f['no-open'], claudeArgs: f['--'] || [],
   });
 };
 
@@ -150,9 +158,12 @@ commands.resume = () => {
   let advice;
   if (!meta.skills?.length) advice = 'NEW TOPIC: no skill tree yet. Follow docs/bootstrap.md (first reply fast: one line + diagnostic question 1; then write the tree).';
   else if (gapMs == null) advice = 'No messages yet: introduce the plan briefly and ask the first question.';
-  else if (gapMs < 8 * 3600e3) advice = 'Short gap (hours, e.g. a restart): post one line and re-ask the pending question. No refresher.';
-  else if (gapMs < 7 * 86400e3) advice = 'A day or more away: short recap (link the earlier messages) + one spaced-review question from the due list, then continue.';
-  else advice = 'A week or more away: check that the prerequisite blocks of the current focus still hold before moving on.';
+  else {
+    const size = gapMs < 8 * 3600e3 ? 'hours: no refresher, re-ask the pending question if it got lost'
+      : gapMs < 7 * 86400e3 ? 'a day or more: a short recap linking the earlier messages + one spaced-review question from the due list'
+      : 'a week or more: re-check the prerequisite blocks of the current focus before moving on';
+    advice = `Just handle the learner's message; don't post an unasked recap. If they pressed "welcome back" in the UI (an action asking for a recap), size it by the gap (${size}).`;
+  }
   out.push(`# Resume: ${meta.title} (${slug})`);
   out.push(`Last activity: ${last ? `${last.ts.slice(0, 16).replace('T', ' ')} (${ago(gapMs)})` : 'none'}${lastUser ? ` · last learner message ${lastUser.id}` : ''}`);
   out.push(`→ ${advice}`);
@@ -266,6 +277,8 @@ commands.wait = async () => {
   const other = msgs.find(m => m.topic && mineSess && mineSess.topic && m.topic !== mineSess.topic);
   if (mineSess && !mineSess.topic && msgs[0]?.topic) {
     T.writeSession({ ...mineSess, topic: msgs[0].topic });
+    const at = new Date(Date.parse(msgs[0].ts || new Date().toISOString()) - 1).toISOString();
+    S.appendJournal(msgs[0].topic, [{ role: 'system', kind: 'session', text: 'Session started', ts: at }]);
     console.log(`(first message for topic ${msgs[0].topic}: run \`bin/learn resume ${msgs[0].topic}\` before replying${msgs.some(m => m.kind === 'start') ? '; START = new topic, follow docs/bootstrap.md' : ''})`);
   }
   if (other) {

@@ -220,7 +220,8 @@ A checklist: `- [ ] 2026-11-21 (learner, llms · learn): text`. The builder job 
   "handoffMessages": 80,
   "awayJobs": ["builder", "reviewer"],
   "agentMcp": false,
-  "jobPermissionMode": "acceptEdits"
+  "jobPermissionMode": "acceptEdits",
+  "tutorPermissions": "auto"
 }
 ```
 
@@ -231,6 +232,10 @@ A checklist: `- [ ] 2026-11-21 (learner, llms · learn): text`. The builder job 
 - `awayJobs`: default jobs for the "I'm away" button / `bin/learn away`.
 - `agentMcp`: `true` keeps the agent's MCP servers in tutor sessions (off by default: they cost
   context and the tutor doesn't use them).
+- `tutorPermissions`: the tutor runs in a terminal nobody watches, so by default it gets the same
+  tools as background jobs (`bin/learn`, git, file edits in the repo, read-only shell tools, web
+  search) without permission prompts (`--permission-mode acceptEdits --allowedTools …`, see
+  `app/agent.js`). `"ask"` turns that off; `tutorTools` replaces the tool list.
 
 
 ### pages/<name>.md (optional)

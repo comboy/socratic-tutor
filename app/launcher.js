@@ -26,16 +26,16 @@ function prompts(kind, topic, url, prevTokens) {
   const read = `Read docs/protocol.md (the loop, short) and docs/method.md (how to teach).`;
   const quiet = `Keep terminal output minimal: everything the learner should read goes through \`${bin} post\`.`;
   if (kind === 'resume') return `The learning web UI was restarted (${url}). Re-read docs/protocol.md if you need to, then re-arm the listener: run \`${bin} wait\` in the background, and continue the tutoring loop.`;
-  if (kind === 'handoff') return `Web tutoring mode, HANDOFF. You replace a previous tutor session for this learner that was ended to free up context${prevTokens ? ` (it had used ~${Math.round(prevTokens / 1000)}k tokens)` : ''} or to switch topic. The learner is in the browser at ${url} and should notice as little as possible.
+  if (kind === 'handoff' && topic) return `Web tutoring mode, HANDOFF. You replace a previous tutor session for this learner that was ended to free up context${prevTokens ? ` (it had used ~${Math.round(prevTokens / 1000)}k tokens)` : ''} or to switch topic. The learner is in the browser at ${url} and should notice as little as possible.
 ${read} ${quiet}
 Topic: ${topic}. Run \`${bin} resume ${topic}\`: it prints the notes the previous tutor just saved, the skill tree, the pending question with its rubric, open notes and the last messages. Use \`${bin} grep\`/\`show\` for anything older.
 Do NOT greet, recap or post anything now. Messages the old tutor didn't answer are already queued for you. Just start \`${bin} wait\` in the background and continue the loop when it returns.`;
-  if (!topic) return `Web tutoring mode, started by bin/learn. The learner is in the browser at ${url}. There are no topics yet: the learner creates one from the browser.
+  // fresh start: idle until the learner sends something. The browser decides which topic (and
+  // whether they want a recap: the "welcome back" bar sends an action); the tutor loads a topic
+  // only when a message for it arrives.
+  return `Web tutoring mode, started by bin/learn. The learner is in the browser at ${url}${S.listTopics().length ? '' : '; there are no topics yet, they create one there'}.
 ${read} ${quiet}
-Start \`${bin} wait\` in the background now and post nothing. A START message means a new topic: follow docs/bootstrap.md.`;
-  return `Web tutoring mode, started by bin/learn. The learner is in the browser at ${url}.
-${read} ${quiet}
-Topic: ${topic}. Run \`${bin} resume ${topic}\`: it prints everything you need to pick up, including how long the learner was away and how big a recap that calls for. Post your opening message accordingly with \`${bin} post\`, and in the same response start \`${bin} wait\` in the background.`;
+Start \`${bin} wait\` in the background now and post nothing until the learner writes. When a message arrives, \`wait\` says which topic it is for: run \`${bin} resume <topic>\` first (once per topic), then reply. A START message means a new topic: follow docs/bootstrap.md.`;
 }
 
 async function ensureServer() {
@@ -74,10 +74,12 @@ async function stop(child) {
   await exited;
 }
 
-async function start({ topic, resume, open = true, claudeArgs = [] }) {
+async function start({ topic: openTopic, resume, open = true, claudeArgs = [] }) {
   S.ensureHome();
   const startedServer = await ensureServer();
-  const url = `http://localhost:${S.PORT}/${topic ? '#/' + topic : ''}`;
+  const url = `http://localhost:${S.PORT}/${openTopic ? '#/' + openTopic : ''}`;
+  // the tutor starts idle and adopts a topic when a message arrives (`-c` keeps the old session's)
+  let topic = resume ? (T.readSession()?.topic || null) : null;
   if (open) { try { execFileSync('open', [url]); } catch { console.log('Open ' + url); } }
   process.on('SIGINT', () => {});            // Ctrl+C belongs to the agent
   let current = null;

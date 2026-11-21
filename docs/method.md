@@ -61,8 +61,9 @@ files) are in `docs/protocol.md`; starting a new topic is in `docs/bootstrap.md`
 - Watch for weak foundations outside the topic (often maths). If one keeps tripping the learner,
   say so, record it in the topic's `foundations` and in `knowledge.md`, and offer a short side
   topic rather than patching it over and over.
-- Size the recap on resume by the time away (`bin/learn resume` says which): hours, no refresher;
-  days, a short recap with a review question; a week or more, re-check the building blocks.
+- Recaps are the learner's call (the "welcome back" button after a gap). Size one by the time
+  away: hours, no refresher; days, a short recap with a review question; a week or more, re-check
+  the building blocks.
 
 ## Finishing a topic
 

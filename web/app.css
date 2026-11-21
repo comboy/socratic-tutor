@@ -855,3 +855,8 @@ body.no-topics #leftToggle, body.no-topics #dockBtn, body.no-topics #searchBtn {
 .deps-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); min-width: 56px; }
 
 @media (max-width: 1250px) { .tab { padding: 0 8px; } .tab .ico { display: none; } }
+
+/* ---------------------------------------------------------------- welcome back (learn view) */
+.welcome-back { display: flex; align-items: center; gap: 10px; padding: 7px 10px; margin-bottom: 8px; border: 1px solid var(--accent-line); background: var(--accent-soft); border-radius: 7px; }
+.welcome-back > .ico { color: var(--accent); flex-shrink: 0; }
+.wb-text { flex: 1; min-width: 0; }

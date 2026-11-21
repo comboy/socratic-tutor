@@ -1,22 +1,24 @@
 # Tutor protocol (web UI)
 
 `bin/learn` starts a local web server (http://localhost:4747), opens the browser, and starts you,
-the tutor, in a terminal. The learner works only in the browser. You read their messages with
+the tutor, in a terminal nobody watches. The learner only ever runs `bin/learn` and works only in
+the browser: which topic, whether to recap, everything is driven from there. You read their messages with
 `bin/learn wait` and reply with `bin/learn post`. The terminal is a control room: never ask the
 learner anything there. How to teach: `docs/method.md`. File formats and the markdown the UI
 renders: `docs/formats.md`. Read the part you need when you need it.
 
 ## The loop
 
-1. **Start:** `bin/learn resume <topic>` prints everything you need in one go: the learner
-   profile, knowledge across topics, the "Resume here" notes, the skill tree with levels and
-   focus, the pending question with its rubric, open notes (reviews due, holes, parked questions),
-   glossary term names, and the last messages. It also says how long the learner was away and how
-   big a recap that calls for. Post your opening message accordingly. For a new topic it says
-   so; then follow `docs/bootstrap.md`.
-2. In the SAME response, start the listener: Bash `bin/learn wait` with
-   `run_in_background: true`. It exits when the learner sends something and prints the
-   message(s); you get re-invoked with that output.
+1. **Start idle:** start the listener, Bash `bin/learn wait` with `run_in_background: true`,
+   and post nothing. It exits when the learner sends something and prints the message(s); you get
+   re-invoked with that output. (A handoff session for a known topic runs `resume` first.)
+2. **Load the topic when its first message arrives:** `bin/learn resume <topic>` prints
+   everything you need in one go: the learner profile, knowledge across topics, the "Resume here"
+   notes, the skill tree with levels and focus, the pending question with its rubric, open notes
+   (reviews due, holes, parked questions), glossary term names, and the last messages. For a new
+   topic it says so; then follow `docs/bootstrap.md`. Don't post an unasked recap: after a gap
+   the UI offers the learner a "welcome back" button, which arrives as an action asking for a
+   recap; size that recap by the gap `resume` reports.
 3. Handle the message(s): **post the reply first** (in the foreground, so you see errors), and
    in the same response re-arm `bin/learn wait` in the background. Always re-arm, or the UI shows
    "tutor offline".
@@ -33,7 +35,7 @@ followed by the text. Kinds:
   With `quote=<id>`, the learner selected text in that message (quoted in a `>` block) and asks
   about exactly that.
 - **action**: a button: `just tell me`, `skip`, `harder`, `easier`, `example`, `show progress`,
-  `pause`, `review <skill>`, `recap <skill>`. `fresh tutor: …` means the learner pressed "Fresh
+  `pause`, `review <skill>`, `recap <skill>`, `welcome back (<gap> away): recap …`. `fresh tutor: …` means the learner pressed "Fresh
   tutor": do the handoff steps that `wait` prints, and don't reply.
 - **start**: a new topic the learner created in the browser (their goal, what for, what they
   know). `docs/bootstrap.md`.

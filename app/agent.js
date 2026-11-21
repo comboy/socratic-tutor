@@ -20,6 +20,11 @@ const JOB_TOOLS = ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Agent', 'TodoWrite'
   ...['bin/learn', './bin/learn', 'git', 'node', 'ls', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'sed', 'awk', 'sort', 'diff', 'mkdir', 'mv', 'cp', 'rm', 'touch', 'echo', 'printf', 'jq', 'python3']
     .map(c => `Bash(${c}:*)`)];
 
+// The tutor runs in a terminal nobody watches (the learner is in the browser), so a permission
+// prompt would stall it. It gets the same tools as jobs, plus read-only web access. Config
+// "tutorPermissions": "ask" turns this off (Claude Code then asks in the terminal as usual).
+const TUTOR_TOOLS = [...JOB_TOOLS, 'WebSearch', 'WebFetch'];
+
 const claude = {
   name: 'claude',
   cmd: () => process.env.LEARN_CLAUDE || 'claude',
@@ -29,7 +34,9 @@ const claude = {
   interactive({ kind, id, resumeId, prompt }) {
     const lean = S.config().agentMcp ? [] : ['--strict-mcp-config'];
     const sess = kind === 'resume' ? (resumeId ? ['--resume', resumeId] : ['--continue']) : ['--session-id', id];
-    return [...sess, ...lean, prompt];
+    const c = S.config();
+    const perms = c.tutorPermissions === 'ask' ? [] : ['--permission-mode', c.tutorPermissionMode || 'acceptEdits', '--allowedTools', ...(c.tutorTools || TUTOR_TOOLS)];
+    return [...sess, ...lean, ...perms, prompt];
   },
   headless({ prompt }) {
     const c = S.config();

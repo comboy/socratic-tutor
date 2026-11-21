@@ -15,14 +15,14 @@ needs them. And while you're away, background agents work through your feedback 
 your sessions for gaps, and write wiki pages from what you covered.
 
 ```
-bin/learn                    # start: web server + browser + tutor (resumes the last topic,
-                             #   or asks "what do you want to learn?")
-bin/learn -c                 # also resume the previous agent conversation
-bin/learn serve              # only the web UI (to re-read things)
-bin/learn demo [--empty]     # try the UI on sample data with a fake tutor (no agent, no real data)
-bin/learn test               # acceptance tests (needs Chrome)
-bin/learn help               # all commands, including the ones the tutor uses
+bin/learn                    # the only command you need: web server + tutor + browser.
+                             # Leave it running; running it again just opens the browser.
 ```
+
+Everything else happens in the browser: pick or create a topic, and the tutor loads it when you
+write. After a break, a "welcome back" bar offers a recap (or you just carry on). For developers:
+`bin/learn demo [--empty]` (the UI on sample data with a fake tutor), `bin/learn test` (acceptance
+tests, needs Chrome), `bin/learn help` (all commands, including the tutor's).
 
 Requirements: Node 22+, [Claude Code](https://claude.com/claude-code) (or another CLI agent, see
 "Agents" below), and Chrome or Chromium for the tests. No npm install: d3, marked and KaTeX are
@@ -51,6 +51,10 @@ vendored in `web/vendor/`.
   the same popover.
 - The UI picks up code changes by itself when you're idle, or shows an "Updated · reload" button,
   so it never blinks while you read.
+
+The tutor runs unattended in the terminal, so it doesn't stop for permission prompts: it may run
+`bin/learn`, git and read-only shell tools and edit files in the repo (`"tutorPermissions": "ask"`
+in `data/config.json` turns that off).
 
 ### Long sessions
 
