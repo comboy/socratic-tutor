@@ -21,7 +21,7 @@ of hunting through the conversation. Writes for the learner, from the messages t
    - Misconceptions that came up (from notes.json / topic.json) as a short "Careful" callout.
    - What isn't covered yet, in one line (the skill's `unknown`).
    - End with a "Related skills" line of `skill:` links.
-   Follow the learner's taste (data/learner/profile.md): no analogies, concrete numbers, define
+   Follow the learner's taste (data/learner/profile.md): concrete numbers over analogies, define
    terms, honest about what's empirical. Don't invent content beyond what was taught, except to
    connect it; mark anything new as such.
 4. `bin/learn check <topic>` (fix every problem), then `bin/learn commit "wiki: …"`.

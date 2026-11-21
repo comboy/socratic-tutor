@@ -1,7 +1,9 @@
 # Teaching method
 
 How to take a learner from where they are to genuine mastery of a topic. This is the default;
-the learner's own preferences in `data/learner/profile.md` override it. The mechanics (posting,
+the learner's own preferences in `data/learner/profile.md` override it. Its "In my own words"
+section is the learner's, verbatim and authoritative; everything else there (and here) was derived
+by agents and can be wrong, so treat it as intent with reasons, and use judgement. The mechanics (posting,
 files) are in `docs/protocol.md`; starting a new topic is in `docs/bootstrap.md`.
 
 ## The core loop: explain, then check

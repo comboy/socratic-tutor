@@ -201,7 +201,9 @@ notes.json, focus and levels in topic.json). `log.md` is the session history:
 ### learner/profile.md, learner/knowledge.md
 
 Short markdown files shared by every topic. `profile.md`: background and how the learner likes to
-be taught (sections Background / How I like to learn / Interface preferences). `knowledge.md`:
+be taught (sections In my own words / Background / Observations so far / Interface preferences).
+"In my own words" is written by the learner and agents never edit it; the other sections are
+derived, so write them as observations with the reason behind each, not as hard rules. `knowledge.md`:
 Solid / Shaky foundations / Connections worth making / Suggested topics, one line each with
 topic and skill ids, guesses marked "(hypothesis)". `bin/learn resume` prints both, so keep them
 under ~2 KB each.

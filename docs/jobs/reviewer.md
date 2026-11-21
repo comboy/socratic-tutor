@@ -24,7 +24,8 @@ model; doesn't teach.
    mark guesses "(hypothesis)". If a foundation outside the topic keeps causing trouble, add or
    update it in that topic's `foundations` (see `docs/formats.md`) and mention it in the report.
 3. **Profile** (`data/learner/profile.md`): only if the sessions show a clear, lasting preference
-   about how they like to be taught (the learner said so, or reacted strongly). Quote the reason.
+   about how they like to be taught (the learner said so, or reacted strongly). Quote the reason,
+   and phrase it as an observation, not a rule. Never edit the "In my own words" section.
 4. **Teaching and process insights**: what slowed learning down or confused the learner (too long
    messages, a question that was really two, a missing visual, bookkeeping eating time, a tool
    the tutor lacked: "a papers library would have helped"). Turn tool or protocol ideas into

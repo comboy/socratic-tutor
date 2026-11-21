@@ -59,11 +59,15 @@ const PROFILE_TEMPLATE = `# Learner profile
 Who the learner is and how they like to be taught. Shared by every topic. Tutors read it at the start
 of a session; edit it freely. Keep it short.
 
+## In my own words (authoritative)
+
+Written by the learner. Agents: never edit or paraphrase this section; propose changes instead.
+
 ## Background
 
-## How I like to learn
+## Observations so far (derived, could be wrong: use judgement)
 
-## Interface preferences
+## Interface preferences (derived)
 `;
 const KNOWLEDGE_TEMPLATE = `# Knowledge across topics
 
