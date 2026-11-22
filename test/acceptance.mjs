@@ -672,6 +672,50 @@ async function main() {
     assert(off !== null, 'reply start not at the top of the thread');
     assert(await page.eval(`(() => { const sc = document.querySelector('#threadScroll'); return sc.scrollHeight - sc.scrollTop - sc.clientHeight > 200; })()`), 'scrolled to the bottom instead');
   });
+  await test('bookkeeping never moves the conversation: grade, level, note, term at the bottom; growth above, new lines below', async () => {
+    await page.nav(`${BASE}/#/demo/learn`, 1200);
+    const place = id => page.eval(`(() => { const sc = document.querySelector('#threadScroll'), top = sc.getBoundingClientRect().top;
+      const n = ${id ? `document.getElementById(${JSON.stringify(id)})` : `[...document.querySelectorAll('#thread > [id]')].find(n => n.getBoundingClientRect().bottom > top + 1)`};
+      return n && { id: n.id, off: Math.round(n.getBoundingClientRect().top - top), st: Math.round(sc.scrollTop), gap: Math.round(sc.scrollHeight - sc.scrollTop - sc.clientHeight) }; })()`);
+    const same = (a, b, what) => assert(b && Math.abs(b.off - a.off) <= 1, `${what} moved the text: ${JSON.stringify(a)} → ${JSON.stringify(b)}`);
+    // 1. at the bottom, where a reply was just read: the tutor's bookkeeping lands below, nothing moves
+    await page.eval(`(() => { const sc = document.querySelector('#threadScroll'); sc.scrollTop = sc.scrollHeight; })()`);
+    await sleep(400);
+    const a = await place();
+    assert(a.gap < 2, 'not at the bottom: ' + JSON.stringify(a));
+    await page.eval(`window.__probe = [...document.querySelectorAll('#thread .msg-tutor')].at(-1)`);
+    learn('level', 'demo', '4.2', '1', 'scroll test');
+    learn('note', 'review', '--topic', 'demo', '--skill', '4.2', 'scroll test note');
+    learn('term', 'add', 'demo', 'scroll probe', '--short', 'A term added by the scroll test.');
+    execFileSync(process.execPath, [BIN, 'post', '--topic', 'demo', '--grade', 'partial', '--note', 'scroll test'], { env: ENV, encoding: 'utf8' });
+    await page.waitFor(`[...document.querySelectorAll('#thread .sysline')].some(x => /scroll test/.test(x.textContent))`);
+    await sleep(1200);   // the topic-file broadcasts arrive and settle
+    const b = await place(a.id);
+    same(a, b, 'bookkeeping at the bottom');
+    assert(Math.abs(b.st - a.st) <= 1 && b.gap > 10, `scrolled to the new line: ${JSON.stringify(a)} → ${JSON.stringify(b)}`);
+    assert(await page.eval(`window.__probe.isConnected`), 'the conversation was redrawn instead of updated in place');
+    assert(!await page.eval(`document.querySelector('.newpill')`), 'bookkeeping showed the "New message" pill');
+    // 2. reading in the middle: something above the window grows or shrinks (an image loading)
+    await page.eval(`(() => { const sc = document.querySelector('#threadScroll'); sc.scrollTop = Math.round(sc.scrollHeight / 2); })()`);
+    await sleep(400);
+    const c = await place();
+    await page.eval(`(() => { const top = document.querySelector('#threadScroll').getBoundingClientRect().top;
+      const b = [...document.querySelectorAll('#thread .msg-body')].filter(x => x.getBoundingClientRect().bottom < top - 10).at(-1);
+      b.append(Object.assign(document.createElement('div'), { className: 'grow-probe', style: 'height: 300px' })); })()`);
+    await sleep(300);
+    const d = await place(c.id);
+    same(c, d, 'content growing above');
+    assert(d.st >= c.st + 295, 'scrollTop did not follow the growth: ' + JSON.stringify([c, d]));
+    await page.eval(`document.querySelector('.grow-probe').remove()`);
+    await sleep(300);
+    same(c, await place(c.id), 'content shrinking above');
+    // 3. a level change below the window: no move, no pill
+    learn('level', 'demo', '4.2', '1', 'scroll test again');
+    await page.waitFor(`[...document.querySelectorAll('#thread .sysline')].some(x => /scroll test again/.test(x.textContent))`);
+    await sleep(800);
+    same(c, await place(c.id), 'a level change below');
+    assert(!await page.eval(`document.querySelector('.newpill')`), 'a level change showed the "New message" pill');
+  });
   await test('glossary sort: newest first by first mention, remembered, in wiki and dock', async () => {
     await page.eval(`localStorage.removeItem('learn:glossarySort')`);
     await page.nav(`${BASE}/#/demo/wiki/glossary`, 900);

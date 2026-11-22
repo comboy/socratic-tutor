@@ -254,7 +254,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 
 /* ============ learn: thread ============ */
 .learn { height: 100%; display: flex; flex-direction: column; position: relative; }
-.thread-scroll { flex: 1; overflow: auto; }
+.thread-scroll { flex: 1; overflow: auto; overflow-anchor: none; }   /* learn.js keeps the place itself */
 .thread { max-width: 1040px; margin: 0 auto; padding: 16px 28px 30px; }
 .earlier { display: flex; gap: 8px; justify-content: center; padding: 4px 0 12px; }
 .divider { display: flex; align-items: center; gap: 10px; margin: 22px 0 10px; color: var(--muted); font-size: 12px; font-weight: 600; }

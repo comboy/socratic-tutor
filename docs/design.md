@@ -21,6 +21,10 @@ a minimalist "modern web" page.
 - **Never interrupt reading.** Live updates must not blink the page or move what the learner is
   reading: the UI reloads itself for code changes only when the learner is idle, otherwise it
   offers a "reload" button. New messages show a pill instead of yanking the scroll position.
+  Only a new tutor reply (shown from its start) or the learner's own message may scroll the
+  conversation; anything else (grades, level changes, redraws, images loading, above or below)
+  leaves the text at the top edge where it is (`learn.js`, "keeping the reader's place").
+  Bookkeeping updates the thread in place instead of redrawing it.
 - **The learner thinks about the topic, not the tool.** Anything about the tool goes into the
   feedback box and gets built while they're away (`bin/learn away`). Don't make them configure
   things; pick good defaults.

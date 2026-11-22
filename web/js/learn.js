@@ -1,31 +1,39 @@
 // Learn view: the conversation thread + the two input boxes.
 import { h, $, $$, store, skillById, levelOf, lvClass, fmtDate, fmtTime, shortId } from './util.js';
-import { renderInto, rich } from './rich.js';
+import { renderInto, rich, linkTerms } from './rich.js';
 import { questionText, plain } from './md.js';
 import { icon } from './icons.js';
 import { app, send } from './app.js';
 import { openDock, togglePin, isPinned, renderDock } from './panels.js';
 
 const PAGE = 60;
-let thread, composer, shownFrom = 0, quote = null;
+let thread, composer, shownFrom = 0, quote = null, sizes = null, drawnLegend = '';
 
 export function render(center) {
   thread = h('div', { class: 'thread', id: 'thread' });
   composer = h('div', { class: 'composer', id: 'composer' });
   if (store.get('composerH', 0)) requestAnimationFrame(() => setComposerH(store.get('composerH', 0)));
   center.replaceChildren(h('div', { class: 'learn' }, h('div', { class: 'thread-scroll', id: 'threadScroll' }, thread), composer));
+  anchor = null;
   drawThread();
   drawComposer();
   const target = app.args[0] === 'm' && app.args[1];
   requestAnimationFrame(() => (target ? reveal(target) : scrollBottom()));
   $('#threadScroll').addEventListener('scroll', onScroll);
+  // whatever changes size in the thread (an entry, a redraw, an image or diagram finishing its
+  // layout), what the learner is reading stays where it is
+  sizes?.disconnect();
+  sizes = new ResizeObserver(keepAnchor);
+  sizes.observe(thread);
 }
 export function update(args) { if (args[0] === 'm' && args[1]) reveal(args[1]); }
 
 const visible = e => ['message', 'answer', 'ask', 'action', 'start', 'level', 'session'].includes(e.kind);
-function drawThread() {
+// keep: redraw the same stretch of the conversation (earlier messages the learner opened stay), in place
+function drawThread(keep = false) {
   const J = app.topic.journal.filter(visible);
-  shownFrom = Math.max(0, J.length - PAGE);
+  shownFrom = keep ? Math.min(shownFrom, Math.max(0, J.length - PAGE)) : Math.max(0, J.length - PAGE);
+  drawnLegend = JSON.stringify(app.topic.meta.legend || []);
   thread.replaceChildren();
   if (shownFrom > 0) thread.append(h('div', { class: 'earlier' },
     h('button', { class: 'btn', onclick: showEarlier }, icon('up'), `Show ${Math.min(PAGE, shownFrom)} earlier messages`),
@@ -34,6 +42,7 @@ function drawThread() {
   for (const e of J.slice(shownFrom)) prevDate = appendEntry(e, prevDate);
   if (!J.length) thread.append(h('div', { class: 'empty' }, 'Nothing here yet. When the tutor session starts, its first message appears here.'));
   drawTyping();
+  if (keep) keepAnchor();
 }
 function showEarlier() {
   const J = app.topic.journal.filter(visible);
@@ -139,7 +148,7 @@ export function onEntries(fresh) {
   const J = app.topic.journal.filter(visible);
   thread.querySelector('.empty')?.remove();
   for (const e of fresh) {
-    if (e.kind === 'grade') { const n = thread.querySelector(`[id="m-${CSS.escape(e.target)}"]`); if (n) n.replaceWith(messageNode(app.d.byId.get(e.target))); continue; }
+    if (e.kind === 'grade') { redrawEntry(e.target); continue; }
     if (!visible(e)) continue;
     const i = J.findIndex(x => x.id === e.id);
     appendEntry(e, i > 0 ? J[i - 1].ts.slice(0, 10) : null);
@@ -148,22 +157,88 @@ export function onEntries(fresh) {
   if (app.d.pending) thread.querySelector(`[id="m-${CSS.escape(app.d.pending.id)}"]`)?.classList.add('pending-q');
   drawTyping();
   drawComposer(true);
-  // A new tutor reply: show its beginning (where reading starts), not the bottom of the thread.
-  const firstReply = fresh.find(e => e.role === 'tutor' && e.kind === 'message' && visible(e));
-  if (firstReply && (nearBottom || fresh.some(e => e.role === 'user'))) scrollToStart(firstReply.id, true);
-  else if (nearBottom || fresh.some(e => e.role === 'user')) scrollBottom(true);
-  else if (firstReply) showNewPill(firstReply.id);
+  keepAnchor();
+  // Only two things move the conversation: a new tutor reply (shown from its beginning, where
+  // reading starts, not the bottom of the thread) and the learner's own message. Anything else
+  // (a grade, a level change, a session divider) appears in place and the view stays put.
+  const reply = fresh.find(e => e.role === 'tutor' && e.kind === 'message');
+  const mine = fresh.some(e => e.role === 'user');
+  if (reply && (nearBottom || mine)) scrollToStart(reply.id, true);
+  else if (mine) scrollBottom(true);
+  else if (reply) showNewPill(reply.id);
+}
+function redrawEntry(id) {
+  const n = thread.querySelector(`[id="m-${CSS.escape(id)}"]`), e = app.d.byId.get(id);
+  if (n && e) n.replaceWith(messageNode(e));
 }
 export function onStatus() { if (thread) drawTyping(); }
-export function onTopic() { if (thread) { drawThread(); drawComposer(true); } }
+// Topic files changed (the tutor's bookkeeping): update what the conversation shows of them, in
+// place. A full redraw would restart diagrams and reload images under the reader, so only the
+// rare changes that need one get it (and it keeps the place).
+export function onTopic(part) {
+  if (!thread) return;
+  if (!part || part === 'tags.json' || part === 'media' || JSON.stringify(app.topic.meta.legend || []) !== drawnLegend) drawThread(true);
+  else if (part === 'glossary.md') { for (const b of thread.querySelectorAll('.msg-body')) linkTerms(b); return; }
+  else if (part === 'topic.json') refreshSkills();
+  else return;   // notes, progress, log, pages, map…: nothing in the conversation shows them
+  drawComposer(true);
+}
+function refreshSkills() {
+  for (const b of thread.querySelectorAll('.msg-head .chip-skill')) {
+    const s = skillById(app.topic.meta, b.textContent);
+    b.className = 'chip chip-skill ' + lvClass(s ? levelOf(s.node) : 0);
+  }
+}
 
-function scrollBottom(smooth) { const sc = $('#threadScroll'); if (sc) sc.scrollTo({ top: sc.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); hideNewPill(); }
-function onScroll() { const sc = $('#threadScroll'); if (sc.scrollHeight - sc.scrollTop - sc.clientHeight < 80) hideNewPill(); }
+// ---------------------------------------------------------------- keeping the reader's place
+// What the learner is reading never moves unless they scroll, or a new reply / their own message
+// is shown. After every scroll we remember the entry at the top edge (and inside a long message,
+// the paragraph at the top edge) with its offset; when the thread changes size we put it back.
+// This is the one rule in every browser: native scroll anchoring is off (.thread-scroll).
+let anchor = null, steerUntil = 0;
+function takeAnchor() {
+  const sc = $('#threadScroll');
+  anchor = null;
+  if (!sc || !thread) return;
+  const top = sc.getBoundingClientRect().top, kids = [...thread.children];
+  let lo = 0, hi = kids.length - 1, i = kids.length;   // the first entry reaching below the top edge
+  while (lo <= hi) { const mid = (lo + hi) >> 1; if (kids[mid].getBoundingClientRect().bottom > top) { i = mid; hi = mid - 1; } else lo = mid + 1; }
+  const n = kids.slice(i).find(k => k.id);
+  if (!n) return;
+  const r = n.getBoundingClientRect();
+  anchor = { id: n.id, off: r.top - top, at: sc.scrollTop };
+  if (r.top < top) {
+    const inner = [...n.querySelectorAll(':scope > .msg-body > *')].find(k => k.getBoundingClientRect().bottom > top);
+    if (inner) Object.assign(anchor, { el: inner, elOff: inner.getBoundingClientRect().top - top });
+  }
+}
+function keepAnchor() {
+  const sc = $('#threadScroll');
+  if (!sc || !thread) return;
+  // no anchor yet, a deliberate scroll still running, or scrolled since (event not handled yet): re-take
+  if (!anchor || Date.now() < steerUntil || Math.abs(sc.scrollTop - anchor.at) > 1) return takeAnchor();
+  const inner = anchor.el?.isConnected ? anchor.el : null, n = inner || document.getElementById(anchor.id);
+  if (!n) return takeAnchor();
+  const d = n.getBoundingClientRect().top - sc.getBoundingClientRect().top - (inner ? anchor.elOff : anchor.off);
+  if (Math.abs(d) >= 1) sc.scrollTop += d;
+  takeAnchor();
+}
+// a deliberate (smooth) scroll: don't hold the old place while it runs
+function steer(ms = 1000) { steerUntil = Date.now() + ms; }
+
+function scrollBottom(smooth) {
+  const sc = $('#threadScroll');
+  if (sc) { if (smooth) steer(); sc.scrollTo({ top: sc.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); if (!smooth) takeAnchor(); }
+  hideNewPill();
+}
+function onScroll() { const sc = $('#threadScroll'); takeAnchor(); if (sc.scrollHeight - sc.scrollTop - sc.clientHeight < 80) hideNewPill(); }
 function scrollToStart(id, smooth) {
   const sc = $('#threadScroll'), n = thread?.querySelector(`[id="m-${CSS.escape(id)}"]`);
   if (!sc || !n) return scrollBottom(smooth);
   const top = sc.scrollTop + n.getBoundingClientRect().top - sc.getBoundingClientRect().top - 12;
+  if (smooth) steer();
   sc.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' }); hideNewPill();
+  if (!smooth) takeAnchor();
 }
 function showNewPill(id) {
   if ($('.newpill')) return;
@@ -177,6 +252,7 @@ export function reveal(id) {
   let n = thread.querySelector(`[id="m-${CSS.escape(id)}"]`);
   while (!n && shownFrom > 0) { showEarlier(); n = thread.querySelector(`[id="m-${CSS.escape(id)}"]`); }
   if (!n) return;
+  steer(1200);
   n.scrollIntoView({ block: 'center', behavior: 'smooth' });
   n.classList.remove('flash'); void n.offsetWidth; n.classList.add('flash');
 }
@@ -194,7 +270,8 @@ const QUICK = [
 ];
 function drawComposer(keepFocus) {
   if (!composer) return;
-  const active = document.activeElement?.id;
+  const act = document.activeElement, active = act?.id;
+  const caret = act && composer.contains(act) && 'selectionStart' in act ? [act.selectionStart, act.selectionEnd, act.scrollTop] : null;
   const slug = app.topic.slug, pend = app.d.pending;
   const qtext = pend ? questionText(pend.text) : null;
   const ta = (id, ph, key) => {
@@ -243,7 +320,11 @@ function drawComposer(keepFocus) {
     h('div', { class: 'boxes' }, answer, ask),
     h('div', { class: 'quick' }, ...QUICK.flatMap(([label, text, ic, title], i) => [i === 6 ? h('span', { class: 'sep' }) : null,
       h('button', { class: 'btn btn-small', title, onclick: () => quickAction(text) }, icon(ic), label)]))));
-  if (keepFocus && active) document.getElementById(active)?.focus();
+  if (keepFocus && active) {
+    const n = document.getElementById(active);
+    n?.focus();
+    if (n && caret && 'setSelectionRange' in n) { n.setSelectionRange(caret[0], caret[1]); n.scrollTop = caret[2]; }
+  }
 }
 // "Welcome back": after a gap, the learner decides whether they want a recap (the tutor doesn't post
 // one unasked). Hidden after a short gap, once used or dismissed, or while a reply is pending.
