@@ -148,18 +148,27 @@ export function onEntries(fresh) {
   if (app.d.pending) thread.querySelector(`[id="m-${CSS.escape(app.d.pending.id)}"]`)?.classList.add('pending-q');
   drawTyping();
   drawComposer(true);
-  if (nearBottom || fresh.some(e => e.role === 'user')) scrollBottom(true);
-  else if (fresh.some(e => e.role === 'tutor' && e.kind === 'message')) showNewPill();
+  // A new tutor reply: show its beginning (where reading starts), not the bottom of the thread.
+  const firstReply = fresh.find(e => e.role === 'tutor' && e.kind === 'message' && visible(e));
+  if (firstReply && (nearBottom || fresh.some(e => e.role === 'user'))) scrollToStart(firstReply.id, true);
+  else if (nearBottom || fresh.some(e => e.role === 'user')) scrollBottom(true);
+  else if (firstReply) showNewPill(firstReply.id);
 }
 export function onStatus() { if (thread) drawTyping(); }
 export function onTopic() { if (thread) { drawThread(); drawComposer(true); } }
 
 function scrollBottom(smooth) { const sc = $('#threadScroll'); if (sc) sc.scrollTo({ top: sc.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); hideNewPill(); }
 function onScroll() { const sc = $('#threadScroll'); if (sc.scrollHeight - sc.scrollTop - sc.clientHeight < 80) hideNewPill(); }
-function showNewPill() {
+function scrollToStart(id, smooth) {
+  const sc = $('#threadScroll'), n = thread?.querySelector(`[id="m-${CSS.escape(id)}"]`);
+  if (!sc || !n) return scrollBottom(smooth);
+  const top = sc.scrollTop + n.getBoundingClientRect().top - sc.getBoundingClientRect().top - 12;
+  sc.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' }); hideNewPill();
+}
+function showNewPill(id) {
   if ($('.newpill')) return;
   $('.learn').style.setProperty('--composer-h', composer.offsetHeight + 'px');
-  $('.learn').append(h('button', { class: 'newpill btn btn-primary', onclick: () => scrollBottom(true) }, icon('down'), 'New message'));
+  $('.learn').append(h('button', { class: 'newpill btn btn-primary', onclick: () => (id ? scrollToStart(id, true) : scrollBottom(true)) }, icon('down'), 'New message'));
 }
 function hideNewPill() { $('.newpill')?.remove(); }
 

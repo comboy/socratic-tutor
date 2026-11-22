@@ -661,6 +661,17 @@ async function main() {
     post('cells', 'Plan.\n\n:::question\nShall I start with step 1?\n:::');
     assert(lastTutor('cells').question && lastTutor('cells').id !== n, 'question posts');
   });
+  await test('a new long tutor reply scrolls to its beginning, not to the bottom', async () => {
+    await page.nav(`${BASE}/#/cells/learn`, 1200);
+    await page.eval(`(() => { const sc = document.querySelector('#threadScroll'); sc.scrollTop = sc.scrollHeight; })()`);
+    await sleep(300);
+    post('cells', ['Start of a long reply.', ...Array.from({ length: 80 }, (_, i) => `\nParagraph ${i + 1} of a long explanation.`)].join('\n'));
+    const id = lastTutor('cells').id;
+    const off = await page.waitFor(`(() => { const sc = document.querySelector('#threadScroll'), n = document.querySelector('[id="m-${id}"]');
+      if (!n) return null; const d = n.getBoundingClientRect().top - sc.getBoundingClientRect().top; return Math.abs(d) < 60 ? d : null; })()`, { timeout: 5000 });
+    assert(off !== null, 'reply start not at the top of the thread');
+    assert(await page.eval(`(() => { const sc = document.querySelector('#threadScroll'); return sc.scrollHeight - sc.scrollTop - sc.clientHeight > 200; })()`), 'scrolled to the bottom instead');
+  });
   await test('glossary sort: newest first by first mention, remembered, in wiki and dock', async () => {
     await page.eval(`localStorage.removeItem('learn:glossarySort')`);
     await page.nav(`${BASE}/#/demo/wiki/glossary`, 900);
