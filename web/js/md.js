@@ -5,7 +5,9 @@
 //   ```viz <type>``` visualization blocks (mounted after insertion via mountViz)
 //   [x](msg:ID) [x](term:T) [x](skill:ID) [x](map:NODE) [x](wiki:PAGE) internal links (spaces allowed)
 //   [x](tip:a note for this message) per-message hover note (spaces and one level of (…) allowed)
+//   ![caption](media:file.png) a downloaded image from the topic's media/ folder, with its credit
 /* global marked, katex */
+import { commonsName } from './commons.js';
 
 const KATEX_OPTS = {
   throwOnError: false,
@@ -60,6 +62,26 @@ function containers(src) {
 
 function decodeURIComponentSafe(s) { try { return decodeURIComponent(s); } catch { return s; } }
 
+// Downloaded images (topics/<slug>/media/, `bin/learn image`): set per topic by rich.configure.
+let media = { slug: null, index: {}, lookup: new Map() };
+export function setMedia(slug, index = {}) {
+  const lookup = new Map();
+  for (const [file, m] of Object.entries(index || {})) {
+    for (const u of m.from || []) lookup.set(u, file);
+    const n = commonsName(m.title || '');
+    if (n) lookup.set(n, file);
+  }
+  media = { slug, index: index || {}, lookup };
+}
+// media:<file>, or a hotlinked Commons URL whose file was downloaded -> { src, info }
+function localImage(href) {
+  if (!media.slug) return null;
+  const m = href.match(/^media:(.+)$/);
+  const file = m ? decodeURIComponentSafe(m[1]).trim()
+    : /^https?:/i.test(href) ? media.lookup.get(href.replace(/[?#].*$/, '')) || media.lookup.get(commonsName(href)) : null;
+  return file ? { src: `/media/${media.slug}/${encodeURIComponent(file)}`, info: media.index[file] || null } : null;
+}
+
 let vizSeq = 0;
 export const vizSpecs = new Map(); // id -> {type, src}
 
@@ -74,6 +96,14 @@ function makeRenderer() {
       return `<div class="viz viz-${esc(m[1])}" data-viz="${id}"></div>`;
     }
     return `<pre><code${lang ? ` class="lang-${esc(lang.split(/\s/)[0])}"` : ''}>${esc(code)}</code></pre>`;
+  };
+  // marked has already escaped the alt text and title
+  r.image = (href, title, text) => {
+    const loc = localImage(String(href || ''));
+    if (!loc) return marked.Renderer.prototype.image.call(r, href, title, text);
+    const i = loc.info, cap = text || title || '';
+    const credit = i ? [i.author, i.license].filter(Boolean).map(esc).join(' · ') + (i.source ? ` · <a href="${esc(i.source)}" target="_blank" rel="noopener">source</a>` : '') : '';
+    return `<span class="media-fig"><img src="${loc.src}" alt="${text}" loading="lazy"><span class="media-cap">${cap ? `<span class="media-cap-text">${cap}</span>` : ''}${credit ? `<span class="media-credit">${credit}</span>` : ''}</span></span>`;
   };
   r.link = (href, title, text) => {
     const m = String(href || '').match(/^(msg|term|skill|map|wiki|tip):(.+)$/);
@@ -126,7 +156,7 @@ export function plain(src, n = 200) {
     .replace(/```[\s\S]*?```/g, ' [code] ')
     .replace(/\$\$[\s\S]*?\$\$/g, ' [formula] ')
     .replace(/\{\{([^|}]+)(\|[^}]*)?\}\}/g, '$1')
-    .replace(/\[([^\]]+)\]\((?:[^()]|\([^()]*\))+\)/g, '$1')
+    .replace(/!?\[([^\]]*)\]\((?:[^()]|\([^()]*\))+\)/g, '$1')
     .replace(/^:::.*$/gm, '')
     .replace(/[*_#>`|]/g, '')
     .replace(/\s+/g, ' ').trim();

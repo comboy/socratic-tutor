@@ -17,6 +17,7 @@ never contains any. Layout:
 | `topics/<slug>/map.json` | concept map: how the subject works, as far as the learner knows | you (or a subagent) |
 | `topics/<slug>/pages/<name>.md` | standalone wiki pages (worked examples, interactive walkthroughs) | you, or the wiki job |
 | `topics/<slug>/tags.json` | extra skill tags for old journal entries | you |
+| `topics/<slug>/media/` | downloaded images + `index.json` (author, licence, source) | `bin/learn image` |
 | `topics/<slug>/journal/YYYY-MM-DD.jsonl` | every message both ways, grades, level changes | `bin/learn` only, never by hand |
 | `learner/profile.md` | who the learner is, how they like to be taught (all topics) | tutors, reviewer job, the learner |
 | `learner/knowledge.md` | knowledge across topics: islands, shaky foundations, connections, suggested topics | tutors, reviewer job |
@@ -73,6 +74,15 @@ entry: what a symbol or a label means *here*, which of two things "it" is, a num
 note is markdown (`**bold**`, `$x$`, glossary terms get their own nested cards), may contain
 spaces and one level of parentheses (`(tip:read 3′→5′ (backwards))`), but no line breaks, and
 in a table no `|`. A real term goes in the glossary instead: it then works in every message.
+
+**Images**: `![Replication fork](media:dna-replication-en.png)` shows an image downloaded into
+the topic with `bin/learn image`, with the alt text as its caption and the author,
+licence and a source link under it. It works offline. Click any image for a large view.
+`bin/learn image "File:DNA replication en.svg"` (or a Commons page/image URL) downloads it,
+`bin/learn image search "words"` finds candidates on Wikimedia Commons, and a local file works
+too: `bin/learn image fig.png --author "…" --license "CC BY 4.0" [--source url]`. A message that
+hotlinks a Commons image shows the local copy once that file has been downloaded. `post` refuses,
+and `check` reports, a `media:` file that isn't in the topic's `media/` folder.
 
 **Visualizations**: fenced block with language `viz <type>`, whose body is a JS object
 literal (JSON or relaxed: unquoted keys, trailing commas, comments). Types:

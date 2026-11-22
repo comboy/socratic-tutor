@@ -64,6 +64,7 @@ Markdown extensions, in brief (details and every `viz` type in `docs/formats.md`
 `$…$` and `$$…$$` KaTeX with `\k{key}{tex}` highlight keys · `{{text|key}}` linked highlighting
 (everything sharing a key lights up together, so connect prose ↔ formula ↔ matrix rows) ·
 `[text](msg:2026-11-13.42)`, `term:`, `skill:`, `map:`, `wiki:` links · `[phrase](tip:a hover note for this message only)` ·
+`![caption](media:file.png)` images downloaded with `bin/learn image` (offline, credited) ·
 ```` ```viz matrix|vector|bars|tokens|flow|plot|steps|residual|js ```` blocks.
 
 ## Bookkeeping commands
@@ -75,6 +76,7 @@ Markdown extensions, in brief (details and every `viz` type in `docs/formats.md`
     bin/learn summary [t] <skill> "- what was covered ([explained](msg:…))"
     bin/learn term add [t] "name" --short "1–2 sentences" [--skill id] [--full "**E**xpansion"] [--aliases a,b] [--parts x,y]
     bin/learn terms-missing [t]                    # bold phrases in recent messages that aren't terms yet
+    bin/learn image [t] "File:…" · image search "words"   # a Commons image into the topic, for media:
     bin/learn tree [t]  /  tree [t] --set < outline  # the skill tree, incl. needs and foundations
     bin/learn log [t] "what happened this session"
     bin/learn check [t]                             # after editing topic files by hand

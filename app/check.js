@@ -1,6 +1,6 @@
 // `bin/learn check [topic]`: validate a topic's files after editing them by hand.
 // Catches what the UI would silently show wrong: bad JSON, unknown skill ids, broken
-// msg:/term:/skill:/map:/wiki: links, map edges to missing nodes, glossary metadata typos.
+// msg:/term:/skill:/map:/wiki: links, media: images, map edges to missing nodes, glossary metadata typos.
 // linkChecker() is also used by `bin/learn post` to refuse broken links before they're posted.
 'use strict';
 const fs = require('fs');
@@ -21,8 +21,11 @@ function linkChecker(slug) {
   const pageNames = new Set(S.readPages(slug).map(p => p.name));
   const J = S.readJournal(slug), byId = new Map(J.map(e => [e.id, e]));
   const days = new Set(J.map(e => e.id.split('.')[0]));
+  const media = new Set(Object.keys(S.readMedia(slug)));
   return text => {
     const out = [];
+    for (const m of String(text || '').matchAll(/!\[[^\]\n]*\]\(media:([^)\s]+)\)/g))
+      if (!media.has(m[1])) out.push({ type: 'media', id: m[1], why: 'not in media/ (download it first: bin/learn image)', error: true });
     for (const m of String(text || '').matchAll(LINK)) {
       const [, type, raw] = m;
       let id = raw.trim(); try { id = decodeURIComponent(id); } catch {}

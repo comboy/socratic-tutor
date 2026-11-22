@@ -1,10 +1,10 @@
 // Rich content: markdown + viz mounting + glossary auto-links + linked highlighting + hover cards.
-import { md, vizSpecs, esc } from './md.js';
+import { md, vizSpecs, esc, setMedia } from './md.js';
 import { registry, h } from '../viz/index.js';
 import { termMatcher } from './terms.js';
 
 const cfg = { terms: [], matcher: null, resolveTerm: () => null, resolveMsg: () => null, hoverCard: null, onRef: () => {} };
-export function configure(o) { Object.assign(cfg, o); if (o.terms) buildTermIndex(o.terms); }
+export function configure(o) { Object.assign(cfg, o); if (o.terms) buildTermIndex(o.terms); if (o.media) setMedia(o.media.slug, o.media.index); }
 
 // ---------------------------------------------------------------- render
 // Render markdown into el (replacing contents). Returns el.
@@ -209,6 +209,22 @@ document.addEventListener('click', e => {
   if (t.classList.contains('term')) cfg.onRef('term', t.dataset.term, t);
   else cfg.onRef(t.dataset.ref, t.dataset.id, t);
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAll(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeAll(); closeLightbox(); } });
+
+// ---------------------------------------------------------------- image lightbox
+// Click an image in rendered content to see it as large as the window allows, with its caption
+// and credit; a click anywhere or Escape closes it.
+function closeLightbox() { document.querySelector('.lightbox')?.remove(); }
+document.addEventListener('click', e => {
+  if (e.target.closest?.('.lightbox')) { if (!e.target.closest('a')) closeLightbox(); return; }
+  const img = e.target.closest?.('.md img');
+  if (!img || e.target.closest('a, button, .viz')) return;
+  const cap = img.closest('.media-fig')?.querySelector('.media-cap');
+  const box = h('div', { class: 'lightbox', title: 'Click or press Escape to close' },
+    h('img', { src: img.currentSrc || img.src, alt: img.alt }),
+    cap ? h('div', { class: 'lightbox-cap', html: cap.innerHTML }) : img.alt ? h('div', { class: 'lightbox-cap', text: img.alt }) : null);
+  closeLightbox();
+  document.body.append(box);
+});
 
 export { esc, md };

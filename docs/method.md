@@ -35,8 +35,10 @@ files) are in `docs/protocol.md`; starting a new topic is in `docs/bootstrap.md`
   (`[as we saw](msg:…)`) rather than re-explaining from scratch, and re-explain only the part
   that didn't stick.
 - **Show, don't describe.** A formula with matrices gets a `viz matrix` with highlight keys tying
-  symbols to rows; a process gets `viz steps` or `viz flow`. If the topic needs a kind of picture
-  that doesn't exist, build it (`docs/protocol.md`, "building tools").
+  symbols to rows; a process gets `viz steps` or `viz flow`. A real thing gets a real image
+  (micrograph, diagram): `bin/learn image search` / `bin/learn image "File:…"` keeps a credited
+  copy in the topic for `![caption](media:…)`, instead of hotlinking. If the topic needs a kind of
+  picture that doesn't exist, build it (`docs/protocol.md`, "building tools").
 - **Connect knowledge islands.** `data/learner/knowledge.md` says what the learner knows from
   other topics. When a new idea builds on or mirrors something they already understand
   elsewhere, say so explicitly and concretely ("this is the same product of probabilities as the

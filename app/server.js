@@ -10,7 +10,8 @@ const J = require('./jobs');
 
 const WEB = path.join(S.CODE, 'web');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.png': 'image/png', '.md': 'text/markdown; charset=utf-8' };
+  '.json': 'application/json', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.png': 'image/png', '.md': 'text/markdown; charset=utf-8',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
 
 const clients = new Set();
 function broadcast(ev) {
@@ -84,6 +85,7 @@ function topicPayload(slug) {
     progress: S.readText(path.join(d, 'progress.md'), ''),
     map: safe(() => S.readJSON(path.join(d, 'map.json'), null)),
     pages: S.readPages(slug),
+    media: S.readMedia(slug),
     notes: safe(() => S.readNotes(slug)),
     log: S.readText(path.join(d, 'log.md'), ''),
     tags,
@@ -234,6 +236,15 @@ async function handle(req, res) {
     if (rp && req.method === 'GET') { const t = J.readReport(rp[1]); return t == null ? send(res, 404, { error: 'no such report' }) : send(res, 200, { file: rp[1], text: t }); }
     const r = routes[`${req.method} ${p}`];
     if (r) return send(res, 200, await r(req, url));
+    // a topic's downloaded images (bin/learn image)
+    if (p.startsWith('/media/') && req.method === 'GET') {
+      const mm = p.match(/^\/media\/([a-z0-9][a-z0-9-]*)\/([^/]+)$/);
+      const file = mm && S.listTopics().includes(mm[1]) && S.MEDIA_NAME.test(mm[2]) ? path.join(S.mediaDir(mm[1]), mm[2]) : null;
+      if (!file || !fs.existsSync(file)) return send(res, 404, 'no such image', 'text/plain');
+      res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream', 'cache-control': 'max-age=3600',
+        ...(file.endsWith('.svg') ? { 'content-security-policy': "script-src 'none'" } : {}) });
+      return fs.createReadStream(file).pipe(res);
+    }
     if (p.startsWith('/api/')) return send(res, 404, { error: 'not found' });
     // static
     let file = path.normalize(path.join(WEB, p === '/' ? 'index.html' : p));

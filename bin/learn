@@ -88,6 +88,8 @@ bin/learn tree [t]                       print the skill tree as an outline · t
 bin/learn log [t] "what happened"        append to today's entry in log.md
 bin/learn feedback "remark"              a note for the builder about the app or the process (not the lesson)
 bin/learn pending [t] · recent [n] [--topic t] · msgs [t] --skill id · status · show <id> · grep <regex> [--topic t]
+bin/learn image [t] <Commons file/URL | file --author a --license l> · image search "words" · image list [t]
+                                         keep a real image in the topic (offline, credited): ![caption](media:<file>)
 bin/learn check [t]                      validate topic files (JSON, skill ids, links, map) after editing
 bin/learn commit "message"               commit the learning data (data/ is its own git repo)
 bin/learn handoff [--topic t] [--reason s]   end this tutor session; a fresh one takes over
@@ -448,6 +450,39 @@ commands.term = () => {
     console.log(`added "${name}" to ${topic}/glossary.md${missing.length ? ` (parts not in the glossary yet: ${missing.join(', ')})` : ''}`);
   } else die('usage: term add|show …');
 };
+// Real images in the topic (app/media.js): download from Wikimedia Commons, or add a local file,
+// into topics/<t>/media/ with author and licence; shown with ![caption](media:<file>).
+commands.image = async () => {
+  const f = flags(argv, { topic: 'string', name: 'string', width: 'string', author: 'string', license: 'string', source: 'string', n: 'string' });
+  const M = require('../app/media');
+  if (f._[0] === 'search') {
+    const q = f._.slice(1).join(' ').trim();
+    if (!q) die('usage: image search "words" [--n 8]');
+    const hits = await M.search(q, Number(f.n) || 8);
+    if (!hits.length) { console.log('(nothing found on Commons)'); return; }
+    for (const x of hits) console.log(`${x.title}  ${x.width}×${x.height} ${String(x.mime || '').replace('image/', '')}  ${x.license || '?'} · ${x.author || '?'}${x.description ? `\n    ${x.description}` : ''}`);
+    console.log('\nDownload one: bin/learn image "File:…"');
+    return;
+  }
+  if (f._[0] === 'list') {
+    f._.shift();
+    const topic = topicOf(f, true);
+    const idx = S.readMedia(topic);
+    for (const [name, m] of Object.entries(idx)) console.log(`${name}  ${m.license} · ${m.author}  (${m.title})`);
+    if (!Object.keys(idx).length) console.log('(no images yet)');
+    return;
+  }
+  const topic = f._.length > 1 ? topicOf(f, true) : topicOf(f);
+  const src = f._.join(' ').trim();
+  if (!src) die('usage: image [t] <Commons file or URL | local file> [--name n] [--width 1280] · image search "words" · image list [t]');
+  const local = fs.existsSync(src) && fs.statSync(src).isFile();
+  if (local && (!f.author || !f.license)) die('a local file needs --author and --license (and --source if it has one)');
+  const r = local ? M.addLocal(topic, src, { name: f.name, author: f.author, license: f.license, source: f.source })
+    : await M.addCommons(topic, src, { name: f.name, width: Number(f.width) || 1280 });
+  console.log(`saved ${topic}/media/${r.name}${r.width ? ` (${r.width}×${r.height})` : ''} · ${r.license} · ${r.author}
+show it: ![caption](media:${r.name})`);
+};
+
 // Bold phrases in recent tutor messages that name no glossary term or alias: terms the tutor
 // introduced but forgot to add (app/check.js missingTerms). Read-only.
 commands['terms-missing'] = () => {

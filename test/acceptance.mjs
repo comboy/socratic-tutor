@@ -183,7 +183,7 @@ async function main() {
     await page.waitFor(`document.querySelectorAll('.thread .msg').length > 20`);
     const r = await page.eval(`(() => {
       const t = document.querySelector('.thread').innerText;
-      return { leftovers: (t.match(/\\]\\((msg|term|skill|map|wiki|tip):|^:::|\\{\\{|\\$\\$|\\\\k\\{/gm) || []),
+      return { leftovers: (t.match(/\\]\\((msg|term|skill|map|wiki|tip|media):|^:::|\\{\\{|\\$\\$|\\\\k\\{/gm) || []),
         vizEmpty: [...document.querySelectorAll('.thread .viz')].filter(v => !v.children.length || v.querySelector('.viz-error')).map(v => v.className),
         katex: document.querySelectorAll('.thread .katex').length, katexErr: document.querySelectorAll('.thread .katex-error, .thread .math-error').length,
         spaced: [...document.querySelectorAll('.thread .ref-term')].map(b => b.dataset.id).filter(x => x.includes(' ')) };
@@ -492,6 +492,59 @@ async function main() {
     assert(/every bold phrase in the last tutor message is a glossary term or alias/.test(learn('terms-missing', 'cells')), 'after adding it');
     assert(!/glossary:/.test(post('cells', 'Now **helicases** are known.')), 'plural of a known term reported');
   });
+  await test('images: bin/learn image keeps a Commons file (fake API) or a local file in the topic; media: shows it with its credit, offline; click zooms', async () => {
+    const http = await import('node:http');
+    const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+    const hits = [];
+    const fake = http.createServer((req, res) => {
+      const u = new URL(req.url, 'http://x'); hits.push(u.pathname + ' ' + (req.headers['user-agent'] || ''));
+      if (u.pathname === '/w/api.php' && u.searchParams.get('generator') === 'search')
+        return res.end(JSON.stringify({ query: { pages: [{ index: 1, title: 'File:Test cell.png', imageinfo: [{ width: 1, height: 1, mime: 'image/png', extmetadata: { LicenseShortName: { value: 'CC0' }, Artist: { value: 'Jane Doe' } } }] }] } }));
+      if (u.pathname === '/w/api.php') return res.end(JSON.stringify({ query: { pages: [u.searchParams.get('titles') !== 'File:Test cell.png' ? { title: u.searchParams.get('titles'), missing: true } : {
+        title: 'File:Test cell.png', imageinfo: [{ width: 1, height: 1, mime: 'image/png', url: `http://127.0.0.1:${fake.address().port}/commons/a/ab/Test_cell.png`,
+          descriptionurl: 'https://commons.wikimedia.org/wiki/File:Test_cell.png', extmetadata: { Artist: { value: '<a href="//commons.wikimedia.org/wiki/User:Jd">Jane Doe</a>' },
+          LicenseShortName: { value: 'CC BY-SA 4.0' }, ImageDescription: { value: 'A <i>test</i> cell' } } }] }] } }));
+      if (u.pathname === '/commons/a/ab/Test_cell.png') { res.writeHead(200, { 'content-type': 'image/png' }); return res.end(PNG); }
+      res.writeHead(404); res.end();
+    });
+    await new Promise(r => fake.listen(0, '127.0.0.1', r));
+    const env = { ...ENV, LEARN_COMMONS_API: `http://127.0.0.1:${fake.address().port}/w/api.php` };
+    // async: the fake server runs in this process, so a blocking execFileSync would starve it
+    const { execFile } = await import('node:child_process');
+    const img = (...a) => new Promise((res, rej) => execFile(process.execPath, [BIN, 'image', ...a], { env, encoding: 'utf8' }, (e, out, err) => e ? rej(Object.assign(e, { stderr: err })) : res(out)));
+    const fails = p => p.then(() => '', e => String(e.stderr));
+    try {
+      assert(/File:Test cell\.png  1×1 png  CC0 · Jane Doe/.test(await img('search', 'test cell')), 'search');
+      const out = await img('cells', 'https://commons.wikimedia.org/wiki/File:Test_cell.png');
+      assert(/saved cells\/media\/test-cell\.png .*CC BY-SA 4\.0 · Jane Doe/.test(out) && /!\[caption\]\(media:test-cell\.png\)/.test(out), out);
+      assert(hits.every(h => /^\S+ learn-tutor\//.test(h)), 'generic user agent: ' + hits);
+      const missing = await fails(img('cells', 'File:Nope.png'));
+      assert(/no file "File:Nope\.png" on Commons/.test(missing), missing);
+    } finally { fake.close(); }
+    const mine = path.join(HOME, 'fig.png'); fs.writeFileSync(mine, PNG);
+    assert(/needs --author and --license/.test(await fails(img('cells', mine))), 'local file without credit');
+    assert(/saved cells\/media\/fig\.png/.test(await img('cells', mine, '--author', 'Me', '--license', 'CC0')), 'local file');
+    const idx = JSON.parse(fs.readFileSync(path.join(HOME, 'topics/cells/media/index.json'), 'utf8'));
+    assert(idx['test-cell.png'].author === 'Jane Doe' && idx['test-cell.png'].description === 'A test cell' && fs.readFileSync(path.join(HOME, 'topics/cells/media/test-cell.png')).equals(PNG), JSON.stringify(idx));
+    assert(/test-cell\.png  CC BY-SA 4\.0 · Jane Doe/.test(await img('list', 'cells')), 'list');
+    assert((await fetch(`${BASE}/media/cells/%2e%2e%2ftopic.json`)).status === 404 && (await fetch(`${BASE}/media/cells/index.json`)).status === 404, 'only images are served');
+    await sleep(500);   // the topic reloads with the new media index
+    post('cells', '![A test cell](media:test-cell.png)\n\nThe same file, hotlinked: ![hotlinked](https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Test_cell.png/320px-Test_cell.png)\n\n![My figure](media:fig.png)');
+    const id = lastTutor('cells').id, sel = `[id="m-${id}"] .msg-body`;
+    const nope = (() => { try { post('cells', '![gone](media:nope.png)'); return ''; } catch (e) { return String(e.stderr); } })();
+    assert(/link media:nope\.png: not in media\//.test(nope) && lastTutor('cells').id === id, 'missing media posted: ' + nope);
+    await page.nav(`${BASE}/#/cells/learn`, 1200);
+    const r = await page.waitFor(`(() => { const f = [...document.querySelectorAll('${sel} .media-fig')]; return f.length === 3 && f.every(x => x.querySelector('img').complete) &&
+      f.map(x => ({ src: x.querySelector('img').getAttribute('src'), w: x.querySelector('img').naturalWidth, cap: x.querySelector('.media-cap').innerText.replace(/\\s+/g, ' ') })); })()`, { timeout: 4000 });
+    assert(r.map(x => x.src).join() === '/media/cells/test-cell.png,/media/cells/test-cell.png,/media/cells/fig.png' && r.every(x => x.w === 1), JSON.stringify(r));
+    assert(/^A test cell Jane Doe · CC BY-SA 4\.0 · source$/.test(r[0].cap) && /^My figure Me · CC0$/.test(r[2].cap), JSON.stringify(r.map(x => x.cap)));
+    await page.click(`${sel} .media-fig img`, 300);
+    const lb = await page.eval(`(() => { const l = document.querySelector('.lightbox'); return l && { img: l.querySelector('img').getAttribute('src'), cap: l.querySelector('.lightbox-cap')?.innerText.replace(/\\s+/g, ' ') }; })()`);
+    assert(lb && lb.img.endsWith('/media/cells/test-cell.png') && /A test cell/.test(lb.cap) && /Jane Doe/.test(lb.cap), 'lightbox: ' + JSON.stringify(lb));
+    await page.shot('image-lightbox');
+    await page.key('Escape'); await sleep(100);
+    assert(await page.eval(`!document.querySelector('.lightbox')`), 'Escape closes the lightbox');
+  });
   await test('post refuses a message that ends with a question outside :::question (--force for a rhetorical one)', async () => {
     const n = lastTutor('cells').id;
     const err = (() => { try { post('cells', 'Here is the plan.\n\nShall I start with step 1?'); return ''; } catch (e) { return String(e.stderr); } })();
@@ -691,7 +744,7 @@ async function main() {
         await page.nav(`http://localhost:${rport}/?static#/${t.slug}/learn`, 1500);
         await page.eval(`(async () => { for (let i = 0; i < 50 && document.querySelector('.earlier button'); i++) { document.querySelector('.earlier button').click(); await new Promise(r => setTimeout(r, 50)); } })()`);
         const r = await page.eval(`(() => { const t = document.querySelector('.thread')?.innerText || '';
-          return { n: document.querySelectorAll('.thread .msg').length, leftovers: (t.match(/\\]\\((msg|term|skill|map|wiki|tip):|^:::|\\{\\{/gm) || []).slice(0, 5),
+          return { n: document.querySelectorAll('.thread .msg').length, leftovers: (t.match(/\\]\\((msg|term|skill|map|wiki|tip|media):|^:::|\\{\\{/gm) || []).slice(0, 5),
             vizErr: document.querySelectorAll('.thread .viz-error').length, mathErr: document.querySelectorAll('.thread .math-error').length }; })()`);
         assert(!r.leftovers.length && !r.vizErr && !r.mathErr, JSON.stringify(r));
       });

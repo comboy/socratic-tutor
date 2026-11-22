@@ -368,6 +368,20 @@ body.resizing-v { cursor: row-resize; user-select: none; }
 .md hr { border: 0; border-top: 1px solid var(--line); margin: 1em 0; }
 .md a { color: var(--accent); }
 .md img { display: block; margin: .6em auto; max-width: 100%; background: #fff; border-radius: 6px; padding: 6px; box-sizing: border-box; } /* transparent diagrams assume a white page; centred in the column */
+.md img { cursor: zoom-in; }
+/* a downloaded image (![caption](media:file)): caption and credit under it, as wide as the image */
+.md .media-fig { display: block; width: fit-content; max-width: 100%; margin: .6em auto; }
+.md .media-fig img { margin: 0 auto; }
+.media-cap { display: block; padding: 3px 4px 0; text-align: center; font-size: 12.5px; line-height: 1.4; color: var(--muted); }
+.media-cap-text { display: block; color: var(--fg); }
+.media-credit { display: block; font-size: 11px; color: var(--faint); }
+.media-credit a { color: inherit; text-decoration: underline; }
+.lightbox { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px;
+  background: color-mix(in srgb, var(--main) 90%, transparent); cursor: zoom-out; }
+.lightbox img { max-width: 94vw; max-height: calc(100vh - 120px); object-fit: contain; background: #fff; border-radius: 6px; padding: 8px; box-sizing: border-box; box-shadow: var(--shadow-pop); }
+.lightbox-cap { max-width: min(900px, 94vw); text-align: center; font-size: 13px; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; }
+.lightbox-cap .media-cap-text { display: block; }
+.lightbox-cap .media-credit { display: block; margin-top: 2px; }
 .katex { font-size: 1.07em; }
 .katex-display { overflow-x: auto; overflow-y: hidden; padding: 6px 0; margin: .6em 0; }
 

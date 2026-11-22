@@ -25,8 +25,8 @@ Code and personal data are kept apart so the code can be shared:
 
 - `bin/learn`: the CLI (start, serve, demo, test, away, and the tutor's commands; `bin/learn help`).
 - `app/`: Node server, storage (`store.js`), launcher and handoff (`launcher.js`, `session.js`),
-  agent adapter (`agent.js`), background jobs (`jobs.js`), topic checker (`check.js`). No
-  dependencies.
+  agent adapter (`agent.js`), background jobs (`jobs.js`), topic checker (`check.js`), image
+  downloads (`media.js`). No dependencies.
 - `web/`: the UI, plain ES modules with no build step; d3, marked and KaTeX vendored in
   `web/vendor/`. `web/viz/`: visualization components.
 - `docs/`: protocol, method, bootstrap, formats, design, roadmap, job prompts.

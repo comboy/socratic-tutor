@@ -158,6 +158,12 @@ function readPages(slug) {
   });
 }
 
+// ---------- media/: downloaded images (bin/learn image, app/media.js) ----------
+// media/index.json: { "<file>": { title, author, license, licenseUrl, source, description, from, added } }
+const MEDIA_NAME = /^[a-z0-9][a-z0-9._-]*\.(png|jpe?g|gif|webp|svg)$/;
+function mediaDir(slug) { return path.join(topicDir(slug), 'media'); }
+function readMedia(slug) { try { return readJSON(path.join(mediaDir(slug), 'index.json'), {}) || {}; } catch { return {}; } }
+
 // ---------- glossary.md parser ----------
 // full: expansion of an acronym/name (inline markdown, e.g. "**P**roximal **P**olicy **O**ptimization")
 // parts: sub-terms the expansion or definition is built from (comma list of glossary terms)
@@ -392,7 +398,7 @@ function setLevel(slug, skillId, level, reason) {
 module.exports = {
   CODE, ROOT, TOPICS, LEARNER, REPORTS, FEEDBACK, CONFIG, STATE, INBOX, PORT,
   ensureDir, readText, readJSON, writeJSON, localDate, config, ensureHome, commitData,
-  listTopics, topicDir, slugify, createTopic, readPages, PAGE_NAME, loadTopicMeta, saveTopicMeta,
+  listTopics, topicDir, slugify, createTopic, readPages, PAGE_NAME, MEDIA_NAME, mediaDir, readMedia, loadTopicMeta, saveTopicMeta,
   walkSkills, findSkill, leafSkills, parseGlossary, readGlossary, addTerm, META_KEYS,
   NOTE_KINDS, readNotes, addNote, closeNote, parseDue, appendLog,
   journalDir, journalFiles, readJournal, readJournalFile, appendJournal, findEntry, lastEntry, pendingQuestion,
