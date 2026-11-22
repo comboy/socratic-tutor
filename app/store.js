@@ -158,6 +158,23 @@ function readPages(slug) {
   });
 }
 
+// ---------- terms/<name>.md: a wiki page per glossary term ----------
+// What the learner knows about the term, in their terms (any markdown; a :::fog block for what's
+// not covered yet). <name> is termSlug(term or alias), see web/js/terms.js. A leading "# " title
+// line is dropped: the term is the title.
+const { termSlug, TERM_PAGE, pageForTerm } = require('../web/js/terms.js');
+function termPagesDir(slug) { return path.join(topicDir(slug), 'terms'); }
+function readTermPages(slug) {
+  const d = termPagesDir(slug);
+  let files = [];
+  try { files = fs.readdirSync(d).map(f => f.normalize('NFC')).filter(f => f.endsWith('.md') && TERM_PAGE.test(f.slice(0, -3))).sort(); } catch { return []; }
+  return files.map(f => {
+    const text = readText(path.join(d, f), '').replace(/^\s*#\s+[^\n]*\n/, '').trim();
+    return { name: f.slice(0, -3), text, mtime: fs.statSync(path.join(d, f)).mtime.toISOString() };
+  });
+}
+function termPagePath(slug, term) { return path.join(termPagesDir(slug), termSlug(term) + '.md'); }
+
 // ---------- media/: downloaded images (bin/learn image, app/media.js) ----------
 // media/index.json: { "<file>": { title, author, license, licenseUrl, source, description, from, added } }
 const MEDIA_NAME = /^[a-z0-9][a-z0-9._-]*\.(png|jpe?g|gif|webp|svg)$/;
@@ -398,7 +415,7 @@ function setLevel(slug, skillId, level, reason) {
 module.exports = {
   CODE, ROOT, TOPICS, LEARNER, REPORTS, FEEDBACK, CONFIG, STATE, INBOX, PORT,
   ensureDir, readText, readJSON, writeJSON, localDate, config, ensureHome, commitData,
-  listTopics, topicDir, slugify, createTopic, readPages, PAGE_NAME, MEDIA_NAME, mediaDir, readMedia, loadTopicMeta, saveTopicMeta,
+  listTopics, topicDir, slugify, createTopic, readPages, PAGE_NAME, readTermPages, termPagePath, termPagesDir, termSlug, TERM_PAGE, pageForTerm, MEDIA_NAME, mediaDir, readMedia, loadTopicMeta, saveTopicMeta,
   walkSkills, findSkill, leafSkills, parseGlossary, readGlossary, addTerm, META_KEYS,
   NOTE_KINDS, readNotes, addNote, closeNote, parseDue, appendLog,
   journalDir, journalFiles, readJournal, readJournalFile, appendJournal, findEntry, lastEntry, pendingQuestion,

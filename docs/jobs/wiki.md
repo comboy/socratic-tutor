@@ -1,7 +1,8 @@
 # Wiki writer
 
-Turns what was taught into readable wiki pages, so the learner can re-read a whole skill instead
-of hunting through the conversation. Writes for the learner, from the messages that taught them.
+Turns what was taught into readable wiki pages, so the learner can re-read a whole skill (pages/)
+or everything they know about one term (terms/) instead of hunting through the conversation.
+Writes for the learner, from the messages that taught them.
 
 ## Steps
 
@@ -24,6 +25,14 @@ of hunting through the conversation. Writes for the learner, from the messages t
    Follow the learner's taste (data/learner/profile.md): concrete numbers over analogies, define
    terms, honest about what's empirical. Don't invent content beyond what was taught, except to
    connect it; mark anything new as such.
-4. `bin/learn check <topic>` (fix every problem), then `bin/learn commit "wiki: …"`.
+4. **Term pages** (`terms/<name>.md`, format in `docs/formats.md`): `bin/learn term pages <topic>`
+   lists the pages that exist (and which are stale: the term was mentioned since the last update)
+   and the most-mentioned terms without one. Bring up to 2 stale pages up to date, then write up to
+   4 new ones for the most-mentioned terms, prioritising terms of the current focus area. For
+   each: `bin/learn term show <term>` (path, current page), the messages that mention it
+   (`bin/learn grep "<term>" --topic <topic>`, then `show <id>`), the learner's answers about it.
+   Write what the learner knows, linked to the messages, with the lesson's own pictures; end with
+   a `:::fog` list of what's not covered yet.
+5. `bin/learn check <topic>` (fix every problem), then `bin/learn commit "wiki: …"`.
 
 Report: which pages you wrote, one line each.

@@ -1,6 +1,7 @@
 // `bin/learn check [topic]`: validate a topic's files after editing them by hand.
 // Catches what the UI would silently show wrong: bad JSON, unknown skill ids, broken
-// msg:/term:/skill:/map:/wiki: links, media: images, map edges to missing nodes, glossary metadata typos.
+// msg:/term:/skill:/map:/wiki: links, media: images, map edges to missing nodes, glossary metadata typos,
+// term pages (terms/<name>.md) that no term owns.
 // linkChecker() is also used by `bin/learn post` to refuse broken links before they're posted.
 'use strict';
 const fs = require('fs');
@@ -113,6 +114,22 @@ function checkTopic(slug) {
   links('progress.md', S.readText(file('progress.md'), ''));
   for (const n of map?.nodes || []) links(`map node ${n.id}`, n.desc);
   for (const p of S.readPages(slug)) links(`pages/${p.name}.md`, p.text);
+  // terms/<name>.md: one page per glossary term, named after the term or an alias (termSlug)
+  try {
+    for (const f of fs.readdirSync(file('terms'))) {
+      const n = f.normalize('NFC');
+      if (!(n.endsWith('.md') && S.TERM_PAGE.test(n.slice(0, -3)))) warn('terms/', `${f}: not shown (term pages are <name>.md, lower case, words joined by "-")`);
+    }
+  } catch {}
+  const slugs = new Map(); for (const g of glossary) for (const f of [g.term, ...g.aliases]) if (!slugs.has(S.termSlug(f))) slugs.set(S.termSlug(f), g.term);
+  const termPages = S.readTermPages(slug);
+  const shown = new Map(glossary.map(g => [g.term, S.pageForTerm(g, termPages)]));   // the term's own name wins over an alias
+  for (const p of termPages) {
+    const owner = slugs.get(p.name);
+    if (!owner) warn(`terms/${p.name}.md`, `no glossary term or alias is called that (expected terms/<termSlug(term)>.md, e.g. "KV cache" -> kv-cache.md), so it is not shown`);
+    else if (shown.get(owner) !== p) warn(`terms/${p.name}.md`, `"${owner}" already has terms/${shown.get(owner).name}.md; only that one is shown`);
+    links(`terms/${p.name}.md`, p.text);
+  }
   // old messages can't be fixed any more, so broken links in them are only warnings
   for (const e of S.readJournal(slug)) if (e.role === 'tutor' && e.text) for (const p of check(e.text)) warn(`message ${e.id}`, `broken link ${p.type}:${p.id} (${p.why})`);
   return { problems, warnings };

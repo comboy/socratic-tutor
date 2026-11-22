@@ -16,6 +16,7 @@ never contains any. Layout:
 | `topics/<slug>/cheatsheet.md` | reference sheet (pipeline, formulas), a wiki tab | you |
 | `topics/<slug>/map.json` | concept map: how the subject works, as far as the learner knows | you (or a subagent) |
 | `topics/<slug>/pages/<name>.md` | standalone wiki pages (worked examples, interactive walkthroughs) | you, or the wiki job |
+| `topics/<slug>/terms/<name>.md` | a glossary term's own page: what the learner knows about it | you (a subagent), or the wiki job |
 | `topics/<slug>/tags.json` | extra skill tags for old journal entries | you |
 | `topics/<slug>/media/` | downloaded images + `index.json` (author, licence, source) | `bin/learn image` |
 | `topics/<slug>/journal/YYYY-MM-DD.jsonl` | every message both ways, grades, level changes | `bin/learn` only, never by hand |
@@ -38,11 +39,13 @@ Standard GitHub-flavoured markdown, plus:
     Why would post-norm weaken the residual benefit?
     :::
 
-    :::recap         (also: note, warn, insight, details <Title>)
+    :::recap         (also: note, warn, insight, fog, details <Title>)
     …
     :::
 
-`details` is collapsed by default. Use it for deeper dives the learner can open.
+`details` is collapsed by default. Use it for deeper dives the learner can open. `fog` is drawn
+faded with a dashed border, labelled "Not covered yet": what lies beyond what the learner has
+learned (mainly at the end of a term page, see `terms/` below).
 
 **Math (KaTeX)**: `$inline$` and `$$display$$`. Use `\k{key}{tex}` to tag a part of a
 formula with a highlight key, e.g. `$$\k{s}{s_j} = \k{q}{q}\cdot \k{k}{k_j}$$`.
@@ -66,6 +69,7 @@ Use it to connect prose ↔ formula ↔ matrix rows ↔ diagram nodes.
 - `[text](skill:6.3)`, `[text](map:attention)`: skill page, concept-map node.
 - `[text](wiki:glossary)`, `wiki:sessions`, `wiki:session/2026-11-13`, `wiki:home`, `wiki:cheatsheet`, `wiki:you`: wiki pages.
   `wiki:pages` lists the topic's standalone pages and `wiki:page/<name>` opens one (see `pages/` below).
+  `wiki:term/<term>` opens a term's full page in the wiki (`term:` opens it in the side panel).
 
 **Tips: hover notes for one message**: `[template strand](tip:the strand being read, the one being copied)`.
 The phrase reads as ordinary text; hovering it shows the note in the same card as a glossary
@@ -274,6 +278,33 @@ under Wiki → Pages and linkable as `[text](wiki:page/<name>)`.
 - The browser updates when the file changes. `bin/learn check` validates its links and warns
   about `wiki:page/<name>` links to pages that don't exist.
 
+### terms/<name>.md (optional): a page per glossary term
+
+A glossary term's own wiki page: "Wikipedia in terms the learner understands". It gathers what
+the learner knows about the term, from every lesson that touched it, so they can reopen one page
+instead of hunting through messages. The UI shows it on the term's page (wiki and side panel)
+under "What you know", between the definition and the automatic sections: "Built from" (`parts:`),
+related terms, "Linked from" (terms built from it or mentioning it, pages mentioning it, map nodes
+listing it), "Pictures from your lessons" (images in messages whose caption names the term) and
+"Explained in" (every message).
+
+- `<name>` is the term in lower case with words joined by `-` ("KV cache" → `kv-cache.md`,
+  "5′ cap" → `5-cap.md`), or the same for one of its aliases. `bin/learn term show <term>`
+  prints the exact path (and the page, if there is one); `bin/learn term pages` lists the terms
+  that have one and the most-mentioned terms that don't.
+- No title line: the term is the title (a leading `# …` line is dropped). Don't repeat the short
+  definition either; it's shown right above. Start with what the learner knows beyond it.
+- Write only what the learner has actually covered, in their words where possible, and link the
+  explanations (`[explained](msg:…)`). Same markdown as messages: images (`media:`), `viz` blocks
+  (re-use the lesson's drawing, so the page shows the picture they learned it from), formulas,
+  highlights, `term:`/`skill:`/`wiki:` links. Sections are up to you; a few short ones beat one
+  long one ("What it does", "How it works", "Where you've met it", "Careful").
+- End with a `:::fog` block: a few bullets on what there is still to learn about it (with the
+  skill it belongs to), faded, so the page shows the edge of what they know.
+- Keep it current: when a lesson adds something about the term, add it to the page.
+  `bin/learn term pages` marks pages whose term was mentioned since the page was last updated.
+- `bin/learn check` validates the links, and warns about a file that no term or alias owns.
+
 ### tags.json (optional)
 
 `{"2026-11-12.27": ["4", "4.1"], ...}`: skill tags for journal entries that were posted
@@ -290,6 +321,7 @@ see: logits, temperature
 Turns any list of scores into positive weights that sum to 1: e^x / Σe^x.
 
 Optional longer explanation (any markdown, viz blocks allowed). Shown on the term's page.
+(For more than a paragraph, write the term's own page instead: terms/<name>.md, above.)
 
 ## PPO
 full: **P**roximal **P**olicy **O**ptimization

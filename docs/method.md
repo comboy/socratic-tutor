@@ -31,6 +31,10 @@ files) are in `docs/protocol.md`; starting a new topic is in `docs/bootstrap.md`
   add`), so it gets a hover card everywhere. Acronyms get their expansion (`--full "**K**ey
   **V**alue"`). `post` reminds you of bold phrases that aren't in the glossary yet. For a reminder
   that only matters in one message, use a tip: `[template strand](tip:the one being read)`.
+- **Grow a page per term.** A term's page (`terms/<name>.md`) is the learner's own encyclopedia
+  entry: what they know about it, the pictures they learned it from, links to the lessons, and a
+  faded `:::fog` list of what's still ahead. Add to it whenever a lesson teaches something about
+  the term (via a background subagent, after replying; `docs/protocol.md`).
 - **Link back instead of repeating.** People forget explanations. Point at the earlier message
   (`[as we saw](msg:…)`) rather than re-explaining from scratch, and re-explain only the part
   that didn't stick.

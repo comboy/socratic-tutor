@@ -76,3 +76,16 @@ export function termMatcher(entries) {
   if (entries) cache.set(entries, api);
   return api;
 }
+
+// The file name of a term's wiki page (topics/<t>/terms/<name>.md): lower case, words joined by
+// "-" ("KV cache" -> "kv-cache", "5′ cap" -> "5-cap"). A page may also be named after an alias.
+export function termSlug(form) {
+  return String(form || '').normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '');
+}
+export const TERM_PAGE = /^[\p{Ll}\p{Lo}\p{N}][\p{Ll}\p{Lo}\p{N}-]*$/u;
+// The page for a glossary entry from [{ name, text, … }], by its term's name, else an alias's.
+export function pageForTerm(entry, pages) {
+  if (!entry || !pages?.length) return null;
+  for (const f of [entry.term, ...(entry.aliases || [])]) { const n = termSlug(f), p = pages.find(x => x.name === n); if (p) return p; }
+  return null;
+}

@@ -5,6 +5,7 @@ import { plain, md } from './md.js';
 import { icon } from './icons.js';
 import { app, go, learner } from './app.js';
 import { termPanel, skillPanel, occurrences, group, sortedGlossary, sortToggle, termText, introOf, noteRow, NOTE_KIND, dependencies, openDock } from './panels.js';
+import { pageForTerm } from './terms.js';
 import * as learnView from './learn.js';
 import { messageNode } from './learn.js';
 
@@ -32,6 +33,12 @@ function pageSummary(text) {
   const para = String(text).replace(/^#.*$/m, '').split(/\n\s*\n/).map(s => s.trim()).find(s => s && !/^(```|:::|#|\$\$)/.test(s));
   return plain(para || '', 220);
 }
+// term pages (terms/<name>.md) with their glossary entries, most recently updated first
+function termPages() {
+  const G = app.topic.glossary;
+  return (app.topic.termPages || []).map(p => ({ p, t: G.find(g => pageForTerm(g, [p])) || null }))
+    .sort((a, b) => b.p.mtime.localeCompare(a.p.mtime));
+}
 function skillChip(id) {
   const sk = skillById(app.topic.meta, id);
   return h('button', { class: 'chip chip-skill chip-btn l' + Math.round(sk ? levelOf(sk.node) : 0), text: id, title: sk?.name || 'unknown skill', onclick: e => { e.stopPropagation(); go('wiki', 'skill', id); } });
@@ -52,6 +59,16 @@ const P = {
     }
     if (!pages?.length) list.append(h('div', { class: 'empty-row', text: pages ? 'No pages yet. The tutor can add standing reference pages as topics/<slug>/pages/<name>.md.' : RESTART }));
     el.append(sheet(group(['Pages', h('span', { class: 'count', text: String(pages?.length || 0) }), h('span', { class: 'spacer' }), h('span', { class: 'group-note', text: 'standing reference pages, with live diagrams' })]), list));
+    const tp = termPages();
+    const tl = h('div', { class: 'page-list term-pages' });
+    for (const { p, t } of tp) {
+      tl.append(h('button', { class: 'page-row' + (t ? '' : ' missing'), onclick: () => t && go('wiki', 'term', t.term) },
+        h('div', { class: 'page-title' }, icon('book'), h('b', { text: t ? t.term : p.name }), t?.full ? h('span', { class: 'gl-full-line', html: md(t.full, { inline: true }) }) : null,
+          h('span', { class: 'spacer' }), h('span', { class: 'muted small', text: t ? fmtDate(p.mtime.slice(0, 10)) : 'no glossary term with this name' })),
+        h('div', { class: 'page-sum', text: pageSummary(p.text) })));
+    }
+    if (!tp.length) tl.append(h('div', { class: 'empty-row', text: app.topic.termPages ? 'No term pages yet. A glossary term gets its own page (terms/<name>.md) once there’s more to say than its definition.' : RESTART }));
+    el.append(sheet(group(['Term pages', h('span', { class: 'count', text: String(tp.length) }), h('span', { class: 'spacer' }), h('span', { class: 'group-note', text: 'what you know about a term, gathered on one page; newest first' })]), tl));
   },
   page(el, name) {
     const pg = (app.topic.pages || []).find(p => p.name === name);
@@ -80,7 +97,8 @@ const P = {
         const sk = t.skill ? skillById(app.topic.meta, t.skill) : null;
         const n = occurrences(t).length;
         list.append(h('div', { class: 'gl-row' },
-          h('button', { class: 'gl-name', onclick: () => go('wiki', 'term', t.term) }, lvChip(sk ? levelOf(sk.node) : 0), t.term),
+          h('button', { class: 'gl-name', onclick: () => go('wiki', 'term', t.term) }, lvChip(sk ? levelOf(sk.node) : 0), t.term,
+            pageForTerm(t, app.topic.termPages) ? h('span', { class: 'gl-has-page', title: 'Has its own page' }, icon('page')) : null),
           h('div', { class: 'gl-def-col' },
             t.full ? h('div', { class: 'gl-full-line', html: md(t.full, { inline: true }) }) : null,
             rich(t.short, 'gl-def hl-scope', { terms: false })),
@@ -200,8 +218,10 @@ function overview(el) {
   }), !days.length ? h('div', { class: 'empty-row', text: 'No sessions yet.' }) : null)));
   // pages + newest terms
   const pages = app.topic.pages || [];
+  const tps = termPages().filter(x => x.t).slice(0, Math.max(3, 8 - Math.min(pages.length, 6)));
   grid.append(group([icon('page'), 'Pages'], h('div', { class: 'ov-list' }, ...pages.slice(0, 6).map(pg => h('button', { class: 'ov-row', onclick: () => go('wiki', 'page', pg.name) }, icon('page'), h('span', { class: 'ov-name', text: pg.title }))),
-    !pages.length ? h('div', { class: 'empty-row', text: 'No pages yet. The wiki job (I’m away) writes them from what you covered.' }) : null)));
+    ...tps.map(({ t }) => h('button', { class: 'ov-row', title: 'Term page', onclick: () => go('wiki', 'term', t.term) }, icon('book'), h('span', { class: 'ov-name', text: t.term }), h('span', { class: 'muted small', text: 'term' }))),
+    !pages.length && !tps.length ? h('div', { class: 'empty-row', text: 'No pages yet. The wiki job (I’m away) writes them from what you covered.' }) : null)));
   const newest = sortedGlossary('new').slice(0, 10);
   grid.append(group([icon('book'), 'Newest terms'], h('div', { class: 'group-b chips' }, ...newest.map(({ t }) => h('button', { class: 'chip chip-btn', text: t.term, onclick: () => go('wiki', 'term', t.term) })),
     !newest.length ? h('span', { class: 'muted', text: 'None yet.' }) : null)));

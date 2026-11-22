@@ -84,6 +84,7 @@ bin/learn note done <id> ["outcome"]  ·  note list [--all]
 bin/learn summary [t] <skill> "- bullet with (msg:…) links"   append to a skill's summary
 bin/learn term add [t] "name" --short "…" [--skill id] [--full …] [--aliases a,b] [--parts …] [--see …] [--refs …] [--body "…" | --body - < file]
 bin/learn term show [t] <name>  ·  terms [t]  ·  terms-missing [t] [--last n | --all]   bold phrases not in the glossary
+bin/learn term pages [t]                 terms with their own page (terms/<name>.md), and the most-mentioned ones without
 bin/learn tree [t]                       print the skill tree as an outline · tree [t] --set < outline  (replace it)
 bin/learn log [t] "what happened"        append to today's entry in log.md
 bin/learn feedback "remark"              a note for the builder about the app or the process (not the lesson)
@@ -431,8 +432,10 @@ commands.summary = () => {
   console.log(`${topic} ${id} summary: ${s.summary.split('\n').length} line(s)`);
 };
 
+// a path relative to the working directory when it's inside it (shorter to read), else absolute
+const rel = p => { const r = path.relative(process.cwd(), p); return r && !r.startsWith('..') ? r : p; };
 commands.term = () => {
-  const f = flags(argv, { topic: 'string', skill: 'string', short: 'string', full: 'string', aliases: 'string', parts: 'string', see: 'string', refs: 'string', size: 'string', body: 'string' });
+  const f = flags(argv, { topic: 'string', skill: 'string', short: 'string', full: 'string', aliases: 'string', parts: 'string', see: 'string', refs: 'string', size: 'string', body: 'string', n: 'string' });
   const sub = f._.shift();
   const topic = topicOf(f);
   const name = f._.join(' ');
@@ -442,13 +445,31 @@ commands.term = () => {
     if (!g) die(`no term "${name}"`);
     console.log([`## ${g.term}`, g.full && `full: ${g.full}`, g.aliases.length && `aliases: ${g.aliases.join(', ')}`, g.skills.length && `skill: ${g.skills.join(', ')}`,
       g.parts.length && `parts: ${g.parts.join(', ')}`, g.see.length && `see: ${g.see.join(', ')}`, g.refs.length && `refs: ${g.refs.join(', ')}`, g.short, g.body && '\n' + g.body].filter(Boolean).join('\n'));
+    const pg = S.pageForTerm(g, S.readTermPages(topic));
+    console.log(pg ? `\npage: ${rel(path.join(S.termPagesDir(topic), pg.name + '.md'))} (updated ${pg.mtime.slice(0, 10)}, ${pg.text.length} chars)\n\n${pg.text}`
+      : `\npage: none yet (write it as ${rel(S.termPagePath(topic, g.term))}; docs/formats.md, "terms/")`);
+  } else if (sub === 'pages') {
+    // which terms have a page, and the most-mentioned ones that don't (candidates for one)
+    const G = S.readGlossary(topic), P = S.readTermPages(topic);
+    const { termMatcher } = require('../web/js/terms.js');
+    const m = termMatcher(G), count = new Map(), last = new Map();
+    for (const e of S.readJournal(topic)) if (e.role === 'tutor' && e.kind === 'message' && e.text)
+      for (const term of new Set(m.find(e.text.replace(/```[\s\S]*?```|`[^`\n]*`/g, ' ')).map(x => x.entry.term))) { count.set(term, (count.get(term) || 0) + 1); last.set(term, e.ts); }
+    const withP = G.map(g => ({ g, p: S.pageForTerm(g, P) })).filter(x => x.p);
+    console.log(`${topic}: ${withP.length} term page(s) in ${rel(S.termPagesDir(topic))}/`);
+    for (const { g, p } of withP) {
+      const stale = last.get(g.term) && last.get(g.term) > p.mtime;
+      console.log(`  ${g.term.padEnd(28)} ${p.name}.md  updated ${p.mtime.slice(0, 10)}${stale ? `  (mentioned since: last ${last.get(g.term).slice(0, 10)})` : ''}`);
+    }
+    const cand = G.filter(g => !S.pageForTerm(g, P) && count.get(g.term)).sort((a, b) => count.get(b.term) - count.get(a.term)).slice(0, Number(f.n) || 15);
+    if (cand.length) console.log(`Most-mentioned terms without a page (messages): ${cand.map(g => `${g.term} (${count.get(g.term)})`).join(', ')}`);
   } else if (sub === 'add') {
     if (f.skill) for (const s of list(f.skill)) if (!S.findSkill(S.loadTopicMeta(topic), s)) die(`no skill ${s} in ${topic}`);
     const body = f.body === '-' ? readStdin() : f.body || '';
     S.addTerm(topic, { term: name, short: f.short, body, full: f.full, skill: f.skill, aliases: list(f.aliases), parts: list(f.parts), see: list(f.see), refs: list(f.refs), size: f.size });
     const missing = list(f.parts).filter(p => !S.readGlossary(topic).some(g => [g.term, ...g.aliases].some(x => x.toLowerCase() === p.toLowerCase())));
     console.log(`added "${name}" to ${topic}/glossary.md${missing.length ? ` (parts not in the glossary yet: ${missing.join(', ')})` : ''}`);
-  } else die('usage: term add|show …');
+  } else die('usage: term add|show|pages …');
 };
 // Real images in the topic (app/media.js): download from Wikimedia Commons, or add a local file,
 // into topics/<t>/media/ with author and licence; shown with ![caption](media:<file>).

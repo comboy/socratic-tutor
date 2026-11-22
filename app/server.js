@@ -85,6 +85,7 @@ function topicPayload(slug) {
     progress: S.readText(path.join(d, 'progress.md'), ''),
     map: safe(() => S.readJSON(path.join(d, 'map.json'), null)),
     pages: S.readPages(slug),
+    termPages: S.readTermPages(slug),
     media: S.readMedia(slug),
     notes: safe(() => S.readNotes(slug)),
     log: S.readText(path.join(d, 'log.md'), ''),

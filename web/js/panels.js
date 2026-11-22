@@ -2,7 +2,7 @@
 // message, map node. The same panels render full-width in the wiki. Also: hover-card content.
 import { h, $, store, levelOf, skillById, descendants, lvChip, meter, fmtLevel, LEVEL_NAMES, fmtDate, shortId } from './util.js';
 import { rich } from './rich.js';
-import { termMatcher } from './terms.js';
+import { termMatcher, pageForTerm } from './terms.js';
 import { plain, md } from './md.js';
 import { icon } from './icons.js';
 import { app, go, renderLeft } from './app.js';
@@ -62,7 +62,7 @@ function dockGlossary(body) {
       const lv = sk ? levelOf(sk.node) : 0;
       list.append(h('button', { class: 'gl-item', onclick: () => openDock('term', t.term) },
         lvChip(lv, sk ? `${sk.id} ${sk.name}: level ${fmtLevel(lv)}` : 'no skill'),
-        h('span', { class: 'gl-term' }, t.term, t.full ? h('span', { class: 'gl-full', text: plain(t.full, 80) }) : null),
+        h('span', { class: 'gl-term' }, t.term, t.full ? h('span', { class: 'gl-full', text: plain(t.full, 80) }) : null, termPage(t) ? h('span', { class: 'gl-has-page', title: 'Has its own page' }, icon('page')) : null),
         h('span', { class: 'gl-short', text: plain(t.short, 160) })));
     }
     if (!items.length) list.append(h('div', { class: 'empty-row', text: 'No matching terms.' }));
@@ -151,6 +151,35 @@ export function occurrences(t) {
   }
   return occAll.map.get(t.term) || [];
 }
+// The term's own wiki page (topics/<t>/terms/<name>.md), or null.
+export function termPage(t) { return pageForTerm(t, app.topic.termPages); }
+// What points at each term, for the "Linked from" box: other terms that are built from it
+// (parts:), list it under see:, or mention it in their definition or page; standalone pages that
+// mention it. And images in tutor messages whose caption names it. Computed for all terms at once.
+let linksAll = { key: null, map: null };
+export function linkedFrom(t) {
+  const T = app.topic, key = [T.glossary, T.pages, T.termPages, T.journal, T.journal.length];
+  if (!linksAll.key || key.some((x, i) => x !== linksAll.key[i])) {
+    const m = termMatcher(T.glossary), map = new Map();
+    const slot = term => map.get(term) || map.set(term, { parts: new Set(), terms: new Set(), pages: new Set(), pics: [] }).get(term);
+    const prose = s => String(s || '').replace(/```[\s\S]*?```|`[^`\n]*`|\$\$[\s\S]*?\$\$/g, ' ');
+    const mentions = text => new Set(m.find(prose(text)).map(x => x.entry.term));
+    for (const g of T.glossary) {
+      for (const p of g.parts) { const e = termEntry(p); if (e && e !== g) slot(e.term).parts.add(g); }
+      for (const p of g.see) { const e = termEntry(p); if (e && e !== g) slot(e.term).terms.add(g); }
+      for (const term of mentions(g.short + '\n' + g.body + '\n' + (termPage(g)?.text || ''))) if (term !== g.term) slot(term).terms.add(g);
+    }
+    for (const pg of T.pages || []) for (const term of mentions(pg.text)) slot(term).pages.add(pg);
+    for (const e of T.journal) {
+      if (e.role !== 'tutor' || e.kind !== 'message' || !e.text) continue;
+      for (const im of prose(e.text).matchAll(/!\[([^\]\n]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g))
+        for (const term of mentions(im[1])) slot(term).pics.push({ alt: im[1], src: im[2], msg: e.id });
+    }
+    linksAll = { key, map };
+  }
+  const r = linksAll.map.get(t.term) || { parts: new Set(), terms: new Set(), pages: new Set(), pics: [] };
+  return { parts: [...r.parts], terms: [...r.terms].filter(g => !r.parts.has(g)), pages: [...r.pages], pics: r.pics };
+}
 export function snippet(text, needle, n = 180) {
   const p = plain(text, 100000);
   const i = needle ? p.toLowerCase().indexOf(needle.toLowerCase()) : -1;
@@ -165,15 +194,35 @@ export function termPanel(body, name, { full = false } = {}) {
   if (!t) { body.append(h('div', { class: 'empty-row', text: `No glossary entry for “${name}”.` })); return; }
   const sk = t.skill ? skillById(app.topic.meta, t.skill) : null;
   const lv = sk ? levelOf(sk.node) : 0;
+  const page = termPage(t);
   body.append(h('div', { class: 'title-block' },
     h('h2', {}, t.term, t.full ? h('span', { class: 'term-full', html: '— ' + md(t.full, { inline: true }) }) : null),
     h('div', { class: 'title-meta' },
       sk ? h('button', { class: 'chip chip-btn', onclick: () => openDock('skill', sk.id) }, lvChip(lv), `${sk.id} ${sk.name}`) : null,
+      ...t.skills.slice(1).map(id => { const s2 = skillById(app.topic.meta, id); return s2 ? h('button', { class: 'chip chip-btn', title: s2.name, onclick: () => openDock('skill', s2.id) }, lvChip(levelOf(s2.node)), s2.id) : null; }),
       t.size ? h('span', { class: 'chip', title: 'size in Llama-2-7B', text: t.size }) : null,
       t.aliases.length ? h('span', { text: 'also: ' + t.aliases.join(', ') }) : null)));
-  body.append(group('Definition', h('div', { class: 'group-b' }, rich(t.short, 'def hl-scope'), t.body ? rich(t.body, 'hl-scope') : null)));
+  // on its own page a term isn't a link to itself
+  const own = el => { for (const x of el.querySelectorAll('.term')) if (termEntry(x.dataset.term) === t) x.replaceWith(x.textContent); return el; };
+  body.append(group('Definition', h('div', { class: 'group-b' }, own(rich(t.short, 'def hl-scope')), t.body ? own(rich(t.body, 'hl-scope')) : null)));
+  // the term's own page: what the learner knows about it, written from their lessons
+  if (page) body.append(h('div', { class: 'group term-page' }, h('div', { class: 'group-h' }, icon('page'), 'What you know', h('span', { class: 'spacer' }),
+      h('span', { class: 'group-note', title: `topics/${app.topic.slug}/terms/${page.name}.md`, text: `written from your lessons · ${fmtDate(page.mtime.slice(0, 10))}` })),
+    h('div', { class: full ? 'sheet-pad' : 'group-b' }, own(rich(page.text, 'wiki-md term-md hl-scope')))));
+  else if (full) body.append(group([icon('page'), 'What you know'], h('div', { class: 'empty-row', text: 'No page for this term yet. The tutor writes one once there’s more to say than the definition; the wiki job (I’m away) fills in the rest.' })));
   if (t.parts.length) body.append(group(['Built from', h('span', { class: 'count', text: String(t.parts.length) })], h('div', { class: 'parts' }, ...t.parts.map(partRow))));
   if (t.see.length) body.append(group('Related terms', h('div', { class: 'group-b chips' }, ...t.see.map(s => h('button', { class: 'chip chip-btn' + (termEntry(s) ? '' : ' missing'), text: s, onclick: () => openDock('term', s) })))));
+  const L = linkedFrom(t);
+  const nodes = (app.topic.map?.nodes || []).filter(n => (n.terms || []).some(x => termEntry(x) === t));
+  const nLinks = L.parts.length + L.terms.length + L.pages.length + nodes.length;
+  if (nLinks) body.append(group(['Linked from', h('span', { class: 'count', text: String(nLinks) })], h('div', { class: 'group-b links-from' },
+    L.parts.length ? h('div', { class: 'deps-row' }, h('span', { class: 'deps-label', text: 'Part of' }), ...L.parts.map(termChip)) : null,
+    L.terms.length ? h('div', { class: 'deps-row' }, h('span', { class: 'deps-label', text: 'Terms' }), ...L.terms.map(termChip)) : null,
+    L.pages.length ? h('div', { class: 'deps-row' }, h('span', { class: 'deps-label', text: 'Pages' }), ...L.pages.map(pg => h('button', { class: 'chip chip-btn', onclick: () => go('wiki', 'page', pg.name) }, icon('page'), pg.title))) : null,
+    nodes.length ? h('div', { class: 'deps-row' }, h('span', { class: 'deps-label', text: 'On the map' }), ...nodes.map(n => h('button', { class: 'chip chip-btn', title: n.sub || '', onclick: () => go('map', n.id) }, icon('map'), n.label))) : null)));
+  if (L.pics.length) body.append(group(['Pictures from your lessons', h('span', { class: 'count', text: String(L.pics.length) })], h('div', { class: 'term-pics' },
+    ...L.pics.slice(0, full ? 24 : 6).map(p => h('div', { class: 'term-pic' }, rich(`![${p.alt}](${p.src})`, 'term-pic-img'),
+      h('button', { class: 'linkish small', text: 'from ' + shortId(p.msg), title: 'Open the message it was in', onclick: () => openDock('msg', p.msg) }))))));
   const occ = occurrences(t);
   const refs = t.refs.map(id => app.d.byId.get(id)).filter(Boolean);
   const list = [...refs.map(e => ({ e, best: true })), ...occ.filter(o => !t.refs.includes(o.e.id)).map(o => ({ e: o.e }))];
@@ -184,7 +233,11 @@ export function termPanel(body, name, { full = false } = {}) {
       !list.length ? h('div', { class: 'empty-row', text: 'Not discussed in any message yet.' }) : null)));
   body.append(h('div', { class: 'actions' },
     h('button', { class: 'btn', onclick: () => learn.prefillAsk(`Can you re-explain “${t.term}”? I forgot how it works.`) }, icon('ask'), 'Explain this again'),
-    full ? null : h('button', { class: 'btn', onclick: () => go('wiki', 'term', t.term) }, icon('wiki'), 'Open in wiki')));
+    full ? null : h('button', { class: 'btn', onclick: () => go('wiki', 'term', t.term) }, icon('wiki'), page ? 'Open its page' : 'Open in wiki')));
+}
+function termChip(g) {
+  const sk = g.skill ? skillById(app.topic.meta, g.skill) : null;
+  return h('button', { class: 'chip chip-btn', title: plain(g.short, 160), onclick: () => openDock('term', g.term) }, lvChip(sk ? levelOf(sk.node) : 0), g.term, termPage(g) ? icon('page') : null);
 }
 // a sub-term from `parts:`: level chip, name, its short definition
 function partRow(name) {
@@ -316,7 +369,7 @@ export function hoverCard(t) {
       rich(e.short, 'hc-body hl-scope', { terms: false }),
       e.parts.length ? h('div', { class: 'hc-parts' }, h('span', { class: 'hc-parts-label', text: 'Built from' }),
         ...e.parts.map(p => termEntry(p) ? h('button', { type: 'button', class: 'ref ref-term', 'data-ref': 'term', 'data-id': p, text: p }) : h('span', { class: 'muted', text: p }))) : null,
-      h('div', { class: 'hc-foot', text: `Explained in ${occ.length} message${occ.length === 1 ? '' : 's'} · click for details` }));
+      h('div', { class: 'hc-foot', text: `Explained in ${occ.length} message${occ.length === 1 ? '' : 's'}${termPage(e) ? ' · has its own page' : ''} · click for details` }));
   }
   if (t.dataset.ref === 'msg') {
     const e = app.d.byId.get(t.dataset.id);

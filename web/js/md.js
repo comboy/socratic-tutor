@@ -2,6 +2,7 @@
 //   $math$ / $$math$$ (KaTeX, with \k{key}{tex} highlight keys)
 //   {{text|key}} linked-highlight spans
 //   :::question / :::note / :::recap / :::insight / :::warn / :::details Title  containers
+//   :::fog  what's beyond what the learner has covered, drawn faded ("Not covered yet")
 //   ```viz <type>``` visualization blocks (mounted after insertion via mountViz)
 //   [x](msg:ID) [x](term:T) [x](skill:ID) [x](map:NODE) [x](wiki:PAGE) internal links (spaces allowed)
 //   [x](tip:a note for this message) per-message hover note (spaces and one level of (…) allowed)
@@ -25,8 +26,8 @@ export function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-const CONTAINERS = new Set(['question', 'note', 'recap', 'insight', 'warn', 'details', 'example', 'tip']);
-const LABELS = { question: 'Question', note: 'Note', recap: 'Recap', insight: 'Insight', warn: 'Careful', example: 'Example', tip: 'Tip' };
+const CONTAINERS = new Set(['question', 'note', 'recap', 'insight', 'warn', 'details', 'example', 'tip', 'fog']);
+const LABELS = { question: 'Question', note: 'Note', recap: 'Recap', insight: 'Insight', warn: 'Careful', example: 'Example', tip: 'Tip', fog: 'Not covered yet' };
 
 // Turn ::: containers into HTML blocks marked will pass through (markdown inside still parsed).
 function containers(src) {
@@ -155,6 +156,7 @@ export function plain(src, n = 200) {
   const t = String(src || '')
     .replace(/```[\s\S]*?```/g, ' [code] ')
     .replace(/\$\$[\s\S]*?\$\$/g, ' [formula] ')
+    .replace(/\$([^\s$](?:[^$\n]*?[^\s$\\])?)\$(?!\d)/g, '$1')
     .replace(/\{\{([^|}]+)(\|[^}]*)?\}\}/g, '$1')
     .replace(/!?\[([^\]]*)\]\((?:[^()]|\([^()]*\))+\)/g, '$1')
     .replace(/^:::.*$/gm, '')

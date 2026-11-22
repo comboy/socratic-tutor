@@ -173,6 +173,23 @@ async function main() {
     assert(/pages\/zz-bad\.md: broken link wiki:page\/nope/.test(out) && !/residual-stream/.test(out) && !/wiki:pages/.test(out), out);
   });
 
+  await test('term pages: served with the topic, shown by term show / term pages, checked', async () => {
+    const t = await api('/api/topic/demo');
+    const tp = t.termPages.find(p => p.name === 'temperature');
+    assert(tp && !/^# /.test(tp.text) && /^Temperature \$T\$ is/.test(tp.text) && /:::fog/.test(tp.text), JSON.stringify(t.termPages).slice(0, 300));
+    const show = learn('term', 'show', 'demo', 'temperature');
+    assert(/^page: \S*topics\/demo\/terms\/temperature\.md \(updated \d{4}-\d{2}-\d{2}, \d+ chars\)$/m.test(show) && /Top-k and top-p/.test(show), show);
+    assert(/page: none yet \(write it as \S*topics\/demo\/terms\/kv-cache\.md/.test(learn('term', 'show', 'demo', 'KV cache')), 'no page yet');
+    const pages = learn('term', 'pages', 'demo');
+    assert(/^  temperature +temperature\.md +updated/m.test(pages) && /without a page \(messages\): token \(\d+\)/.test(pages), pages);
+    const dir = path.join(HOME, 'topics/demo/terms'), tmp = ['zz-nothing.md', 'softmax.md', 'soft-max.md', 'Bad Name.md'];
+    fs.writeFileSync(path.join(dir, tmp[0]), 'x'); fs.writeFileSync(path.join(dir, tmp[1]), '[ok](term:temperature)'); fs.writeFileSync(path.join(dir, tmp[2]), '[gone](term:nope)'); fs.writeFileSync(path.join(dir, tmp[3]), 'x');
+    const out = learn('check', 'demo');
+    for (const f of tmp) fs.rmSync(path.join(dir, f));
+    assert(/terms\/zz-nothing\.md: no glossary term or alias is called that/.test(out) && /terms\/soft-max\.md: "softmax" already has terms\/softmax\.md/.test(out)
+      && /terms\/soft-max\.md: broken link term:nope/.test(out) && /terms\/: Bad Name\.md: not shown/.test(out) && !/temperature/.test(out), out);
+  });
+
   if (!chromePath()) { console.log('\n(Chrome not found: skipping UI tests. Set CHROME=…)'); return; }
   page = await launch({ headed: opt.headed, outDir: OUT });
   await page.dark(true);
@@ -339,7 +356,7 @@ async function main() {
     ['wiki sessions', 'demo/wiki/sessions', `document.querySelectorAll('.sess').length >= 3`],
     ['wiki session reader', 'demo/wiki/session/2026-01-06', `document.querySelectorAll('.reader .msg').length > 5`],
     ['wiki tutor notes', 'demo/wiki/notes', `document.querySelector('.notes-md') && document.querySelector('.log-md')`],
-    ['wiki pages', 'demo/wiki/pages', `document.querySelectorAll('.page-row').length === 2`],
+    ['wiki pages', 'demo/wiki/pages', `document.querySelectorAll('.page-list:not(.term-pages) .page-row').length === 2 && document.querySelectorAll('.term-pages .page-row').length === 1`],
     ['wiki page', 'demo/wiki/page/residual-stream', `document.querySelector('.page-md h1')?.textContent.includes('layer by layer') && document.querySelector('.page-md .viz-residual .rs-sgrid')`],
     ['stats', 'demo/stats', `document.querySelectorAll('.tile').length > 2 && document.querySelector('svg')`],
     ['empty topic (learn)', 'cells/learn', `document.querySelector('#center')?.innerText.length > 0`],
@@ -427,6 +444,39 @@ async function main() {
     const heads = await page.eval(`[...document.querySelectorAll('.hovercard .hc-head b')].map(b => b.textContent)`);
     assert(heads.join() === 'BPE,token', 'nested card: ' + heads);
     await page.mouse('mouseMoved', 5, 5); await sleep(600);
+  });
+  await test('term page: its own page (terms/<name>.md) with fog, terms linking here, page markers; in the wiki and the dock', async () => {
+    await page.nav(`${BASE}/#/demo/wiki/term/temperature`, 900);
+    const r = await page.waitFor(`(() => { const p = document.querySelector('.sheet .term-page .term-md'); if (!p || !p.querySelector('.viz svg')) return null;
+      const fog = p.querySelector('.callout-fog');
+      return { h1: p.querySelectorAll('h1').length, h2: p.querySelector('h2')?.textContent, fog: fog?.querySelector('.callout-label').textContent, dashed: fog && getComputedStyle(fog).borderTopStyle,
+        katex: p.querySelectorAll('.katex').length, terms: [...new Set([...p.querySelectorAll('.term')].map(t => t.dataset.term))],
+        heads: [...document.querySelectorAll('.sheet > .group > .group-h')].map(g => [...g.childNodes].filter(n => !n.classList?.contains('count') && !n.classList?.contains('group-note')).map(n => n.textContent).join('').trim()),
+        linked: [...document.querySelectorAll('.sheet .links-from .chip')].map(c => c.textContent) }; })()`, { timeout: 4000 });
+    assert(r.h1 === 0 && r.h2 === 'What changes as you turn it' && r.katex >= 2, 'page body: ' + JSON.stringify(r));
+    assert(r.fog === 'Not covered yet' && r.dashed === 'dashed', 'fog: ' + JSON.stringify(r));
+    assert(r.terms.includes('softmax') && r.terms.includes('sampling'), 'terms linked inside the page: ' + r.terms);
+    assert(r.heads.join() === 'Definition,What you know,Related terms,Linked from,Explained in', 'sections: ' + r.heads);
+    assert(['softmax', 'sampling'].every(x => r.linked.some(c => c.includes(x))), 'linked from: ' + r.linked);
+    assert(await page.eval(`!document.querySelector('.sheet .term-page .term[data-term="temperature"], .sheet .def .term[data-term="temperature"]')`), 'the term links to itself on its own page');
+    await page.shot('term-page');
+    await page.eval(`document.querySelector('.sheet .callout-fog').scrollIntoView({ block: 'center' })`);
+    await page.shot('term-page-fog');
+    await page.nav(`${BASE}/#/demo/wiki/pages`, 900);
+    assert(/^Temperature T is the number/.test(await page.waitFor(`document.querySelector('.term-pages .page-sum')?.textContent`)), 'page summary is plain text');
+    await page.nav(`${BASE}/#/demo/wiki/term/KV%20cache`, 900);
+    assert(/No page for this term yet/.test(await page.waitFor(`document.querySelector('.sheet .group .empty-row')?.textContent`)), 'no-page note');
+    await page.nav(`${BASE}/#/demo/wiki/glossary`, 900);
+    const marked = await page.waitFor(`[...document.querySelectorAll('.gl-row')].filter(r => r.querySelector('.gl-has-page')).map(r => [...r.querySelector('.gl-name').childNodes].find(n => n.nodeType === 3).textContent)`);
+    assert(marked.join() === 'temperature', 'page markers: ' + marked);
+    await page.nav(`${BASE}/#/demo/learn`, 1200);
+    await page.waitFor(`document.querySelector('.thread .term[data-term="temperature"], .thread .ref-term[data-id="temperature"]')`, { timeout: 3000 });
+    await page.eval(`document.querySelector('.thread .term[data-term="temperature"], .thread .ref-term[data-id="temperature"]').id = 'zz-temp'`);
+    await page.click('#zz-temp', 300);
+    const dock = await page.waitFor(`(() => { const d = document.querySelector('#dock'); return d.querySelector('.term-page .callout-fog') && { title: d.querySelector('.title-block h2').textContent,
+      marker: !!d.querySelector('.gl-has-page'), btn: [...d.querySelectorAll('.actions .btn')].map(b => b.textContent).join('|') }; })()`, { timeout: 3000 });
+    assert(dock.title === 'temperature' && /Open its page/.test(dock.btn), 'dock: ' + JSON.stringify(dock));
+    await page.shot('term-page-dock');
   });
   // a message in the (otherwise empty) cells topic exercising the auto-linker, tips and the
   // glossary coverage reminder
@@ -545,6 +595,17 @@ async function main() {
     await page.key('Escape'); await sleep(100);
     assert(await page.eval(`!document.querySelector('.lightbox')`), 'Escape closes the lightbox');
   });
+  await test('term page: pictures from lessons whose caption names the term; a new page file shows up live', async () => {
+    post('cells', '![The cell membrane, up close](media:fig.png)');
+    await page.nav(`${BASE}/#/cells/wiki/term/cell%20membrane`, 1000);
+    const pics = await page.waitFor(`(() => { const p = [...document.querySelectorAll('.sheet .term-pic')]; return p.length && p.map(x => ({ src: x.querySelector('img')?.getAttribute('src'), from: x.querySelector('.linkish').textContent })); })()`, { timeout: 4000 });
+    assert(pics.length === 1 && pics[0].src === '/media/cells/fig.png' && /^from /.test(pics[0].from), 'pictures: ' + JSON.stringify(pics));
+    assert(/organelle/.test(await page.eval(`document.querySelector('.sheet .links-from')?.innerText || ''`)), 'organelle (see: cell membrane) links here');
+    fs.mkdirSync(path.join(HOME, 'topics/cells/terms'), { recursive: true });
+    fs.writeFileSync(path.join(HOME, 'topics/cells/terms/membrane.md'), '# membrane\n\nA page named after an alias, written while the page is open.\n');
+    await page.waitFor(`/named after an alias/.test(document.querySelector('.sheet .term-page')?.innerText || '')`, { timeout: 5000 });
+    assert(/^cells: ok/m.test(learn('check', 'cells')), 'an alias-named page checks out');
+  });
   await test('post refuses a message that ends with a question outside :::question (--force for a rhetorical one)', async () => {
     const n = lastTutor('cells').id;
     const err = (() => { try { post('cells', 'Here is the plan.\n\nShall I start with step 1?'); return ''; } catch (e) { return String(e.stderr); } })();
@@ -560,7 +621,7 @@ async function main() {
     assert(await page.eval(`document.querySelector('.sheet .gl-sort button.on')?.dataset.sort`) === 'alpha', 'default is A–Z');
     await page.click('.sheet .gl-sort [data-sort="new"]');
     const order = `(async () => { const { termEntry, introOf } = await import('/js/panels.js');
-      const names = [...document.querySelectorAll(SEL)].map(b => b.lastChild.textContent.trim());
+      const names = [...document.querySelectorAll(SEL)].map(b => [...b.childNodes].find(n => n.nodeType === 3).textContent.trim());
       return { names, ts: names.map(n => introOf(termEntry(n))?.ts || ''), heads: [...document.querySelectorAll(HEAD)].map(x => x.textContent) }; })()`;
     const check = r => {
       const dated = r.ts.filter(Boolean);
@@ -574,7 +635,7 @@ async function main() {
     assert(await page.eval(`localStorage['learn:glossarySort']`) === '"new"', 'not remembered');
     await page.nav(`${BASE}/#/demo/wiki/glossary`, 900);
     assert(await page.eval(`document.querySelector('.sheet .gl-sort button.on')?.dataset.sort`) === 'new', 'not restored after reload');
-    const dock = await page.eval(order.replace('SEL', `'#dock .gl-item .gl-term'`).replace('HEAD', `'#dock .gl-letter'`).replace('b.lastChild.textContent', 'b.firstChild.textContent'));
+    const dock = await page.eval(order.replace('SEL', `'#dock .gl-item .gl-term'`).replace('HEAD', `'#dock .gl-letter'`));
     check(dock);
     assert(dock.names.join() === wiki.names.join(), 'dock and wiki order differ');
     await page.click('.sheet .gl-sort [data-sort="alpha"]');

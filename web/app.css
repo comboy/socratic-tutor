@@ -396,6 +396,10 @@ body.resizing-v { cursor: row-resize; user-select: none; }
 .callout-warn { border-color: color-mix(in srgb, var(--bad) 50%, var(--line)); } .callout-warn .callout-label { background: color-mix(in srgb, var(--bad) 18%, var(--band)); color: var(--bad); }
 .callout-example .callout-label, .callout-tip .callout-label { background: color-mix(in srgb, var(--warn) 18%, var(--band)); color: var(--warn); }
 .callout-note .callout-label { color: var(--fg); }
+/* :::fog: what lies beyond what the learner has covered; faded like fog on the map and skill pages */
+.callout-fog { border-style: dashed; border-color: var(--faint); background: transparent; color: var(--muted); }
+.callout-fog .callout-label { background: transparent; color: var(--faint); font-style: italic; border-bottom: 1px dashed var(--line); }
+.callout-fog .callout-body { opacity: .85; }
 details.callout summary { cursor: pointer; padding: 6px 12px; font-size: 13px; font-weight: 650; color: var(--fg); list-style: none; display: flex; align-items: center; gap: 6px; background: var(--band); }
 details.callout summary::before { content: "▸"; color: var(--muted); font-size: 11px; width: 10px; }
 details.callout[open] summary::before { content: "▾"; }
@@ -787,6 +791,25 @@ details.callout[open] summary { border-bottom: 1px solid var(--line-soft); }
 .part .lv { grid-row: span 2; align-self: start; margin-top: 1px; }
 .part.missing { cursor: default; opacity: .7; }
 .part.missing .gl-term { font-style: italic; }
+
+/* ============ term pages (terms/<name>.md) ============ */
+.gl-has-page { display: inline-flex; margin-left: 6px; color: var(--r3); vertical-align: -2px; }
+.gl-has-page .ico { width: 13px; height: 13px; }
+.term-page > .group-h .ico { color: var(--r3); }
+.term-md { font-size: 14.5px; }
+.term-md > :first-child { margin-top: 0; }
+.dock .term-md h2 { font-size: 15px; }
+.links-from { display: flex; flex-direction: column; gap: 6px; }
+.links-from .chip .ico { width: 12px; height: 12px; color: var(--muted); }
+.term-pics { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; padding: 10px 12px; }
+.term-pic { display: flex; flex-direction: column; gap: 3px; min-width: 0; border: 1px solid var(--line-soft); border-radius: 6px; padding: 6px; background: var(--well); }
+.term-pic .md { font-size: 11.5px; line-height: 1.3; }
+.term-pic .md p { margin: 0; }
+.term-pic .md img { max-height: 120px; object-fit: contain; margin: 0 auto 2px; padding: 3px; }
+.term-pic .media-fig { margin: 0 auto; }
+.term-pic .media-credit { display: none; }
+.term-pic .linkish { align-self: flex-start; }
+.page-row.missing { opacity: .7; cursor: default; }
 
 /* ============ feedback box (toolbar) ============ */
 .fb-pop { width: 380px; }

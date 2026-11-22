@@ -60,7 +60,7 @@ followed by the text. Kinds:
   bold phrases that aren't in the glossary yet: add the real terms during the bookkeeping.
 
 Markdown extensions, in brief (details and every `viz` type in `docs/formats.md`):
-`:::question` / `:::recap` / `:::note` / `:::warn` / `:::insight` / `:::details Title` callouts ·
+`:::question` / `:::recap` / `:::note` / `:::warn` / `:::insight` / `:::fog` / `:::details Title` callouts ·
 `$…$` and `$$…$$` KaTeX with `\k{key}{tex}` highlight keys · `{{text|key}}` linked highlighting
 (everything sharing a key lights up together, so connect prose ↔ formula ↔ matrix rows) ·
 `[text](msg:2026-11-13.42)`, `term:`, `skill:`, `map:`, `wiki:` links · `[phrase](tip:a hover note for this message only)` ·
@@ -76,12 +76,20 @@ Markdown extensions, in brief (details and every `viz` type in `docs/formats.md`
     bin/learn summary [t] <skill> "- what was covered ([explained](msg:…))"
     bin/learn term add [t] "name" --short "1–2 sentences" [--skill id] [--full "**E**xpansion"] [--aliases a,b] [--parts x,y]
     bin/learn terms-missing [t]                    # bold phrases in recent messages that aren't terms yet
+    bin/learn term pages [t]                       # term pages (terms/<name>.md): which exist, which are stale
     bin/learn image [t] "File:…" · image search "words"   # a Commons image into the topic, for media:
     bin/learn tree [t]  /  tree [t] --set < outline  # the skill tree, incl. needs and foundations
     bin/learn log [t] "what happened this session"
     bin/learn check [t]                             # after editing topic files by hand
     bin/learn commit "message"                      # the data home is its own git repo
     bin/learn recent [n] · show <id> · grep <regex> · pending · msgs --skill <id> · term show <name>
+
+**Term pages** (`terms/<name>.md`, format in `docs/formats.md`): every glossary term can have its
+own wiki page gathering what the learner knows about it. When a lesson taught something real about
+a term (a mechanism, a diagram, a correction), have a background subagent add it to that term's
+page after you've replied: give it the term, the message ids and what the learner now knows, and
+let it write the page (`bin/learn term show <term>` prints the path) and run `bin/learn check`.
+Never make the learner wait for this; the wiki job catches up on the rest.
 
 **The learner model** (`notes.json`): keep a running picture of what the learner understands.
 When you notice a gap that's worth fixing but would derail the current thread, record it as a
