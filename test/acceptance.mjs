@@ -183,11 +183,11 @@ async function main() {
     const pages = learn('term', 'pages', 'demo');
     assert(/^  temperature +temperature\.md +updated/m.test(pages) && /without a page \(messages\): token \(\d+\)/.test(pages), pages);
     const dir = path.join(HOME, 'topics/demo/terms'), tmp = ['zz-nothing.md', 'softmax.md', 'soft-max.md', 'Bad Name.md'];
-    fs.writeFileSync(path.join(dir, tmp[0]), 'x'); fs.writeFileSync(path.join(dir, tmp[1]), '[ok](term:temperature)'); fs.writeFileSync(path.join(dir, tmp[2]), '[gone](term:nope)'); fs.writeFileSync(path.join(dir, tmp[3]), 'x');
+    fs.writeFileSync(path.join(dir, tmp[0]), 'x'); fs.writeFileSync(path.join(dir, tmp[1]), '[ok](term:temperature), as code: `![x](media:none.png)` `[y](msg:2099-01-01.1)`\n\n```\n[z](skill:99)\n```\n'); fs.writeFileSync(path.join(dir, tmp[2]), '[gone](term:nope)'); fs.writeFileSync(path.join(dir, tmp[3]), 'x');
     const out = learn('check', 'demo');
     for (const f of tmp) fs.rmSync(path.join(dir, f));
     assert(/terms\/zz-nothing\.md: no glossary term or alias is called that/.test(out) && /terms\/soft-max\.md: "softmax" already has terms\/softmax\.md/.test(out)
-      && /terms\/soft-max\.md: broken link term:nope/.test(out) && /terms\/: Bad Name\.md: not shown/.test(out) && !/temperature/.test(out), out);
+      && /terms\/soft-max\.md: broken link term:nope/.test(out) && /terms\/: Bad Name\.md: not shown/.test(out) && !/temperature|none\.png|2099|skill:99/.test(out), out);
   });
 
   if (!chromePath()) { console.log('\n(Chrome not found: skipping UI tests. Set CHROME=…)'); return; }
