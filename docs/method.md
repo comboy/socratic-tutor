@@ -27,8 +27,10 @@ files) are in `docs/protocol.md`; starting a new topic is in `docs/bootstrap.md`
 
 ## Make it stick
 
-- **Define every new term on first use** and add it to the glossary (`bin/learn term add`), so it
-  gets a hover card everywhere. Acronyms get their expansion (`--full "**K**ey **V**alue"`).
+- **Define every new term on first use**, in bold, and add it to the glossary (`bin/learn term
+  add`), so it gets a hover card everywhere. Acronyms get their expansion (`--full "**K**ey
+  **V**alue"`). `post` reminds you of bold phrases that aren't in the glossary yet. For a reminder
+  that only matters in one message, use a tip: `[template strand](tip:the one being read)`.
 - **Link back instead of repeating.** People forget explanations. Point at the earlier message
   (`[as we saw](msg:…)`) rather than re-explaining from scratch, and re-explain only the part
   that didn't stick.

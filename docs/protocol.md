@@ -55,7 +55,9 @@ followed by the text. Kinds:
   **One question per message, always inside `:::question`**: a question written as plain prose
   isn't tracked. Add `--expect` with the rubric, so any later session can grade the answer.
 - `post` refuses broken `msg:` and `skill:` links (a `msg:` must point at a message, not a grade
-  entry). `bin/learn msgs --skill 6.5` lists the real message ids for a skill.
+  entry), and a message that ends with a question outside `:::question` (`--force` if it's
+  rhetorical). `bin/learn msgs --skill 6.5` lists the real message ids for a skill. It also lists
+  bold phrases that aren't in the glossary yet: add the real terms during the bookkeeping.
 
 Markdown extensions, in brief (details and every `viz` type in `docs/formats.md`):
 `:::question` / `:::recap` / `:::note` / `:::warn` / `:::insight` / `:::details Title` callouts ·
@@ -72,6 +74,7 @@ Markdown extensions, in brief (details and every `viz` type in `docs/formats.md`
     bin/learn note done <id> ["outcome"]            # close a note (a review passed, a hole fixed)
     bin/learn summary [t] <skill> "- what was covered ([explained](msg:…))"
     bin/learn term add [t] "name" --short "1–2 sentences" [--skill id] [--full "**E**xpansion"] [--aliases a,b] [--parts x,y]
+    bin/learn terms-missing [t]                    # bold phrases in recent messages that aren't terms yet
     bin/learn tree [t]  /  tree [t] --set < outline  # the skill tree, incl. needs and foundations
     bin/learn log [t] "what happened this session"
     bin/learn check [t]                             # after editing topic files by hand

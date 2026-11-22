@@ -484,6 +484,22 @@ async function main() {
     await page.shot('tip-card');
     await page.mouse('mouseMoved', 5, 5); await sleep(500);
   });
+  await test('glossary coverage: post and terms-missing list bold phrases that are no term or alias', async () => {
+    assert(/glossary: bold here but not in the glossary: "Helicase"\./.test(postOut) && !/Correct|Polymerase"|plasma/.test(postOut.split('glossary:')[1]), postOut);
+    const out = learn('terms-missing', 'cells');
+    assert(new RegExp(`^  Helicase +${termsMsg.replace('.', '\\.')}$`, 'm').test(out) && !/Polymerase|plasma membrane|Correct/.test(out), out);
+    learn('term', 'add', 'cells', 'helicase', '--short', 'Unzips DNA.', '--skill', '1.2');
+    assert(/every bold phrase in the last tutor message is a glossary term or alias/.test(learn('terms-missing', 'cells')), 'after adding it');
+    assert(!/glossary:/.test(post('cells', 'Now **helicases** are known.')), 'plural of a known term reported');
+  });
+  await test('post refuses a message that ends with a question outside :::question (--force for a rhetorical one)', async () => {
+    const n = lastTutor('cells').id;
+    const err = (() => { try { post('cells', 'Here is the plan.\n\nShall I start with step 1?'); return ''; } catch (e) { return String(e.stderr); } })();
+    assert(/not posted: the message ends with a question outside a :::question block/.test(err) && lastTutor('cells').id === n, err);
+    execFileSync(process.execPath, [BIN, 'post', '--topic', 'cells', '--force'], { env: ENV, input: 'Who knew?', encoding: 'utf8' });
+    post('cells', 'Plan.\n\n:::question\nShall I start with step 1?\n:::');
+    assert(lastTutor('cells').question && lastTutor('cells').id !== n, 'question posts');
+  });
   await test('glossary sort: newest first by first mention, remembered, in wiki and dock', async () => {
     await page.eval(`localStorage.removeItem('learn:glossarySort')`);
     await page.nav(`${BASE}/#/demo/wiki/glossary`, 900);

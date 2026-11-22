@@ -317,6 +317,8 @@ An RL algorithm that improves the policy in small, clipped steps.
   spaces or a hyphen ("non-polar" = "non polar"). Plurals are allowed: -s/-es, y→ies, us→i,
   um→a, -rion→-ria, and a plural form also matches its singular. The longest form wins where
   names overlap ("residual connection" beats "residual").
+- Bold a new term where you define it: `bin/learn post` and `bin/learn terms-missing [t]` list
+  bold phrases that match no term or alias, so you can add the ones that are terms.
 
 ### map.json
 

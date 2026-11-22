@@ -115,4 +115,57 @@ function checkTopic(slug) {
   return { problems, warnings };
 }
 
-module.exports = { checkTopic, linkChecker };
+// ---------------------------------------------------------------- glossary coverage
+// Bold phrases are how a tutor marks a new term, so a bold phrase that names no glossary term or
+// alias is probably a term that was never added. Heuristic: 1–4 words, not a sentence or a label
+// like "**Correct:**". Matching is the UI's own (web/js/terms.js), plurals and case included.
+const { termMatcher } = require('../web/js/terms.js');
+// first words of emphasis rather than of a term; words that make a phrase a clause; last words of
+// a label ("**The error-rate answer:**")
+const words = s => new Set(s.split(/\s+/));
+const NOT_FIRST = words(`correct partial wrong right left yes no not nothing none everything something anything always never
+  why how what when where which who whose without with careful note tip example recap question answer step steps numbers
+  focus important key remember both each every all only also then so but and or if because first second third next last
+  now here there this that these those it its they we you he she i your my our their one two three four five more less most
+  least much many same different given known inside outside red blue green orange grey gray yellow purple black white`);
+const CLAUSE = words(`the a an and or in into from across to on by with at as is are was were be been it they them we you can cannot
+  does do did has have had will would should could gets get got makes make made goes go`);
+const NOT_LAST = words(`answer answers question questions part point idea rule version picture case reason catch problem trick
+  takeaway summary check test chart diagram`);
+function boldPhrases(text) {
+  // no code, maths or link targets (a tip's note is not where terms are introduced)
+  const src = String(text || '').replace(/```[\s\S]*?```|`[^`\n]*`|\$\$[\s\S]*?\$\$|\$[^$\n]*\$/g, ' ').replace(/\]\((?:[^()\n]|\([^()\n]*\))*\)/g, ']')
+    .replace(/\{\{([^{}|\n]+?)(?:\|[^{}\n]+?)?\}\}/g, '$1');
+  const out = [];
+  for (const m of src.matchAll(/\*\*([^*\n]+?)\*\*|(?<![\w])__([^_\n]+?)__(?![\w])/g)) {
+    const p = (m[1] || m[2]).replace(/[[\]{}|]/g, ' ').trim()
+      .replace(/^["'“‘(]+|["'”’)]+$/g, '').replace(/[:,;.!?]+$/, '').trim().replace(/^(the|a|an)\s+/i, '');
+    if (p.length < 2 || /[.,!?;:=<>$\\]/.test(p) || /^\d/.test(p) || !/\p{L}/u.test(p)) continue;
+    const w = p.toLowerCase().split(/\s+/);
+    if (w.length > 4 || NOT_FIRST.has(w[0]) || NOT_LAST.has(w.at(-1)) || w.slice(1).some(x => CLAUSE.has(x))) continue;
+    if (w.length === 1 && /^[a-z]+(ed|ly)$/.test(p)) continue;   // "charged", "quickly": emphasis
+    out.push(p);
+  }
+  return out;
+}
+// -> { missing: [{ phrase, ids, n }], partial: [{ phrase, ids, n, has: [terms] }], scanned }, most
+// recent first. missing: names no term; partial: contains one ("whole nucleotide": "nucleotide").
+// texts: [{ id, text }] to check instead of the last tutor messages (`post` checks the new one).
+function missingTerms(slug, { last = 20, texts = null } = {}) {
+  const m = termMatcher(S.readGlossary(slug));
+  const msgs = texts || S.readJournal(slug).filter(e => e.role === 'tutor' && e.kind === 'message' && e.text).slice(-last);
+  const groups = new Map();
+  msgs.forEach((e, i) => {
+    for (const p of boldPhrases(e.text)) {
+      if (m.lookup(p)) continue;
+      const k = p.toLowerCase().replace(/(?<=.{3})(e?s)$/, '');
+      const g = groups.get(k) || groups.set(k, { phrase: p, ids: [], n: 0, at: 0, has: [...new Set(m.find(p).map(h => h.entry.term))] }).get(k);
+      g.n++; g.at = i;
+      if (e.id && !g.ids.includes(e.id)) g.ids.push(e.id);
+    }
+  });
+  const all = [...groups.values()].sort((a, b) => b.at - a.at || a.phrase.localeCompare(b.phrase)).map(({ at, ...g }) => g);
+  return { missing: all.filter(g => !g.has.length), partial: all.filter(g => g.has.length), scanned: msgs.length };
+}
+
+module.exports = { checkTopic, linkChecker, boldPhrases, missingTerms };

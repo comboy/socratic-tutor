@@ -83,7 +83,7 @@ bin/learn note <review|hole|parked|misconception> [--skill id] [--ref msg] [--du
 bin/learn note done <id> ["outcome"]  ·  note list [--all]
 bin/learn summary [t] <skill> "- bullet with (msg:…) links"   append to a skill's summary
 bin/learn term add [t] "name" --short "…" [--skill id] [--full …] [--aliases a,b] [--parts …] [--see …] [--refs …] [--body "…" | --body - < file]
-bin/learn term show [t] <name>  ·  terms [t]
+bin/learn term show [t] <name>  ·  terms [t]  ·  terms-missing [t] [--last n | --all]   bold phrases not in the glossary
 bin/learn tree [t]                       print the skill tree as an outline · tree [t] --set < outline  (replace it)
 bin/learn log [t] "what happened"        append to today's entry in log.md
 bin/learn feedback "remark"              a note for the builder about the app or the process (not the lesson)
@@ -339,6 +339,9 @@ commands.post = async () => {
     for (const p of probs) console.error(`${p.error ? 'error' : 'warning'}: link ${p.type}:${p.id}: ${p.why}`);
     if (errs.length && !f.force) die('not posted: fix the links above (or pass --force). `bin/learn msgs --skill <id>` lists real message ids.');
     if (question && (text.match(/^:::question\b/gm) || []).length > 1) console.error('warning: more than one :::question block; only one is tracked as pending');
+    // a question asked in prose isn't tracked: the answer box doesn't show it and the answer isn't linked to it
+    const lastPara = text.replace(/```[\s\S]*?```/g, '').trim().split(/\n\s*\n/).pop() || '';
+    if (!question && /\?\s*$/.test(lastPara) && !f.force) die('not posted: the message ends with a question outside a :::question block, so the learner won\'t see it above the answer box. Put it in :::question … ::: (with --expect), or pass --force if it is rhetorical.');
     if (f.expect && !question) console.error('warning: --expect given but the message has no :::question block');
   }
 
@@ -357,6 +360,11 @@ commands.post = async () => {
   if (await serverUp()) saved = await api('POST', '/api/append', { topic, entries });
   else saved = S.appendJournal(topic, entries);
   for (const e of saved) console.log(`posted ${e.kind} ${e.id}${e.kind === 'grade' ? ` (${e.verdict} → ${e.target})` : ''}${e.question ? ` [question${e.expect ? ' + rubric' : ', no --expect rubric'}]` : ''}`);
+  // a reminder for the bookkeeping step: bold phrases (new terms, usually) not in the glossary yet
+  if (text) {
+    const miss = require('../app/check').missingTerms(topic, { texts: [{ text }] }).missing.map(g => `"${g.phrase}"`);
+    if (miss.length) console.log(`glossary: bold here but not in the glossary: ${miss.join(', ')}. Add the real terms afterwards (\`bin/learn term add\`); ignore emphasis.`);
+  }
 };
 
 // ---------------------------------------------------------------- state commands
@@ -439,6 +447,21 @@ commands.term = () => {
     const missing = list(f.parts).filter(p => !S.readGlossary(topic).some(g => [g.term, ...g.aliases].some(x => x.toLowerCase() === p.toLowerCase())));
     console.log(`added "${name}" to ${topic}/glossary.md${missing.length ? ` (parts not in the glossary yet: ${missing.join(', ')})` : ''}`);
   } else die('usage: term add|show …');
+};
+// Bold phrases in recent tutor messages that name no glossary term or alias: terms the tutor
+// introduced but forgot to add (app/check.js missingTerms). Read-only.
+commands['terms-missing'] = () => {
+  const f = flags(argv, { topic: 'string', last: 'string', all: 'bool' });
+  const topic = topicOf(f, true);
+  const last = f.all ? Infinity : Number(f.last) || 20;
+  const r = require('../app/check').missingTerms(topic, { last });
+  const span = f.all ? 'all tutor messages' : r.scanned === 1 ? 'the last tutor message' : `the last ${r.scanned} tutor messages`;
+  if (!r.missing.length && !r.partial.length) { console.log(`${topic}: every bold phrase in ${span} is a glossary term or alias.`); return; }
+  console.log(`${topic}: bold phrases in ${span} that are no glossary term or alias (newest first).
+Add the real terms (\`bin/learn term add "name" --short "…"\`, or --aliases on an existing one); ignore emphasis.`);
+  const w = Math.min(32, Math.max(...r.missing.map(g => g.phrase.length), 8));
+  for (const g of r.missing) console.log(`  ${g.phrase.padEnd(w)}  ${g.ids.slice(-3).join(', ')}${g.ids.length > 3 ? ` (+${g.ids.length - 3})` : ''}`);
+  if (r.partial.length) console.log(`Contain a known term (add only if it's a term of its own): ${r.partial.map(g => `${g.phrase} (${g.has.join(', ')})`).join(' · ')}`);
 };
 commands.terms = () => { const f = flags(argv, { topic: 'string' }); console.log(S.readGlossary(topicOf(f, true)).map(g => g.term).join(', ')); };
 
