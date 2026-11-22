@@ -71,13 +71,14 @@ Markdown extensions, in brief (details and every `viz` type in `docs/formats.md`
 (everything sharing a key lights up together, so connect prose ↔ formula ↔ matrix rows) ·
 `[text](msg:2026-11-13.42)`, `term:`, `skill:`, `map:`, `wiki:` links · `[phrase](tip:a hover note for this message only)` ·
 `![caption](media:file.png)` images downloaded with `bin/learn image` (offline, credited) ·
-```` ```viz matrix|vector|bars|tokens|flow|plot|steps|residual|js ```` blocks.
+```` ```viz matrix|vector|bars|tokens|flow|plot|steps|residual|js ```` blocks (`post` refuses one that
+doesn't parse; in `viz js`, `el`, `ctx` and `d3` are already in scope).
 
 ## Bookkeeping commands
 
     bin/learn level [t] <skill> <0-5> "reason"     # levels: earned, see docs/method.md
     bin/learn focus [t] <skill>                    # the current focus (shown in the UI)
-    bin/learn note review|hole|parked|misconception [--skill id] [--ref msg] [--due 3d] "text"
+    bin/learn note review|hole|parked|misconception [--skill id|@foundation] [--ref msg] [--due 3d] "text"
     bin/learn note done <id> ["outcome"]            # close a note (a review passed, a hole fixed)
     bin/learn summary [t] <skill> "- what was covered ([explained](msg:…))"
     bin/learn term add [t] "name" --short "1–2 sentences" [--skill id] [--full "**E**xpansion"] [--aliases a,b] [--parts x,y]

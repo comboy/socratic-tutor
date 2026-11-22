@@ -367,6 +367,10 @@ commands.post = async () => {
     const errs = probs.filter(p => p.error);
     for (const p of probs) console.error(`${p.error ? 'error' : 'warning'}: link ${p.type}:${p.id}: ${p.why}`);
     if (errs.length && !f.force) die('not posted: fix the links above (or pass --force). `bin/learn msgs --skill <id>` lists real message ids.');
+    // a drawing that doesn't parse would reach the learner as an error box
+    const viz = require('../app/check').vizProblems(text);
+    for (const p of viz) console.error(`error: viz ${p.type} (line ${p.line} of the message): ${p.why}`);
+    if (viz.length && !f.force) die('not posted: fix the viz block(s) above (or pass --force).');
     if (question && (text.match(/^:::question\b/gm) || []).length > 1) console.error('warning: more than one :::question block; only one is tracked as pending');
     // a question asked in prose isn't tracked: the answer box doesn't show it and the answer isn't linked to it
     const lastPara = text.replace(/```[\s\S]*?```/g, '').trim().split(/\n\s*\n/).pop() || '';

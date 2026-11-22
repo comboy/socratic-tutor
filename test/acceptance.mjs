@@ -861,6 +861,19 @@ async function main() {
         centred: !t || Math.abs((t.getBoundingClientRect().left - t.parentElement.getBoundingClientRect().left) - (t.parentElement.getBoundingClientRect().right - t.getBoundingClientRect().right)) < 4 }; })()`);
     assert(r.keyed && r.colored && r.centred, JSON.stringify(r));
   });
+  await test('post refuses a viz block that would show an error box (unknown type, syntax error, d3 redeclared); check lists old ones', async () => {
+    const before = journal().length;
+    const tryPost = text => spawnSync(process.execPath, [BIN, 'post', '--topic', 'demo'], { env: ENV, input: text, encoding: 'utf8' });
+    const a = tryPost('Look:\n\n```viz js\nconst d3 = ctx.d3;\nd3.select(el).append("svg");\n```');
+    assert(a.status === 1 && /viz js \(line 4 of the message\): SyntaxError: Identifier 'd3' has already been declared \(el, ctx and d3 are already in scope/.test(a.stderr), 'redeclared d3: ' + a.stderr);
+    const b = tryPost('```viz bars\n{ items: [{ label: "a", value: 1 }\n```\n\n```viz sankey\n{}\n```\n\n```viz js\nconst s = "open;\n```');
+    assert(/viz bars \(line 3/.test(b.stderr) && /unknown viz type "sankey"/.test(b.stderr) && /viz js \(line 10.*Invalid or unexpected token/.test(b.stderr), 'bars/unknown/js: ' + b.stderr);
+    assert(journal().length === before, 'a broken viz was posted');
+    assert(tryPost('Fine:\n\n```viz js\nel.append(ctx.slider("x", 0, 1, 0.5, 0.1, () => {}));\n```\n\n`viz js` in code is not a block.').status === 0, 'a good viz refused');
+    const forced = spawnSync(process.execPath, [BIN, 'post', '--topic', 'demo', '--force', '--meta'], { env: ENV, input: '```viz js\nlet el = 1;\n```', encoding: 'utf8' });
+    assert(forced.status === 0, '--force: ' + forced.stderr);
+    assert(/viz js shows an error box \(line 2\): SyntaxError: Identifier 'el'/.test(learn('check', 'demo')), 'check lists it');
+  });
   await test('post refuses links to grade entries and unknown skills; --expect stores the rubric', async () => {
     const grade = journal().find(e => e.kind === 'grade');
     const bad = (() => { try { execFileSync(process.execPath, [BIN, 'post', '--topic', 'demo'], { env: ENV, input: `see [this](msg:${grade.id})`, encoding: 'utf8' }); return ''; } catch (e) { return String(e.stderr); } })();

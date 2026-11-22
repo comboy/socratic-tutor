@@ -40,6 +40,14 @@ Reusing the built-in components inside your own: `import { registry } from './co
 `registry.matrix(box, spec, ctx)` (or `tokens`, `bars`, ...), then post-process the DOM if needed.
 `viz residual` does this for every matrix it shows.
 
+## `viz js` blocks in messages
+
+A ```` ```viz js ```` block is the body of `function (el, ctx, d3) { … }`: `el`, `ctx` and `d3`
+are already in scope, so use them and don't declare them (`const d3 = ctx.d3` is a SyntaxError,
+"Identifier 'd3' has already been declared"). Helpers like `ctx.slider()` and `ctx.legend()`
+return elements: append them. `bin/learn post` parses every viz block (nothing runs) and refuses
+a message whose drawing would show an error box; `bin/learn check` lists old ones.
+
 ## Components in this folder
 
 - `core.js`: matrix, vector, bars, tokens, flow, plot, steps, js (see docs/formats.md).

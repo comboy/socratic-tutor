@@ -145,7 +145,10 @@ function checkTopic(slug) {
     links(`terms/${p.name}.md`, p.text);
   }
   // old messages can't be fixed any more, so broken links in them are only warnings
-  for (const e of S.readJournal(slug)) if (e.role === 'tutor' && e.text) for (const p of check(e.text)) warn(`message ${e.id}`, `broken link ${p.type}:${p.id} (${p.why})`);
+  for (const e of S.readJournal(slug)) if (e.role === 'tutor' && e.text) {
+    for (const p of check(e.text)) warn(`message ${e.id}`, `broken link ${p.type}:${p.id} (${p.why})`);
+    for (const p of vizProblems(e.text)) warn(`message ${e.id}`, `viz ${p.type} shows an error box (line ${p.line}): ${p.why}`);
+  }
   return { problems, warnings };
 }
 
@@ -203,4 +206,34 @@ function missingTerms(slug, { last = 20, texts = null } = {}) {
   return { missing: all.filter(g => !g.has.length), partial: all.filter(g => g.has.length), scanned: msgs.length };
 }
 
-module.exports = { checkTopic, linkChecker, boldPhrases, missingTerms };
+// ```viz <type>``` blocks that would show an error box instead of a drawing: an unknown type, a
+// spec that isn't a JS expression, a `viz js` body that doesn't parse (an unterminated string,
+// `const d3 = …` when d3 is already a parameter). Parse only, nothing runs. -> [{ type, line, why }]
+const vm = require('vm');
+let vizTypes = null;
+function knownVizTypes() {
+  if (vizTypes) return vizTypes;
+  vizTypes = new Set();
+  const dir = path.join(S.CODE, 'web', 'viz');
+  for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.js')))
+    for (const m of fs.readFileSync(path.join(dir, f), 'utf8').matchAll(/^register\('([a-z0-9_-]+)'/gm)) vizTypes.add(m[1]);
+  return vizTypes;
+}
+function vizProblems(text) {
+  const out = [], src = String(text || '');
+  for (const m of src.matchAll(/^ {0,3}(`{3,}|~{3,})[ \t]*viz[ \t]+([A-Za-z0-9_-]+)[^\n]*\n([\s\S]*?)^ {0,3}\1[ \t]*$/gm)) {
+    const type = m[2].toLowerCase(), body = m[3].replace(/\n$/, ""), at = src.slice(0, m.index).split('\n').length;   // line of the fence
+    if (!knownVizTypes().has(type)) { out.push({ type, line: at, why: `unknown viz type "${type}" (known: ${[...knownVizTypes()].join(', ')})` }); continue; }
+    // the same wrappers the browser uses (web/js/rich.js, web/viz/core.js), so the same errors
+    const code = type === 'js' ? `(function (el, ctx, d3) {\n${body}\n})` : `(function () { return (\n${body}\n) })`;
+    try { new vm.Script(code, { filename: 'viz' }); } catch (e) {
+      const ln = Number(((e.stack || '').match(/^viz:(\d+)/m) || [])[1]);
+      let why = `${e.name}: ${e.message}`;
+      if (/'(d3|el|ctx)' has already been declared/.test(e.message)) why += ' (el, ctx and d3 are already in scope in viz js: use them, don\'t declare them)';
+      out.push({ type, line: ln ? at + ln - 1 : at, why });
+    }
+  }
+  return out;
+}
+
+module.exports = { checkTopic, linkChecker, boldPhrases, missingTerms, vizProblems };
