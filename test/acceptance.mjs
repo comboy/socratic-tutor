@@ -546,10 +546,21 @@ async function main() {
     const http = await import('node:http');
     const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
     const hits = [];
+    let throttled = 0;
     const fake = http.createServer((req, res) => {
       const u = new URL(req.url, 'http://x'); hits.push(u.pathname + ' ' + (req.headers['user-agent'] || ''));
       if (u.pathname === '/w/api.php' && u.searchParams.get('generator') === 'search')
         return res.end(JSON.stringify({ query: { pages: [{ index: 1, title: 'File:Test cell.png', imageinfo: [{ width: 1, height: 1, mime: 'image/png', extmetadata: { LicenseShortName: { value: 'CC0' }, Artist: { value: 'Jane Doe' } } }] }] } }));
+      // a bigger raster file: Commons throttles its original and, once, its 500px thumbnail
+      if (u.pathname === '/w/api.php' && u.searchParams.get('titles') === 'File:Big cell.png') {
+        const w = Number(u.searchParams.get('iiurlwidth')) || 0, base = `http://127.0.0.1:${fake.address().port}/commons`;
+        return res.end(JSON.stringify({ query: { pages: [{ title: 'File:Big cell.png', imageinfo: [{ width: 800, height: 400, mime: 'image/png', user: 'Uploader1', url: `${base}/b/bc/Big_cell.png`,
+          ...(w ? { thumburl: w < 800 ? `${base}/thumb/b/bc/Big_cell.png/${w}px-Big_cell.png?utm_source=x` : `${base}/b/bc/Big_cell.png`, thumbwidth: Math.min(w, 800), thumbheight: Math.min(w, 800) / 2 } : {}),
+          descriptionurl: 'https://commons.wikimedia.org/wiki/File:Big_cell.png', extmetadata: { LicenseShortName: { value: 'CC0' }, Credit: { value: 'Own work' } } }] }] } }));
+      }
+      if (u.pathname === '/commons/b/bc/Big_cell.png' || (u.pathname.endsWith('/500px-Big_cell.png') && !throttled++))
+        { res.writeHead(429, { 'retry-after': '0' }); return res.end('use thumbnails'); }
+      if (u.pathname.endsWith('px-Big_cell.png')) { res.writeHead(200, { 'content-type': 'image/png' }); return res.end(PNG); }
       if (u.pathname === '/w/api.php') return res.end(JSON.stringify({ query: { pages: [u.searchParams.get('titles') !== 'File:Test cell.png' ? { title: u.searchParams.get('titles'), missing: true } : {
         title: 'File:Test cell.png', imageinfo: [{ width: 1, height: 1, mime: 'image/png', url: `http://127.0.0.1:${fake.address().port}/commons/a/ab/Test_cell.png`,
           descriptionurl: 'https://commons.wikimedia.org/wiki/File:Test_cell.png', extmetadata: { Artist: { value: '<a href="//commons.wikimedia.org/wiki/User:Jd">Jane Doe</a>' },
@@ -568,6 +579,10 @@ async function main() {
       const out = await img('cells', 'https://commons.wikimedia.org/wiki/File:Test_cell.png');
       assert(/saved cells\/media\/test-cell\.png .*CC BY-SA 4\.0 · Jane Doe/.test(out) && /!\[caption\]\(media:test-cell\.png\)/.test(out), out);
       assert(hits.every(h => /^\S+ learn-tutor\//.test(h)), 'generic user agent: ' + hits);
+      const big = await img('cells', 'File:Big cell.png');
+      const bigHits = hits.filter(h => h.includes('Big_cell.png')).map(h => h.split(' ')[0]);
+      assert(/saved cells\/media\/big-cell\.png \(330×165\) · CC0 · Uploader1 \(uploader\)/.test(big), 'standard thumbnail, smaller after a 429, uploader as author: ' + big);
+      assert(bigHits.join() === '/commons/thumb/b/bc/Big_cell.png/500px-Big_cell.png,/commons/thumb/b/bc/Big_cell.png/330px-Big_cell.png', 'never the original: ' + bigHits);
       const missing = await fails(img('cells', 'File:Nope.png'));
       assert(/no file "File:Nope\.png" on Commons/.test(missing), missing);
     } finally { fake.close(); }

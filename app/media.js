@@ -15,7 +15,7 @@ const EXT = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'i
 
 async function get(url, as = 'json') {
   const r = await fetch(url, { headers: { 'user-agent': UA, 'api-user-agent': UA } });
-  if (!r.ok) throw new Error(`${r.status} ${r.statusText} from ${new URL(url).host}`);
+  if (!r.ok) throw Object.assign(new Error(`${r.status} ${r.statusText} from ${new URL(url).host}`), { status: r.status, retryAfter: r.headers.has('retry-after') ? Number(r.headers.get('retry-after')) : NaN });
   return as === 'json' ? r.json() : { bytes: Buffer.from(await r.arrayBuffer()), type: (r.headers.get('content-type') || '').split(';')[0] };
 }
 function query(params) { return get(API() + '?' + new URLSearchParams({ format: 'json', formatversion: '2', ...params })); }
@@ -46,24 +46,55 @@ function save(slug, name, bytes, info) {
   return { name, ...index[name] };
 }
 
-// Download a Commons file (any form commonsName() understands) at up to `width` px. SVGs and
-// big images come as Commons' rendered PNG/JPEG thumbnail, which every browser shows.
+// Commons throttles automated downloads of original files and of thumbnails at odd sizes; it asks
+// for its standard thumbnail widths. A raster thumbnail at least as wide as the original is served
+// as the original, so the width must also stay below the original's.
+const STEPS = [120, 250, 330, 500, 960, 1280, 1920];
+function thumbWidth(want, ii) {
+  const vector = ii.mime === 'image/svg+xml' || !EXT[ii.mime];
+  const cap = vector ? want : Math.min(want, (ii.width || Infinity) - 1);
+  return [...STEPS].reverse().find(w => w <= cap) || null;
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+// Who made it: the Artist field, else the licence's attribution text, else a Credit that names
+// someone ("Own work" names the uploader), else the uploader.
+function author(meta, user) {
+  const credit = text(meta.Credit, 160);
+  return text(meta.Artist, 160) || text(meta.Attribution, 160) || (credit && !/^own work\b/i.test(credit) ? credit : '') || (user ? `${user} (uploader)` : '') || 'unknown';
+}
+
+// Download a Commons file (any form commonsName() understands) at up to `width` px, as Commons'
+// rendered PNG/JPEG thumbnail at a standard width (SVGs too: every browser shows the PNG). When
+// Commons throttles it (429), waits and tries the next smaller standard width.
 async function addCommons(slug, input, { name, width = 1280 } = {}) {
   const file = commonsName(input);
   if (!file) throw new Error(`not a Wikimedia Commons file or URL: ${input}`);
-  const j = await query({ action: 'query', titles: 'File:' + file, prop: 'imageinfo', iiprop: 'url|size|mime|extmetadata', iiurlwidth: String(width) });
+  const info = w => query({ action: 'query', titles: 'File:' + file, prop: 'imageinfo', iiprop: 'url|size|mime|extmetadata|user', ...(w ? { iiurlwidth: String(w) } : {}) });
+  let j = await info(thumbWidth(width, { mime: 'image/svg+xml' }));
   const page = j.query?.pages?.[0];
   if (!page || page.missing || !page.imageinfo?.[0]) throw new Error(`no file "File:${file}" on Commons (search: bin/learn image search "…")`);
-  const ii = page.imageinfo[0], meta = ii.extmetadata || {};
-  const useThumb = ii.thumburl && (ii.mime === 'image/svg+xml' || !EXT[ii.mime] || ii.width > width);
-  const { bytes, type } = await get(useThumb ? ii.thumburl : ii.url, 'bytes');
-  const ext = EXT[type] || path.extname(new URL(useThumb ? ii.thumburl : ii.url).pathname).toLowerCase() || '.png';
+  let ii = page.imageinfo[0];
+  const meta = ii.extmetadata || {}, orig = { url: ii.url, width: ii.width, height: ii.height, mime: ii.mime };
+  let w = thumbWidth(width, orig), got = null, lastErr = null;
+  for (let tries = 0; tries < 3 && !got; tries++) {
+    if (w && ii.thumbwidth !== w) ii = (await info(w)).query?.pages?.[0]?.imageinfo?.[0] || ii;
+    const url = w && ii.thumburl ? ii.thumburl : orig.url;
+    try { got = { ...(await get(url, 'bytes')), url, w: url === orig.url ? null : w }; }
+    catch (e) {
+      lastErr = e;
+      if (![429, 503].includes(e.status)) throw e;
+      await sleep(Math.min(10, e.retryAfter >= 0 ? e.retryAfter : 1) * 1000);
+      w = w ? STEPS[STEPS.indexOf(w) - 1] || w : w;
+    }
+  }
+  if (!got) throw new Error(`${lastErr.message}: Commons is throttling downloads; try again in a minute, or with --width 500`);
+  const ext = EXT[got.type] || path.extname(new URL(got.url).pathname).toLowerCase() || '.png';
   const title = page.title;
-  const from = [...new Set([/^https?:/.test(input) ? input : null, ii.url, ii.thumburl].filter(Boolean).map(u => u.replace(/\?.*$/, '')))];
-  return save(slug, localName(slug, name, file, ext, title), bytes, {
-    title, author: text(meta.Artist, 160) || text(meta.Credit, 160) || 'unknown', license: text(meta.LicenseShortName, 80) || 'see source',
+  const from = [...new Set([/^https?:/.test(input) ? input : null, orig.url, ii.thumburl].filter(Boolean).map(u => u.replace(/\?.*$/, '')))];
+  return save(slug, localName(slug, name, file, ext, title), got.bytes, {
+    title, author: author(meta, ii.user), license: text(meta.LicenseShortName, 80) || 'see source',
     licenseUrl: text(meta.LicenseUrl, 300) || null, source: ii.descriptionurl || `https://commons.wikimedia.org/wiki/${encodeURIComponent(title)}`,
-    description: text(meta.ImageDescription), width: useThumb ? ii.thumbwidth : ii.width, height: useThumb ? ii.thumbheight : ii.height, from,
+    description: text(meta.ImageDescription), width: got.w ? ii.thumbwidth : orig.width, height: got.w ? ii.thumbheight : orig.height, from,
   });
 }
 
