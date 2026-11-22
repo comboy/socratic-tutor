@@ -60,10 +60,19 @@ Use it to connect prose ↔ formula ↔ matrix rows ↔ diagram nodes.
   jumps there). Use it generously to point at earlier explanations instead of repeating
   them. Imported pre-web sessions have ids too (`bin/learn grep` finds them).
 - `[text](term:softmax)`: glossary entry (spaces are fine: `[lr](term:learning rate)`).
-  Glossary terms in your text are linked automatically, so you rarely need this.
+  Glossary terms in your text are linked automatically (every occurrence, see glossary.md
+  below), so you rarely need this.
 - `[text](skill:6.3)`, `[text](map:attention)`: skill page, concept-map node.
 - `[text](wiki:glossary)`, `wiki:sessions`, `wiki:session/2026-11-13`, `wiki:home`, `wiki:cheatsheet`, `wiki:you`: wiki pages.
   `wiki:pages` lists the topic's standalone pages and `wiki:page/<name>` opens one (see `pages/` below).
+
+**Tips: hover notes for one message**: `[template strand](tip:the strand being read, the one being copied)`.
+The phrase reads as ordinary text; hovering it shows the note in the same card as a glossary
+term (labelled "in this message"). Use it for a context-specific reminder that isn't a glossary
+entry: what a symbol or a label means *here*, which of two things "it" is, a number's unit. The
+note is markdown (`**bold**`, `$x$`, glossary terms get their own nested cards), may contain
+spaces and one level of parentheses (`(tip:read 3′→5′ (backwards))`), but no line breaks, and
+in a table no `|`. A real term goes in the glossary instead: it then works in every message.
 
 **Visualizations**: fenced block with language `viz <type>`, whose body is a JS object
 literal (JSON or relaxed: unquoted keys, trailing commas, comments). Types:
@@ -298,11 +307,16 @@ An RL algorithm that improves the policy in small, clipped steps.
   that mentions the term (or its earliest `refs` id), so there is no date field to keep.
 - Blank lines between the heading and the metadata are tolerated. The metadata block
   ends at the first line that isn't `key: value`.
-- Auto-linking matches the term and each alias separately. Each form is case-insensitive
-  unless that form has capitals (so "KV cache" needs exact case, while an alias "kv cache"
-  matches any case). A plural -s/-es is allowed. The longest form wins where names
-  overlap ("residual connection" beats "residual"). Only the first occurrence per message
-  is linked.
+- Auto-linking (`web/js/terms.js`) matches the term and each alias separately, everywhere in
+  the text: bold, lists, tables, callouts and headings too, but not in code, formulas, existing
+  links, `{{…}}` highlights, page titles, callout labels or viz drawings (viz captions and step
+  text are prose and are linked). Every occurrence gets the hover card; the first one in a
+  message is underlined clearly, repeats faintly.
+- A form in lower case matches any case. A form with capitals keeps them ("KV cache" matches
+  "KV Cache" but not "kv cache"; add an alias "kv cache" for that). Words may be separated by
+  spaces or a hyphen ("non-polar" = "non polar"). Plurals are allowed: -s/-es, y→ies, us→i,
+  um→a, -rion→-ria, and a plural form also matches its singular. The longest form wins where
+  names overlap ("residual connection" beats "residual").
 
 ### map.json
 

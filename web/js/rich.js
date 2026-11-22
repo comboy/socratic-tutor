@@ -1,8 +1,9 @@
 // Rich content: markdown + viz mounting + glossary auto-links + linked highlighting + hover cards.
 import { md, vizSpecs, esc } from './md.js';
 import { registry, h } from '../viz/index.js';
+import { termMatcher } from './terms.js';
 
-const cfg = { terms: [], termRe: null, resolveTerm: () => null, resolveMsg: () => null, hoverCard: null, onRef: () => {} };
+const cfg = { terms: [], matcher: null, resolveTerm: () => null, resolveMsg: () => null, hoverCard: null, onRef: () => {} };
 export function configure(o) { Object.assign(cfg, o); if (o.terms) buildTermIndex(o.terms); }
 
 // ---------------------------------------------------------------- render
@@ -64,18 +65,16 @@ function makeCtx(box) {
 }
 
 // ---------------------------------------------------------------- glossary auto-linking
-function reEsc(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
-function buildTermIndex(entries) {
-  const forms = [];
-  for (const e of entries) for (const f of [e.term, ...(e.aliases || [])]) if (f && f.length > 1) forms.push({ form: f, entry: e });
-  forms.sort((a, b) => b.form.length - a.form.length);
-  cfg.forms = forms;
-  cfg.formMap = new Map(forms.map(f => [f.form.toLowerCase(), f]));
-  cfg.termRe = forms.length ? new RegExp(`(?<![\\w-])(${forms.map(f => reEsc(f.form)).join('|')})(?:e?s)?(?![\\w])`, 'gi') : null;
-}
-const SKIP = 'code, pre, a, button, .katex, .term, .lk, h1, h2, .mx, .tok, .callout-label, summary, .no-terms, input, textarea, svg';  // svg: an HTML span inside <text> doesn't render, so the word would vanish
+// Every occurrence of a glossary term (or alias, plural, other capitalisation: terms.js) gets a
+// hover card. The first one in a rendered block is underlined clearly, repeats more faintly
+// (.term-again), so a term-heavy message doesn't turn into a wall of underlines.
+function buildTermIndex(entries) { cfg.matcher = termMatcher(entries); }
+// Never inside code, formulas, links/buttons, highlight spans, viz drawings (an HTML span inside
+// SVG <text> doesn't render, and chart labels aren't prose; captions and step text are rendered
+// with ctx.md and get their own links), page titles, callout labels and <summary> (clickable).
+const SKIP = 'code, pre, a, button, .katex, .term, .tipref, .lk, h1, .viz, .mx, .tok, .callout-label, summary, .no-terms, input, textarea, svg';
 export function linkTerms(root) {
-  if (!cfg.termRe) return;
+  if (!cfg.matcher) return;
   const seen = new Set();
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode: n => (n.nodeValue.trim() && !n.parentElement.closest(SKIP) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
@@ -83,24 +82,22 @@ export function linkTerms(root) {
   const nodes = []; while (walker.nextNode()) nodes.push(walker.currentNode);
   for (const node of nodes) {
     const text = node.nodeValue;
-    cfg.termRe.lastIndex = 0;
-    let m, last = 0, frag = null;
-    while ((m = cfg.termRe.exec(text))) {
-      const f = cfg.formMap.get(m[1].toLowerCase());
-      if (!f) continue;
-      // case-sensitive for forms with capitals (acronyms, names)
-      if (/[A-Z]/.test(f.form) && m[1] !== f.form) continue;
-      const id = f.entry.term;
-      if (seen.has(id)) continue;
-      seen.add(id);
-      frag = frag || document.createDocumentFragment();
+    const hits = cfg.matcher.find(text);
+    if (!hits.length) continue;
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    for (const m of hits) {
+      const id = m.entry.term;
       frag.append(text.slice(last, m.index));
       const s = document.createElement('span');
-      s.className = 'term'; s.dataset.term = id; s.textContent = m[0];
+      s.className = seen.has(id) ? 'term term-again' : 'term';
+      s.dataset.term = id; s.textContent = m.text;
       frag.append(s);
-      last = m.index + m[0].length;
+      seen.add(id);
+      last = m.end;
     }
-    if (frag) { frag.append(text.slice(last)); node.replaceWith(frag); }
+    frag.append(text.slice(last));
+    node.replaceWith(frag);
   }
 }
 
@@ -192,7 +189,7 @@ function showCardFor(target, level) {
   requestAnimationFrame(() => c.classList.add('on'));
 }
 document.addEventListener('mouseover', e => {
-  const t = e.target.closest?.('.term, .ref-msg, .ref-term, .ref-skill');
+  const t = e.target.closest?.('.term, .tipref, .ref-msg, .ref-term, .ref-skill');
   if (!t) return;
   const level = levelOf(t);
   clearTimeout(hideT);
@@ -202,6 +199,9 @@ document.addEventListener('mouseover', e => {
   t.addEventListener('mouseleave', () => { clearTimeout(showT); scheduleHide(level); }, { once: true });
 });
 document.addEventListener('click', e => {
+  // a tip has nothing to open: a click just shows its card right away
+  const tip = e.target.closest?.('.tipref');
+  if (tip) { clearTimeout(showT); clearTimeout(hideT); if (cards[levelOf(tip)]?.for !== tip) showCardFor(tip, levelOf(tip)); return; }
   const t = e.target.closest?.('.term, [data-ref]');
   if (!t) return;
   e.preventDefault();

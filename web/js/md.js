@@ -4,6 +4,7 @@
 //   :::question / :::note / :::recap / :::insight / :::warn / :::details Title  containers
 //   ```viz <type>``` visualization blocks (mounted after insertion via mountViz)
 //   [x](msg:ID) [x](term:T) [x](skill:ID) [x](map:NODE) [x](wiki:PAGE) internal links (spaces allowed)
+//   [x](tip:a note for this message) per-message hover note (spaces and one level of (…) allowed)
 /* global marked, katex */
 
 const KATEX_OPTS = {
@@ -75,7 +76,8 @@ function makeRenderer() {
     return `<pre><code${lang ? ` class="lang-${esc(lang.split(/\s/)[0])}"` : ''}>${esc(code)}</code></pre>`;
   };
   r.link = (href, title, text) => {
-    const m = String(href || '').match(/^(msg|term|skill|map|wiki):(.+)$/);
+    const m = String(href || '').match(/^(msg|term|skill|map|wiki|tip):(.+)$/);
+    if (m && m[1] === 'tip') return `<span class="tipref" data-tip="${esc(decodeURIComponentSafe(m[2]))}">${text}</span>`;
     if (m) return `<button type="button" class="ref ref-${m[1]}" data-ref="${m[1]}" data-id="${esc(decodeURIComponentSafe(m[2]))}">${text}</button>`;
     return `<a href="${esc(href)}" target="_blank" rel="noopener"${title ? ` title="${esc(title)}"` : ''}>${text}</a>`;
   };
@@ -90,11 +92,11 @@ export function md(src, { inline = false } = {}) {
   const slots = [];
   const slot = html => `\u0001${slots.push(html) - 1}\u0002`;
   // protect code, extract math + {{links}}
-  src = src.replace(/(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]+`)|\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\$([^\s$](?:[^$\n]*?[^\s$\\])?)\$(?!\d)|\\\((.+?)\\\)|\{\{([^{}|\n]+?)(?:\|([^{}\n]+?))?\}\}|\]\((msg|term|skill|map|wiki):([^)\n]+)\)/g,
+  src = src.replace(/(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]+`)|\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\$([^\s$](?:[^$\n]*?[^\s$\\])?)\$(?!\d)|\\\((.+?)\\\)|\{\{([^{}|\n]+?)(?:\|([^{}\n]+?))?\}\}|\]\((msg|term|skill|map|wiki|tip):((?:[^()\n]|\([^()\n]*\))+)\)/g,
     (all, code, dm, dm2, im, im2, lkText, lkKey, refType, refId) => {
       if (code) return code;
-      // internal links may contain spaces ("term:learning rate"), which markdown link syntax doesn't allow
-      if (refType) return `](${refType}:${encodeURIComponent(decodeURIComponentSafe(refId.trim()))})`;
+      // internal links may contain spaces ("term:learning rate") and tips parentheses, which markdown link syntax doesn't allow
+      if (refType) return `](${refType}:${encodeURIComponent(decodeURIComponentSafe(refId.trim())).replace(/\(/g, '%28').replace(/\)/g, '%29')})`;
       if (dm != null || dm2 != null) return '\n\n' + slot(renderMath((dm ?? dm2).trim(), true)) + '\n\n';
       if (im != null || im2 != null) return slot(renderMath(im ?? im2, false));
       if (lkText != null) {
@@ -124,7 +126,7 @@ export function plain(src, n = 200) {
     .replace(/```[\s\S]*?```/g, ' [code] ')
     .replace(/\$\$[\s\S]*?\$\$/g, ' [formula] ')
     .replace(/\{\{([^|}]+)(\|[^}]*)?\}\}/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/\[([^\]]+)\]\((?:[^()]|\([^()]*\))+\)/g, '$1')
     .replace(/^:::.*$/gm, '')
     .replace(/[*_#>`|]/g, '')
     .replace(/\s+/g, ' ').trim();

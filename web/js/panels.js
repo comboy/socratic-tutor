@@ -2,6 +2,7 @@
 // message, map node. The same panels render full-width in the wiki. Also: hover-card content.
 import { h, $, store, levelOf, skillById, descendants, lvChip, meter, fmtLevel, LEVEL_NAMES, fmtDate, shortId } from './util.js';
 import { rich } from './rich.js';
+import { termMatcher } from './terms.js';
 import { plain, md } from './md.js';
 import { icon } from './icons.js';
 import { app, go, renderLeft } from './app.js';
@@ -72,8 +73,9 @@ function dockGlossary(body) {
 }
 
 // ---------------------------------------------------------------- glossary order
-// 'alpha' (A–Z, sectioned by initial) or 'new' (newest first, sectioned by the day the term was
-// introduced). Shared by the dock and the wiki glossary; remembered in localStorage.
+// 'alpha' (A–Z, sectioned by initial), 'new' (newest first, sectioned by the day the term was
+// introduced) or 'recent' (most recently mentioned first, sectioned by that day). Shared by the
+// dock and the wiki glossary; remembered in localStorage.
 const alpha = (a, b) => a.term.localeCompare(b.term, undefined, { sensitivity: 'base' });
 export const termText = t => [t.term, ...t.aliases, plain(t.full || '', 400), t.short].join(' ').toLowerCase();
 // When a term was introduced: the first tutor message mentioning it (or an alias), or the
@@ -86,16 +88,24 @@ export function introOf(t) {
   }
   return best && { id: best.id, day: String(best.id).split('.')[0], ts: best.ts };
 }
+// The latest tutor message mentioning a term, { id, day, ts } or null.
+export function lastMentionOf(t) {
+  const e = occurrences(t).at(-1)?.e;
+  return e ? { id: e.id, day: String(e.id).split('.')[0], ts: e.ts } : null;
+}
 export function sortedGlossary(mode = store.get('glossarySort', 'alpha')) {
-  if (mode !== 'new') return [...app.topic.glossary].sort(alpha).map(t => ({ t, section: t.term[0].toUpperCase() }));
-  return app.topic.glossary.map(t => ({ t, intro: introOf(t) }))
+  if (mode !== 'new' && mode !== 'recent') return [...app.topic.glossary].sort(alpha).map(t => ({ t, section: t.term[0].toUpperCase() }));
+  const when = mode === 'new' ? introOf : lastMentionOf;
+  return app.topic.glossary.map(t => ({ t, intro: when(t) }))
     .sort((a, b) => (!a.intro || !b.intro ? !a.intro - !b.intro : b.intro.ts.localeCompare(a.intro.ts)) || alpha(a.t, b.t))
     .map(x => ({ ...x, section: x.intro ? fmtDate(x.intro.day, { weekday: 'short', month: 'short', day: 'numeric' }) : 'Not in a message yet' }));
 }
+const SORTS = [['alpha', 'A–Z', 'Alphabetical'], ['new', 'Newest', 'Newest first: by the first message that used the term'],
+  ['recent', 'Recent', 'Most recently mentioned first: by the latest message that used the term']];
 export function sortToggle(redraw) {
   const mode = store.get('glossarySort', 'alpha');
   const seg = h('div', { class: 'seg seg-small gl-sort', title: 'Sort the glossary' });
-  for (const [id, label, title] of [['alpha', 'A–Z', 'Alphabetical'], ['new', 'Newest', 'Newest first: by the first message that used the term']]) {
+  for (const [id, label, title] of SORTS) {
     seg.append(h('button', { class: mode === id ? 'on' : '', 'data-sort': id, title, text: label, onclick: () => {
       store.set('glossarySort', id);
       for (const b of seg.children) b.classList.toggle('on', b.dataset.sort === id);
@@ -124,20 +134,22 @@ export function termEntry(name) {
   const n = String(name).toLowerCase();
   return app.topic.glossary.find(t => t.term.toLowerCase() === n || t.aliases.some(a => a.toLowerCase() === n)) || null;
 }
-const occCache = new Map();
+// Tutor messages that mention a term (any form, the same matching as the auto-links), oldest
+// first: [{ e, n }]. Computed for all terms at once, again only when the journal or glossary changes.
+let occAll = { journal: null, n: -1, glossary: null, map: null };
 export function occurrences(t) {
-  const key = app.topic.slug + ':' + t.term + ':' + app.topic.journal.length;
-  if (occCache.has(key)) return occCache.get(key);
-  const forms = [t.term, ...t.aliases].filter(f => f.length > 1);
-  const re = new RegExp(`(?<![\\w-])(${forms.map(f => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?:e?s)?(?![\\w])`, /[A-Z]/.test(t.term) ? 'g' : 'gi');
-  const out = [];
-  for (const e of app.topic.journal) {
-    if (e.role !== 'tutor' || e.kind !== 'message' || !e.text) continue;
-    const hits = e.text.match(re);
-    if (hits) out.push({ e, n: hits.length });
+  const J = app.topic.journal, G = app.topic.glossary;
+  if (occAll.journal !== J || occAll.n !== J.length || occAll.glossary !== G) {
+    const m = termMatcher(G), map = new Map();
+    for (const e of J) {
+      if (e.role !== 'tutor' || e.kind !== 'message' || !e.text) continue;
+      const counts = new Map();
+      for (const hit of m.find(e.text.replace(/```[\s\S]*?```|`[^`\n]*`/g, ' '))) counts.set(hit.entry.term, (counts.get(hit.entry.term) || 0) + 1);
+      for (const [term, n] of counts) (map.get(term) || map.set(term, []).get(term)).push({ e, n });
+    }
+    occAll = { journal: J, n: J.length, glossary: G, map };
   }
-  occCache.set(key, out);
-  return out;
+  return occAll.map.get(t.term) || [];
 }
 export function snippet(text, needle, n = 180) {
   const p = plain(text, 100000);
@@ -286,6 +298,12 @@ const DOCK = {
 
 // ---------------------------------------------------------------- hover cards
 export function hoverCard(t) {
+  // a tip written for this one message ([text](tip:…)): the same card as a glossary term
+  if (t.classList.contains('tipref')) {
+    return h('div', {},
+      h('div', { class: 'hc-head' }, h('b', { text: t.textContent }), h('span', { class: 'spacer' }), h('span', { class: 'hc-kind', text: 'in this message' })),
+      rich(t.dataset.tip || '', 'hc-body hl-scope'));
+  }
   if (t.classList.contains('term') || t.dataset.ref === 'term') {
     const e = termEntry(t.dataset.term || t.dataset.id);
     if (!e) return null;

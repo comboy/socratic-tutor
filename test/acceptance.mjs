@@ -183,7 +183,7 @@ async function main() {
     await page.waitFor(`document.querySelectorAll('.thread .msg').length > 20`);
     const r = await page.eval(`(() => {
       const t = document.querySelector('.thread').innerText;
-      return { leftovers: (t.match(/\\]\\((msg|term|skill|map|wiki):|^:::|\\{\\{|\\$\\$|\\\\k\\{/gm) || []),
+      return { leftovers: (t.match(/\\]\\((msg|term|skill|map|wiki|tip):|^:::|\\{\\{|\\$\\$|\\\\k\\{/gm) || []),
         vizEmpty: [...document.querySelectorAll('.thread .viz')].filter(v => !v.children.length || v.querySelector('.viz-error')).map(v => v.className),
         katex: document.querySelectorAll('.thread .katex').length, katexErr: document.querySelectorAll('.thread .katex-error, .thread .math-error').length,
         spaced: [...document.querySelectorAll('.thread .ref-term')].map(b => b.dataset.id).filter(x => x.includes(' ')) };
@@ -428,6 +428,62 @@ async function main() {
     assert(heads.join() === 'BPE,token', 'nested card: ' + heads);
     await page.mouse('mouseMoved', 5, 5); await sleep(600);
   });
+  // a message in the (otherwise empty) cells topic exercising the auto-linker, tips and the
+  // glossary coverage reminder
+  const post = (topic, text) => execFileSync(process.execPath, [BIN, 'post', '--topic', topic], { env: ENV, input: text, encoding: 'utf8' });
+  const lastTutor = topic => fs.readdirSync(path.join(HOME, 'topics', topic, 'journal')).sort().flatMap(f => fs.readFileSync(path.join(HOME, 'topics', topic, 'journal', f), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l))).filter(e => e.role === 'tutor').at(-1);
+  let termsMsg = null, postOut = '';
+  await test('glossary links: every occurrence (bold, lists, tables, callouts, headings), plurals and case; never in code, links or viz', async () => {
+    learn('term', 'add', 'cells', 'DNA polymerase', '--short', 'The enzyme that copies DNA.', '--skill', '1.2', '--aliases', 'polymerase');
+    learn('term', 'add', 'cells', 'nucleus', '--short', 'The compartment holding the DNA.', '--skill', '1.2');
+    postOut = post('cells', [
+      '## How polymerase works', '',
+      '**Polymerase** reads the strand. DNA Polymerase is fast; polymerases are many. The polymerase\'s active site.', '',
+      'The [template strand](tip:the strand being **read** (3′→5′), not the new one) is read. **Helicase** opens it. **Correct:** yes.', '',
+      '- In the nucleus, and in the nuclei of many organelles', '- a **plasma membrane** item', '',
+      '| part | job |', '|---|---|', '| polymerase | copies |', '',
+      ':::note', 'Polymerase again, inside a callout.', ':::', '',
+      '`polymerase` in code, [polymerase](https://example.com/x), {{polymerase|p}} and $x$.', '',
+      '```viz bars', '{ items: [{ label: "polymerase", value: 0.6 }, { label: "nucleus", value: 0.4 }] }', '```'].join('\n'));
+    termsMsg = lastTutor('cells').id;
+    await page.nav(`${BASE}/#/cells/learn`, 1200);
+    const sel = `[id="m-${termsMsg}"] .msg-body`;
+    await page.waitFor(`document.querySelector('${sel} .term')`, { timeout: 4000 });
+    const r = await page.eval(`(() => { const b = document.querySelector('${sel}'), q = s => [...b.querySelectorAll(s)];
+      const pol = q('.term[data-term="DNA polymerase"]');
+      return { pol: pol.map(t => t.textContent), again: pol.map(t => t.classList.contains('term-again')),
+        where: pol.map(t => t.parentElement.closest('h2, strong, li, td, .callout, p')?.tagName.toLowerCase() + (t.closest('.callout') ? '+callout' : '')),
+        nucleus: q('.term[data-term="nucleus"]').map(t => t.textContent), organelle: q('.term[data-term="organelle"]').map(t => t.textContent),
+        membrane: q('strong .term[data-term="cell membrane"]').length,
+        bad: q('code .term, a .term, .lk .term, .viz .term, .katex .term').length,
+        colors: [getComputedStyle(pol[0]).borderBottomColor, getComputedStyle(pol[1]).borderBottomColor] }; })()`);
+    assert(r.pol.join('|') === "polymerase|Polymerase|DNA Polymerase|polymerases|polymerase|polymerase|Polymerase", 'every occurrence: ' + JSON.stringify(r));
+    assert(r.again.join() === 'false,true,true,true,true,true,true', 'first clear, repeats faint: ' + r.again);
+    assert(r.where.join() === 'h2,strong,p,p,p,td,p+callout', 'places: ' + r.where);
+    assert(r.nucleus.join() === 'nucleus,nuclei' && r.organelle.join() === 'organelles' && r.membrane === 1, 'plurals and bold: ' + JSON.stringify(r));
+    assert(r.bad === 0, 'linked inside code, links, highlights, viz or maths');
+    assert(r.colors[0] !== r.colors[1], 'repeat looks the same as the first: ' + r.colors);
+    await page.shot('terms-every-occurrence');
+    await page.eval(`document.querySelectorAll('${sel} .term-again')[2].id = 'zz-again'`);
+    await page.hover('#zz-again', 700);
+    const head = await page.waitFor(`document.querySelector('.hovercard.on .hc-head b')?.textContent`, { timeout: 2000 });
+    assert(head === 'DNA polymerase', 'card for a repeat: ' + head);
+    await page.mouse('mouseMoved', 5, 5); await sleep(500);
+  });
+  await test('tips: [text](tip:…) reads as plain text and shows its note in a hover card', async () => {
+    const sel = `[id="m-${termsMsg}"] .msg-body`;
+    const r = await page.eval(`(() => { const b = document.querySelector('${sel}'), t = b.querySelector('.tipref');
+      return { text: t?.textContent, para: t?.closest('p').innerText, tip: t?.dataset.tip, termInside: !!t?.querySelector('.term') }; })()`);
+    assert(r.text === 'template strand' && /^The template strand is read\. Helicase opens it\./.test(r.para) && !r.termInside, JSON.stringify(r));
+    assert(r.tip === 'the strand being **read** (3′→5′), not the new one', 'note: ' + r.tip);
+    await page.eval(`document.querySelector('${sel} .tipref').id = 'zz-tip'`);
+    await page.hover('#zz-tip', 700);
+    const c = await page.waitFor(`(() => { const c = document.querySelector('.hovercard.on'); return c && { head: c.querySelector('.hc-head b')?.textContent, kind: c.querySelector('.hc-kind')?.textContent,
+      body: c.querySelector('.hc-body')?.innerText, bold: c.querySelector('.hc-body strong')?.textContent }; })()`, { timeout: 2000 });
+    assert(c.head === 'template strand' && c.kind === 'in this message' && /the strand being read \(3′→5′\), not the new one/.test(c.body) && c.bold === 'read', JSON.stringify(c));
+    await page.shot('tip-card');
+    await page.mouse('mouseMoved', 5, 5); await sleep(500);
+  });
   await test('glossary sort: newest first by first mention, remembered, in wiki and dock', async () => {
     await page.eval(`localStorage.removeItem('learn:glossarySort')`);
     await page.nav(`${BASE}/#/demo/wiki/glossary`, 900);
@@ -619,7 +675,7 @@ async function main() {
         await page.nav(`http://localhost:${rport}/?static#/${t.slug}/learn`, 1500);
         await page.eval(`(async () => { for (let i = 0; i < 50 && document.querySelector('.earlier button'); i++) { document.querySelector('.earlier button').click(); await new Promise(r => setTimeout(r, 50)); } })()`);
         const r = await page.eval(`(() => { const t = document.querySelector('.thread')?.innerText || '';
-          return { n: document.querySelectorAll('.thread .msg').length, leftovers: (t.match(/\\]\\((msg|term|skill|map|wiki):|^:::|\\{\\{/gm) || []).slice(0, 5),
+          return { n: document.querySelectorAll('.thread .msg').length, leftovers: (t.match(/\\]\\((msg|term|skill|map|wiki|tip):|^:::|\\{\\{/gm) || []).slice(0, 5),
             vizErr: document.querySelectorAll('.thread .viz-error').length, mathErr: document.querySelectorAll('.thread .math-error').length }; })()`);
         assert(!r.leftovers.length && !r.vizErr && !r.mathErr, JSON.stringify(r));
       });

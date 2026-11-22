@@ -61,7 +61,8 @@ Markdown extensions, in brief (details and every `viz` type in `docs/formats.md`
 `:::question` / `:::recap` / `:::note` / `:::warn` / `:::insight` / `:::details Title` callouts ·
 `$…$` and `$$…$$` KaTeX with `\k{key}{tex}` highlight keys · `{{text|key}}` linked highlighting
 (everything sharing a key lights up together, so connect prose ↔ formula ↔ matrix rows) ·
-`[text](msg:2026-11-13.42)`, `term:`, `skill:`, `map:`, `wiki:` links · ```` ```viz matrix|vector|bars|tokens|flow|plot|steps|residual|js ```` blocks.
+`[text](msg:2026-11-13.42)`, `term:`, `skill:`, `map:`, `wiki:` links · `[phrase](tip:a hover note for this message only)` ·
+```` ```viz matrix|vector|bars|tokens|flow|plot|steps|residual|js ```` blocks.
 
 ## Bookkeeping commands
 

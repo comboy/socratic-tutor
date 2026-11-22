@@ -387,8 +387,12 @@ details.callout summary::before { content: "▸"; color: var(--muted); font-size
 details.callout[open] summary::before { content: "▾"; }
 details.callout[open] summary { border-bottom: 1px solid var(--line-soft); }
 
-.term { border-bottom: 1px dotted var(--accent); cursor: help; }
-.term:hover { background: var(--accent-soft); border-bottom-style: solid; }
+/* glossary terms: every occurrence has a hover card; the first one in a message is underlined
+   clearly, repeats faintly so a term-heavy message stays calm. Tips ([x](tip:…)) look the same. */
+.term, .tipref { border-bottom: 1px dotted var(--accent); cursor: help; }
+.term-again { border-bottom-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.term:hover, .tipref:hover { background: var(--accent-soft); border-bottom: 1px solid var(--accent); }
+.hc-kind { font-size: 11px; color: var(--faint); white-space: nowrap; }
 .ref { white-space: nowrap; border: 0; background: var(--accent-soft); padding: 0 5px; border-radius: 4px; font: inherit; font-size: .93em; color: var(--accent); cursor: pointer; }
 .ref:hover { text-decoration: underline; }
 .ref-msg::before { content: "↩ "; }
