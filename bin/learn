@@ -26,6 +26,13 @@ function flags(args, spec) {
   return out;
 }
 function die(msg) { console.error('learn: ' + msg); process.exit(1); }
+// For commands whose positionals are ids or patterns, not free text: an unknown -x / --xyz is a
+// mistake (a typo, or a grep flag), never something to search for. After `--` anything goes.
+function noStrayFlags(f, spec, usage) {
+  const bad = f._.filter(a => /^--?[a-z]/i.test(a));
+  if (bad.length) die(`unknown option ${bad.join(' ')} (options: ${Object.keys(spec).map(k => (k.length === 1 ? '-' : '--') + k).join(' ')})${usage ? '\nusage: ' + usage : ''}`);
+  return f;
+}
 function readStdin() { try { return fs.readFileSync(0, 'utf8'); } catch { return ''; } }
 const list = s => (s ? String(s).split(',').map(x => x.trim()).filter(Boolean) : []);
 
@@ -91,7 +98,7 @@ bin/learn tree [t]                       print the skill tree as an outline · t
 bin/learn legend [t] [set <key> <#color> "label" [--term name] | rm <key>]   colours for recurring things in diagrams
 bin/learn log [t] "what happened"        append to today's entry in log.md
 bin/learn feedback "remark"              a note for the builder about the app or the process (not the lesson)
-bin/learn pending [t] · recent [n] [--topic t] · msgs [t] --skill id · status · grep [-i] <regex> [--topic t]
+bin/learn pending [t] · recent [n] [--topic t] · msgs [t] --skill id · status · grep [-i|--case] <regex> [--topic t]
 bin/learn show [--topic t] <id> · show <topic>/<id>   ids repeat across topics (2026-11-21.4 in two topics)
                                          (msgs and grep leave out app talk; --all includes it)
 bin/learn image [t] <Commons file/URL | file --author a --license l> · image search "words" · image list [t]
@@ -733,7 +740,7 @@ commands.status = async () => {
 };
 
 commands.show = () => {
-  const f = flags(argv, { topic: 'string' });
+  const f = noStrayFlags(flags(argv, { topic: 'string' }), { topic: 1 }, 'show [--topic t] <id>  ·  show <topic>/<id>');
   const id = f._[0];
   if (!id) die('usage: show [--topic t] <id>  ·  show <topic>/<id>');
   if (f.topic && !S.listTopics().includes(f.topic)) die(`unknown topic ${f.topic}`);
@@ -749,9 +756,14 @@ commands.show = () => {
 };
 
 commands.grep = () => {
-  const f = flags(argv, { topic: 'string', all: 'bool' });
-  if (!f._[0]) die('usage: grep <regex> [--topic t] [--all]');
-  const re = new RegExp(f._[0], 'i');
+  // case-insensitive unless --case; -i is accepted (it's the default). A pattern starting with -: grep -- -x
+  const spec = { topic: 'string', all: 'bool', i: 'bool', case: 'bool' }, usage = 'grep [-i | --case] <regex> [--topic t] [--all]   (a pattern starting with -: options first, then -- <regex>)';
+  const f = noStrayFlags(flags(argv, spec), spec, usage);
+  if (f['--']) f._.push(...f['--']);
+  if (f._.length !== 1) die(f._.length ? `one pattern, got ${f._.length}: ${f._.join(' ')} (quote it)\nusage: ${usage}` : 'usage: ' + usage);
+  if (f.topic && !S.listTopics().includes(f.topic)) die(`unknown topic ${f.topic}`);
+  let re;
+  try { re = new RegExp(f._[0], f.case ? '' : 'i'); } catch (e) { die(`bad regex: ${e.message}`); }
   for (const slug of f.topic ? [f.topic] : S.listTopics()) {
     const J = S.readJournal(slug), meta = f.all ? new Set() : S.metaIds(J);   // app talk only with --all
     for (const e of J) {

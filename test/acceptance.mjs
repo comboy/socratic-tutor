@@ -101,6 +101,13 @@ async function main() {
     assert(/\[tutor/.test(r), r);
     assert(/2026-01-05\.1 /.test(learn('show', '2026-01-05.1')), 'show');
     assert(learn('grep', 'softmax', '--topic', 'demo').split('\n').length > 2, 'grep');
+    // -i is accepted (case-insensitive is the default), never searched for; unknown flags are refused
+    const grep = (...a) => spawnSync(process.execPath, [BIN, 'grep', ...a], { env: ENV, encoding: 'utf8' });
+    assert(grep('-i', 'SOFTMAX', '--topic', 'demo').stdout === grep('softmax', '--topic', 'demo').stdout, 'grep -i');
+    assert(!grep('--case', 'SOFTMAX', '--topic', 'demo').stdout.trim(), 'grep --case is case-sensitive');
+    const bad = grep('-w', 'softmax');
+    assert(bad.status === 1 && /unknown option -w/.test(bad.stderr) && !bad.stdout, 'unknown flag: ' + bad.stderr + bad.stdout);
+    assert(/one pattern, got 2/.test(grep('soft', 'max').stderr), 'two patterns');
   });
   await test('bin/learn check passes on the fixture topics', async () => {
     const out = learn('check');
