@@ -39,6 +39,7 @@ const P = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   hole: '<circle cx="12" cy="12" r="8.5" stroke-dasharray="3 2.5"/><path d="M12 8v5M12 16v.1"/>',
   dot: '<circle cx="12" cy="12" r="4" fill="currentColor"/>',
+  palette: '<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.1 0 1.7-.8 1.7-1.7 0-1.2-1-1.6-1-2.7 0-1 .8-1.6 1.7-1.6h2.3a3.8 3.8 0 0 0 3.8-3.8c0-4-3.8-7.2-8.5-7.2z"/><circle cx="7.6" cy="11.2" r="1.1"/><circle cx="10.2" cy="7.4" r="1.1"/><circle cx="14.6" cy="7.6" r="1.1"/>',
 };
 export function icon(name, cls = '') {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

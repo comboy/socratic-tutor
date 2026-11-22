@@ -74,11 +74,23 @@ function checkTopic(slug) {
   }
 
   const glossary = S.readGlossary(slug);
+  if (meta.legend != null && !Array.isArray(meta.legend)) bad('topic.json', 'legend must be a list of { key, color, label, term }');
+  const lkeys = new Set(), lcolors = new Map();
+  for (const x of Array.isArray(meta.legend) ? meta.legend : []) {
+    if (!S.LEGEND_KEY.test(x?.key || '')) { bad('topic.json', `legend entry ${JSON.stringify(x)}: key must be a word (no spaces)`); continue; }
+    if (lkeys.has(x.key)) bad('topic.json', `legend key ${x.key} is used twice`);
+    lkeys.add(x.key);
+    if (!S.COLOR.test(x.color || '')) bad('topic.json', `legend ${x.key}: bad colour "${x.color}"`);
+    const c = String(x.color).toLowerCase();
+    if (lcolors.has(c)) warn('topic.json', `legend: ${x.key} and ${lcolors.get(c)} share the colour ${x.color}; one colour should mean one thing`);
+    lcolors.set(c, x.key);
+  }
   const forms = new Map();   // lowercased form -> term
   for (const g of glossary) for (const f of [g.term, ...g.aliases]) {
     if (forms.has(f.toLowerCase()) && forms.get(f.toLowerCase()) !== g.term) warn('glossary.md', `"${f}" is used by both "${forms.get(f.toLowerCase())}" and "${g.term}"`);
     forms.set(f.toLowerCase(), g.term);
   }
+  for (const x of Array.isArray(meta.legend) ? meta.legend : []) if (x?.term && !forms.has(String(x.term).toLowerCase())) warn('topic.json', `legend ${x.key}: term "${x.term}" is not in the glossary`);
   for (const g of glossary) {
     if (!g.short) bad(`glossary "${g.term}"`, 'no definition paragraph');
     for (const s of g.skills) if (!skills.has(s)) bad(`glossary "${g.term}"`, `unknown skill ${s}`);

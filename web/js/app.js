@@ -37,7 +37,7 @@ async function loadTopic(slug, keepJournal = false) {
   if (keepJournal && app.topic?.slug === slug) t.journal = app.topic.journal;
   app.topic = t;
   app.d = derive(t);
-  configure({ terms: t.glossary, media: { slug: t.slug, index: t.media || {} } });
+  configure({ terms: t.glossary, media: { slug: t.slug, index: t.media || {} }, legend: Array.isArray(t.meta.legend) ? t.meta.legend : [] });
   document.title = `${t.meta.title} · learn`;
 }
 function ingest(entries) {

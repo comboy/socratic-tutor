@@ -1,10 +1,10 @@
 // Wiki: cheat sheet, glossary, skill pages, session reader, tutor notes — as tabs.
 import { h, flatSkills, levelOf, lvChip, meter, fmtLevel, fmtDate, skillById, overall, LEVEL_NAMES, lvClass, relDays } from './util.js';
-import { rich } from './rich.js';
+import { rich, legendEntries } from './rich.js';
 import { plain, md } from './md.js';
 import { icon } from './icons.js';
 import { app, go, learner } from './app.js';
-import { termPanel, skillPanel, occurrences, group, sortedGlossary, sortToggle, termText, introOf, noteRow, NOTE_KIND, dependencies, openDock } from './panels.js';
+import { termPanel, skillPanel, occurrences, group, sortedGlossary, sortToggle, termText, introOf, noteRow, NOTE_KIND, dependencies, openDock, termEntry } from './panels.js';
 import { pageForTerm } from './terms.js';
 import * as learnView from './learn.js';
 import { messageNode } from './learn.js';
@@ -46,7 +46,15 @@ function skillChip(id) {
 
 const P = {
   home(el) { overview(el); },
-  cheatsheet(el) { el.append(sheet(h('div', { class: 'sheet-pad' }, rich(app.topic.cheatsheet || '*No cheat sheet yet.*', 'wiki-md hl-scope')))); },
+  cheatsheet(el) {
+    el.append(sheet(h('div', { class: 'sheet-pad' }, rich(app.topic.cheatsheet || '*No cheat sheet yet.*', 'wiki-md hl-scope'))));
+    const L = legendEntries();
+    if (L.length) el.append(sheet(group([icon('palette'), 'Colours in diagrams', h('span', { class: 'count', text: String(L.length) }), h('span', { class: 'spacer' }), h('span', { class: 'group-note', text: 'one colour per thing, the same in every diagram and highlight' })]),
+      h('div', { class: 'vlg-list hl-scope' }, ...L.map(x => { const t = x.term ? termEntry(x.term) : null; return h('div', { class: 'vlg-row', 'data-k': x.key },
+        h('span', { class: 'vl-sw', style: { background: x.color } }), h('span', { text: x.label || x.key }),
+        t ? h('button', { class: 'chip chip-btn', onclick: () => go('wiki', 'term', t.term) }, icon('book'), t.term) : h('span'),
+        h('span', { class: 'vlg-key', title: 'key: {{text|key}} in messages, ctx.color(key) in drawings', text: x.key })); }))));
+  },
   you(el) { you(el); },
   pages(el) {
     const pages = app.topic.pages;

@@ -400,6 +400,32 @@ function openFeedback() {
 // ---------- tutor message analysis ----------
 function hasQuestion(md) { return /^:::question\b/m.test(md || ''); }
 
+// ---------- legend: the topic's visual language (topic.json "legend") ----------
+// [{ key, color, label, term? }]: one colour per recurring thing (a base, a strand, an enzyme), used
+// by {{text|key}} highlights, ctx.color(key) and ctx.legend() in drawings, in every message and page.
+const COLOR = /^(#[0-9a-f]{3,4}|#[0-9a-f]{6}|#[0-9a-f]{8}|(rgb|rgba|hsl|hsla|oklch)\([^()]*\)|var\(--[a-z0-9-]+\)|[a-z]{3,20})$/i;
+const LEGEND_KEY = /^[A-Za-z0-9][\w.-]*$/;
+function setLegend(slug, { key, color, label, term }) {
+  if (!LEGEND_KEY.test(key || '')) throw new Error(`bad key "${key}" (letters, digits, - _ . ; no spaces: it's what {{text|key}} uses)`);
+  if (!COLOR.test(color || '')) throw new Error(`bad colour "${color}" (use #rrggbb, rgb(…), hsl(…) or var(--name))`);
+  const meta = loadTopicMeta(slug);
+  const L = Array.isArray(meta.legend) ? meta.legend : [];
+  const clash = L.find(x => x.key !== key && String(x.color).toLowerCase() === String(color).toLowerCase());
+  const entry = { key, color, label: label || key, ...(term ? { term } : {}) };
+  const i = L.findIndex(x => x.key === key);
+  if (i >= 0) L[i] = entry; else L.push(entry);
+  meta.legend = L;
+  saveTopicMeta(slug, meta);
+  return { entry, replaced: i >= 0, clash: clash || null };
+}
+function removeLegend(slug, key) {
+  const meta = loadTopicMeta(slug);
+  const L = Array.isArray(meta.legend) ? meta.legend : [];
+  if (!L.some(x => x.key === key)) throw new Error(`no legend key "${key}"`);
+  meta.legend = L.filter(x => x.key !== key);
+  saveTopicMeta(slug, meta);
+}
+
 // ---------- levels ----------
 function setLevel(slug, skillId, level, reason) {
   const meta = loadTopicMeta(slug);
@@ -419,5 +445,5 @@ module.exports = {
   walkSkills, findSkill, leafSkills, parseGlossary, readGlossary, addTerm, META_KEYS,
   NOTE_KINDS, readNotes, addNote, closeNote, parseDue, appendLog,
   journalDir, journalFiles, readJournal, readJournalFile, appendJournal, findEntry, lastEntry, pendingQuestion,
-  hasQuestion, setLevel, enqueue, inboxIds, appendFeedback, openFeedback,
+  hasQuestion, setLevel, COLOR, LEGEND_KEY, setLegend, removeLegend, enqueue, inboxIds, appendFeedback, openFeedback,
 };

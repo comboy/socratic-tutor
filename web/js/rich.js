@@ -3,8 +3,13 @@ import { md, vizSpecs, esc, setMedia } from './md.js';
 import { registry, h } from '../viz/index.js';
 import { termMatcher } from './terms.js';
 
-const cfg = { terms: [], matcher: null, resolveTerm: () => null, resolveMsg: () => null, hoverCard: null, onRef: () => {} };
-export function configure(o) { Object.assign(cfg, o); if (o.terms) buildTermIndex(o.terms); if (o.media) setMedia(o.media.slug, o.media.index); }
+const cfg = { terms: [], matcher: null, resolveTerm: () => null, resolveMsg: () => null, hoverCard: null, onRef: () => {}, legend: [], legendMap: new Map() };
+export function configure(o) {
+  Object.assign(cfg, o);
+  if (o.terms) buildTermIndex(o.terms);
+  if (o.media) setMedia(o.media.slug, o.media.index);
+  if (o.legend) cfg.legendMap = new Map((o.legend || []).filter(x => x?.key && x.color).map(x => [String(x.key), x.color]));
+}
 
 // ---------------------------------------------------------------- render
 // Render markdown into el (replacing contents). Returns el.
@@ -50,6 +55,9 @@ function makeCtx(box) {
     inline: s => (s == null ? '' : md(String(s), { inline: true })),
     key: (el, k) => { el.setAttribute('data-k', k); return el; },
     color: k => keyColor(scope(), k),
+    // the topic's legend as a row of swatches (all entries, or these keys); each item carries its
+    // key, so hovering it lights up the parts of the drawing tagged with ctx.key(el, key)
+    legend: keys => legendRow(keys, scope()),
     highlight: keys => setPinned(scope(), keys, true),
     // fixed colours for keys in this scope ({ q: 'var(--vq)' }), so a key keeps one colour
     // whatever order the keys appear in (e.g. one colour per vector type)
@@ -102,9 +110,12 @@ export function linkTerms(root) {
 }
 
 // ---------------------------------------------------------------- linked highlighting
+// A key's colour: a viz's own fixColors, else the topic legend (topic.json "legend": one colour per
+// recurring thing, the same in every message and page), else the next of the six highlight colours.
 const PALETTE = 6;
 function keyColor(scope, k) {
   if (scope.__fixed?.[k]) return scope.__fixed[k];
+  if (cfg.legendMap.has(k)) return cfg.legendMap.get(k);
   scope.__colors = scope.__colors || new Map();
   if (!scope.__colors.has(k)) scope.__colors.set(k, scope.__colors.size % PALETTE);
   return `var(--k${scope.__colors.get(k)})`;
@@ -116,6 +127,15 @@ function colorKeys(scope) {
   }
 }
 const keysOf = el => (el.getAttribute('data-k') || '').split(/\s+/).filter(Boolean);
+export function legendEntries(keys) {
+  const all = (cfg.legend || []).filter(x => x?.key);
+  return keys ? [].concat(keys).map(k => all.find(x => x.key === k) || { key: k, label: k }) : all;
+}
+export function legendRow(keys, scope = null) {
+  const row = h('div', { class: 'viz-legend' }, ...legendEntries(keys).map(x => h('span', { class: 'vl-item', 'data-k': x.key, title: x.term ? `${x.label || x.key} (glossary: ${x.term})` : '' },
+    h('span', { class: 'vl-sw', style: { background: x.color || (scope ? keyColor(scope, x.key) : 'var(--faint)') } }), h('span', { class: 'vl-label', text: x.label || x.key }))));
+  return row;
+}
 function apply(scope, keys, cls) {
   const set = new Set(keys);
   for (const el of scope.querySelectorAll('[data-k]')) {

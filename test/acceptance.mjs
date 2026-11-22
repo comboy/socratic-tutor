@@ -606,6 +606,38 @@ async function main() {
     await page.waitFor(`/named after an alias/.test(document.querySelector('.sheet .term-page')?.innerText || '')`, { timeout: 5000 });
     assert(/^cells: ok/m.test(learn('check', 'cells')), 'an alias-named page checks out');
   });
+  await test('visual language: the topic legend colours keys in prose and drawings, ctx.legend draws the key; wiki, resume, CLI', async () => {
+    assert(/added membrane #d6b450 "membrane" in cells's legend$/m.test(learn('legend', 'cells', 'set', 'membrane', '#d6b450', 'membrane', '--term', 'plasma membrane')), 'set');
+    learn('legend', 'cells', 'set', 'dna', '#3d7fd0', 'DNA strand');
+    assert(/warning: #3D7FD0 is also "DNA strand" \(dna\)/.test(learn('legend', 'cells', 'set', 'zz', '#3D7FD0', 'other')), 'colour clash warned');
+    learn('legend', 'cells', 'rm', 'zz');
+    const fails = (...a) => { try { learn(...a); return ''; } catch (e) { return String(e.stderr); } };
+    assert(/bad colour/.test(fails('legend', 'cells', 'set', 'x', 'not a colour')) && /no glossary term "nope"/.test(fails('legend', 'cells', 'set', 'x', '#fff', 'x', '--term', 'nope')), 'bad input refused');
+    const list = learn('legend', 'cells');
+    assert(/^  membrane +#d6b450 +membrane  \(term: plasma membrane\)$/m.test(list) && /^  dna +#3d7fd0 +DNA strand$/m.test(list) && !/zz/.test(list), list);
+    assert(/Visual language[^\n]*\n  membrane +#d6b450/.test(learn('resume', 'cells')), 'resume shows the legend');
+    assert(/^cells: ok$/m.test(learn('check', 'cells')), 'check');
+    await sleep(400);   // topic.json changed: the browser reloads the topic
+    post('cells', ['The {{membrane|membrane}} keeps the {{DNA|dna}} in, unlike {{something else|zz}}.', '',
+      '```viz js', 'const b = ctx.h("span", { id: "zz-box", text: "DNA" }); ctx.key(b, "dna"); b.style.background = ctx.color("dna");', 'el.append(b, ctx.legend(["membrane", "dna"]));', '```'].join('\n'));
+    const id = lastTutor('cells').id, sel = `[id="m-${id}"] .msg-body`;
+    await page.nav(`${BASE}/#/cells/learn`, 1200);
+    const r = await page.waitFor(`(() => { const b = document.querySelector('${sel}'); if (!b?.querySelector('#zz-box')) return null; const kc = k => b.querySelector('.lk[data-k="' + k + '"]').style.getPropertyValue('--kc');
+      return { dna: kc('dna'), membrane: kc('membrane'), other: kc('zz'), box: getComputedStyle(b.querySelector('#zz-box')).backgroundColor,
+        legend: [...b.querySelectorAll('.viz-legend .vl-item')].map(x => x.textContent + ' ' + getComputedStyle(x.querySelector('.vl-sw')).backgroundColor) }; })()`, { timeout: 4000 });
+    assert(r.dna === '#3d7fd0' && r.membrane === '#d6b450' && r.other === 'var(--k0)', 'prose keys: ' + JSON.stringify(r));
+    assert(r.box === 'rgb(61, 127, 208)' && r.legend.join() === 'membrane rgb(214, 180, 80),DNA strand rgb(61, 127, 208)', 'drawing: ' + JSON.stringify(r));
+    await page.eval(`document.querySelector('${sel} .viz-legend .vl-item[data-k="dna"]').id = 'zz-lg'`);
+    await page.hover('#zz-lg', 300);
+    assert(await page.eval(`document.querySelector('${sel} .lk[data-k="dna"]').classList.contains('hl') && document.querySelector('#zz-box').classList.contains('hl')`), 'hovering a legend item lights up its parts');
+    await page.shot('legend-message');
+    await page.nav(`${BASE}/#/cells/wiki/cheatsheet`, 900);
+    const rows = await page.waitFor(`[...document.querySelectorAll('.vlg-row')].map(x => [...x.children].map(c => c.textContent).join('/'))`);
+    assert(rows.join('|') === '/membrane/cell membrane/membrane|/DNA strand//dna', 'cheat sheet: ' + rows.join('|'));
+    await page.shot('legend-cheatsheet');
+    await page.nav(`${BASE}/#/cells/wiki/term/cell%20membrane`, 900);
+    assert(/membrane in diagrams|in diagrams/.test(await page.waitFor(`document.querySelector('.sheet .title-block .chip-legend')?.textContent`)), 'term page shows its colour');
+  });
   await test('post refuses a message that ends with a question outside :::question (--force for a rhetorical one)', async () => {
     const n = lastTutor('cells').id;
     const err = (() => { try { post('cells', 'Here is the plan.\n\nShall I start with step 1?'); return ''; } catch (e) { return String(e.stderr); } })();

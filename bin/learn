@@ -86,6 +86,7 @@ bin/learn term add [t] "name" --short "…" [--skill id] [--full …] [--aliases
 bin/learn term show [t] <name>  ·  terms [t]  ·  terms-missing [t] [--last n | --all]   bold phrases not in the glossary
 bin/learn term pages [t]                 terms with their own page (terms/<name>.md), and the most-mentioned ones without
 bin/learn tree [t]                       print the skill tree as an outline · tree [t] --set < outline  (replace it)
+bin/learn legend [t] [set <key> <#color> "label" [--term name] | rm <key>]   colours for recurring things in diagrams
 bin/learn log [t] "what happened"        append to today's entry in log.md
 bin/learn feedback "remark"              a note for the builder about the app or the process (not the lesson)
 bin/learn pending [t] · recent [n] [--topic t] · msgs [t] --skill id · status · show <id> · grep <regex> [--topic t]
@@ -217,6 +218,8 @@ commands.resume = () => {
   sec(`Glossary terms (${gl.length}; add with \`bin/learn term add\`, see one with \`term show\`)`, gl.join(', ') || '(none yet)');
   const pages = S.readPages(slug);
   if (pages.length) sec('Wiki pages (wiki:page/<name>)', pages.map(p => `${p.name}: ${p.title}`).join('\n'));
+  sec('Visual language: draw these things in these colours, always (ctx.color(key), {{text|key}}, ctx.legend([keys]); add with `bin/learn legend set`)',
+    legendLines(meta) || '(no legend yet: when a drawing introduces something that will recur, give it a colour with `bin/learn legend set <key> <#hex> "label"`)');
   const fb = S.openFeedback().length;
   if (fb) out.push(`\n(${fb} open feedback item(s) in data/feedback.md for the builder: not your job mid-lesson)`);
 
@@ -471,6 +474,27 @@ commands.term = () => {
     console.log(`added "${name}" to ${topic}/glossary.md${missing.length ? ` (parts not in the glossary yet: ${missing.join(', ')})` : ''}`);
   } else die('usage: term add|show|pages …');
 };
+// The topic's visual language: one colour per recurring thing, in topic.json "legend".
+const legendLines = meta => (Array.isArray(meta.legend) ? meta.legend : []).map(x => `  ${String(x.key).padEnd(16)} ${String(x.color).padEnd(9)} ${x.label || ''}${x.term ? `  (term: ${x.term})` : ''}`).join('\n');
+commands.legend = () => {
+  const f = flags(argv, { topic: 'string', term: 'string' });
+  const topic = topicOf(f);
+  const [sub, key, color, ...label] = f._;
+  if (sub === 'set') {
+    if (!key || !color) die('usage: legend [t] set <key> <#color> "label" [--term name]');
+    if (f.term && !S.readGlossary(topic).some(g => [g.term, ...g.aliases].some(x => x.toLowerCase() === f.term.toLowerCase()))) die(`no glossary term "${f.term}"`);
+    const r = S.setLegend(topic, { key, color, label: label.join(' ').trim(), term: f.term });
+    console.log(`${r.replaced ? 'updated' : 'added'} ${key} ${color} "${r.entry.label}" in ${topic}'s legend${r.clash ? `\nwarning: ${color} is also "${r.clash.label}" (${r.clash.key}); one colour should mean one thing` : ''}`);
+  } else if (sub === 'rm') {
+    if (!key) die('usage: legend [t] rm <key>');
+    S.removeLegend(topic, key);
+    console.log(`removed ${key} from ${topic}'s legend`);
+  } else if (!sub) {
+    const lines = legendLines(S.loadTopicMeta(topic));
+    console.log(lines ? `${topic} legend (use {{text|key}} in prose, ctx.color(key) and ctx.legend([keys]) in drawings):\n${lines}` : `${topic}: no legend yet. Add one: bin/learn legend set <key> <#color> "label" [--term name]`);
+  } else die('usage: legend [t] [set <key> <#color> "label" [--term name] | rm <key>]');
+};
+
 // Real images in the topic (app/media.js): download from Wikimedia Commons, or add a local file,
 // into topics/<t>/media/ with author and licence; shown with ![caption](media:<file>).
 commands.image = async () => {
@@ -719,4 +743,5 @@ if (argv[0] && !argv[0].startsWith('-')) {
   if (commands[argv[0]]) cmd = argv.shift();
   else if (!S.listTopics().includes(argv[0])) die(`unknown command or topic "${argv[0]}"; try bin/learn help`);
 }
-Promise.resolve(commands[cmd]()).catch(e => die(e.message));
+// sync and async commands alike: an error is a one-line message, not a stack trace
+Promise.resolve().then(() => commands[cmd]()).catch(e => die(e.message));

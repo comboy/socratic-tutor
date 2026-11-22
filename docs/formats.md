@@ -8,7 +8,7 @@ never contains any. Layout:
 
 | path (in the data home) | what | who edits |
 |---|---|---|
-| `topics/<slug>/topic.json` | title, goal, target level, focus, nested skill tree with levels, `needs`, `foundations` | `bin/learn level/focus/summary/tree`; you for the rest |
+| `topics/<slug>/topic.json` | title, goal, target level, focus, nested skill tree with levels, `needs`, `foundations`, `legend` | `bin/learn level/focus/summary/tree/legend`; you for the rest |
 | `topics/<slug>/glossary.md` | every term introduced (format below) | `bin/learn term add`, or by hand |
 | `topics/<slug>/notes.json` | the tutor's model of the learner: reviews, holes, parked questions, misconceptions | `bin/learn note` only |
 | `topics/<slug>/progress.md` | "Resume here": the free-form part of the hand-over notes | you |
@@ -129,7 +129,8 @@ const svg = ctx.d3.select(el).append("svg").attr("width", 300).attr("height", 80
 ````
 
 If a toy will be reused, add it as a named component in `web/viz/` (see `web/viz/README.md`)
-instead of copying a `viz js` block around.
+instead of copying a `viz js` block around. Draw with the topic's legend colours
+(`ctx.color(key)`, `ctx.legend()`; see "Visual language" below), not ad-hoc hex values.
 
 Keep visuals small and purposeful: a viz should replace text the learner would otherwise
 have to hold in their head. Use concrete small numbers (d=3 or 4), with labelled rows.
@@ -193,6 +194,33 @@ from `needs`:
       @linalg Linear algebra: vectors, dot products, matrix multiply
       4 Attention
         4.1 Q, K, V & dot-product scores <- 2.1, linalg
+
+### Visual language: `legend` (topic.json)
+
+One colour per recurring thing in the topic (a base, a strand, an enzyme, a class of molecule),
+the same in every drawing, highlight and page, so colour carries meaning across lessons instead
+of being reinvented in each diagram:
+
+```json
+"legend": [
+  { "key": "adenine", "color": "#5cb85c", "label": "A (adenine)", "term": "adenine" },
+  { "key": "template", "color": "#9aa7b4", "label": "template strand", "term": "template strand" }
+]
+```
+
+- `{{the template strand|template}}` in prose, `\k{template}{…}` in formulas and `ctx.color("template")`
+  in a `viz js` drawing all get the legend colour (keys not in the legend keep the six rotating
+  highlight colours). Tag drawn shapes with `ctx.key(el, "template")` so hovering links them up.
+- `el.append(ctx.legend(["adenine", "template"]))` draws the key under a drawing: swatches with
+  labels, and hovering one lights up its parts. Prefer it to hand-drawn legends.
+- `term` (optional) ties the colour to a glossary term: its page shows the swatch.
+- The wiki's Cheat sheet tab lists the legend ("Colours in diagrams"), and `bin/learn resume` prints
+  it, so every session draws with the same colours.
+- Edit with `bin/learn legend [t] set <key> <#color> "label" [--term name]` / `legend [t] rm <key>`
+  (it warns when a colour already means something else). Mid-tone colours (like `#5b9bd5`) read on
+  both themes; dark text (`#10202e`) on a filled shape stays readable.
+- One colour means one thing: before giving a new kind of thing a colour, check the legend; reuse
+  the entry if it's the same thing, pick an unused colour if it isn't.
 
 ### notes.json (via `bin/learn note` only)
 

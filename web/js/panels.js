@@ -1,7 +1,7 @@
 // Inspector panel (right dock) and the panels it shows: glossary, pinned messages, term, skill,
 // message, map node. The same panels render full-width in the wiki. Also: hover-card content.
 import { h, $, store, levelOf, skillById, descendants, lvChip, meter, fmtLevel, LEVEL_NAMES, fmtDate, shortId } from './util.js';
-import { rich } from './rich.js';
+import { rich, legendEntries } from './rich.js';
 import { termMatcher, pageForTerm } from './terms.js';
 import { plain, md } from './md.js';
 import { icon } from './icons.js';
@@ -201,6 +201,8 @@ export function termPanel(body, name, { full = false } = {}) {
       sk ? h('button', { class: 'chip chip-btn', onclick: () => openDock('skill', sk.id) }, lvChip(lv), `${sk.id} ${sk.name}`) : null,
       ...t.skills.slice(1).map(id => { const s2 = skillById(app.topic.meta, id); return s2 ? h('button', { class: 'chip chip-btn', title: s2.name, onclick: () => openDock('skill', s2.id) }, lvChip(levelOf(s2.node)), s2.id) : null; }),
       t.size ? h('span', { class: 'chip', title: 'size in Llama-2-7B', text: t.size }) : null,
+      ...legendEntries().filter(x => x.term && termEntry(x.term) === t).map(x => h('span', { class: 'chip chip-legend', title: `Its colour in diagrams (key "${x.key}")` },
+        h('span', { class: 'vl-sw', style: { background: x.color } }), x.label && x.label !== t.term ? `${x.label} in diagrams` : 'in diagrams')),
       t.aliases.length ? h('span', { text: 'also: ' + t.aliases.join(', ') }) : null)));
   // on its own page a term isn't a link to itself
   const own = el => { for (const x of el.querySelectorAll('.term')) if (termEntry(x.dataset.term) === t) x.replaceWith(x.textContent); return el; };

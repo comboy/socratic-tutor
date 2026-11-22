@@ -17,7 +17,10 @@ To add a reusable component:
      // ctx.md(src, cls)  markdown -> element (terms linked, nested viz mounted)
      // ctx.inline(src)   inline markdown -> HTML string (labels)
      // ctx.key(el, k)    tag an element with highlight key(s); same as data-k="k"
-     // ctx.color(k)      CSS colour of key k in this message
+     // ctx.color(k)      CSS colour of key k: the topic legend's colour if k is in it, else one
+     //                   of the six highlight colours (per message)
+     // ctx.legend([k…])  a row of swatches + labels from the topic legend (all entries if no keys);
+     //                   hovering an item lights up the parts tagged with that key
      // ctx.highlight([k])  pin highlight of keys in this message (used by `steps`)
      // ctx.slider(label, min, max, value, step, onChange) -> <label> element
      // ctx.fixColors({ q: 'var(--vq)' })  give keys a fixed colour in this message/page

@@ -31,6 +31,11 @@ files) are in `docs/protocol.md`; starting a new topic is in `docs/bootstrap.md`
   add`), so it gets a hover card everywhere. Acronyms get their expansion (`--full "**K**ey
   **V**alue"`). `post` reminds you of bold phrases that aren't in the glossary yet. For a reminder
   that only matters in one message, use a tip: `[template strand](tip:the one being read)`.
+- **One visual language per topic.** The same thing gets the same colour in every drawing and
+  highlight: the topic's legend (`bin/learn legend`, printed by `resume`). Draw with
+  `ctx.color(key)` and add `ctx.legend([…])` under the drawing; when something new will recur,
+  give it an unused colour first. A colour that meant "non-polar" yesterday must not mean
+  "guanine" today.
 - **Grow a page per term.** A term's page (`terms/<name>.md`) is the learner's own encyclopedia
   entry: what they know about it, the pictures they learned it from, links to the lessons, and a
   faded `:::fog` list of what's still ahead. Add to it whenever a lesson teaches something about

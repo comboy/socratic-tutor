@@ -79,6 +79,7 @@ Markdown extensions, in brief (details and every `viz` type in `docs/formats.md`
     bin/learn term pages [t]                       # term pages (terms/<name>.md): which exist, which are stale
     bin/learn image [t] "File:…" · image search "words"   # a Commons image into the topic, for media:
     bin/learn tree [t]  /  tree [t] --set < outline  # the skill tree, incl. needs and foundations
+    bin/learn legend [t] set <key> <#color> "label" [--term t]   # one colour per recurring thing in drawings
     bin/learn log [t] "what happened this session"
     bin/learn check [t]                             # after editing topic files by hand
     bin/learn commit "message"                      # the data home is its own git repo
