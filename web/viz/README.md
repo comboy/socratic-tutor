@@ -57,6 +57,9 @@ a message whose drawing would show an error box; `bin/learn check` lists old one
 - `core.js`: matrix, vector, bars, tokens, flow, plot, steps, js (see docs/formats.md).
 - `llm.js`: `softmax` (editable logits + temperature).
 - `residual.js`: `residual`, described below.
+- `figure.js`: `figure`, a real image (a `media:` file) with focus regions (the rest dimmed,
+  numbered, listed below with linked hover), arrows and blanked-out patches; click for full size.
+  Example in `docs/formats.md`.
 
 ### `viz residual`: the residual stream, worked by hand
 

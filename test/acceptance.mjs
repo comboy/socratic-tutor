@@ -704,6 +704,42 @@ async function main() {
     await page.waitFor(`/named after an alias/.test(document.querySelector('.sheet .term-page')?.innerText || '')`, { timeout: 5000 });
     assert(/^cells: ok/m.test(learn('check', 'cells')), 'an alias-named page checks out');
   });
+  await test('viz figure: a real image with the rest dimmed, numbered focus regions + list (linked hover), an arrow, a blanked label; full size on click', async () => {
+    // a busy 400×300 "textbook diagram" with labels everywhere
+    const svgFile = path.join(HOME, 'busy.svg');
+    fs.writeFileSync(svgFile, `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><rect width="400" height="300" fill="#f4f1e8"/>
+      ${[...Array(10)].map((_, i) => `<circle cx="${40 + (i % 5) * 80}" cy="${80 + Math.floor(i / 5) * 120}" r="26" fill="hsl(${i * 36},60%,60%)"/><text x="${40 + (i % 5) * 80}" y="${125 + Math.floor(i / 5) * 120}" font-size="13" text-anchor="middle">label ${i + 1}</text>`).join('')}</svg>`);
+    learn('image', 'cells', svgFile, '--author', 'Test Author', '--license', 'CC0');
+    const fig = (src, more = '') => ['Only two parts matter here.', '', '```viz figure', `{ src: "${src}", caption: "Look at **1** and **2** only",`,
+      '  focus: [ { x: .02, y: .1, w: .2, h: .36, label: "the first circle", key: "first" }, { x: 240, y: 170, w: 80, h: 120, label: "the ninth one" } ],',
+      '  arrows: [ { from: [.95, .1], to: [.75, .25], label: "start here" } ],', `  hide: [ { x: .3, y: .38, w: .4, h: .07 } ]${more} }`, '```'].join('\n');
+    const bad = spawnSync(process.execPath, [BIN, 'post', '--topic', 'cells'], { env: ENV, input: fig('nope.png'), encoding: 'utf8' });
+    assert(bad.status === 1 && /media:nope\.png: viz figure src not in media/.test(bad.stderr), 'missing figure image posted: ' + bad.stderr);
+    post('cells', fig('busy.svg') + '\n\nSee {{the first one|first}}.');
+    const id = lastTutor('cells').id, sel = `[id="m-${id}"] .viz-figure`;
+    await page.nav(`${BASE}/#/cells/learn`, 1200);
+    const r = await page.waitFor(`(() => { const v = document.querySelector('${sel}'); if (!v || !v.querySelector('.fig-region')) return null;
+      const regs = [...v.querySelectorAll('.fig-region')], st = v.querySelector('.fig-stage').getBoundingClientRect();
+      return { regions: regs.length, nums: regs.map(g => g.querySelector('text').textContent).join(), list: [...v.querySelectorAll('.fig-list li')].map(li => li.innerText.replace(/\\s+/g, ' ')),
+        mask: v.querySelectorAll('mask rect').length, hide: v.querySelectorAll('.fig-hide').length, arrow: v.querySelector('.fig-arrow-label')?.textContent,
+        box2: (() => { const b = regs[1].querySelector('rect'); return [b.getAttribute('x'), b.getAttribute('width')].join(); })(),
+        credit: v.querySelector('.media-credit')?.textContent, cap: v.querySelector('.media-cap-text')?.textContent, w: Math.round(st.width), err: !!v.querySelector('.viz-err-msg') }; })()`, { timeout: 5000 });
+    assert(r.regions === 2 && r.nums === '1,2' && r.list.join('|') === '1 the first circle|2 the ninth one' && r.mask === 3 && r.hide === 1 && r.arrow === 'start here', JSON.stringify(r));
+    assert(r.box2 === '240,80' && r.credit === 'Test Author · CC0' && r.cap === 'Look at 1 and 2 only' && r.w > 300 && !r.err, 'pixels / credit / size: ' + JSON.stringify(r));
+    await page.eval(`document.querySelector('${sel} .fig-list li').id = 'zz-fig1'`);
+    await page.hover('#zz-fig1', 300);
+    const hl = await page.eval(`[...document.querySelectorAll('[id="m-${id}"] [data-k="first"]')].map(e => e.classList.contains('hl') + ':' + e.tagName.toLowerCase())`);
+    assert(hl.includes('true:g') && hl.includes('true:span'), 'hovering the list row lights the region and the prose: ' + JSON.stringify(hl));
+    await page.shot('viz-figure');
+    await page.mouse('mouseMoved', 5, 5);
+    await page.click(`${sel} .fig-stage`, 400);
+    const big = await page.eval(`(() => { const b = document.querySelector('.lightbox .fig-big'); return b && { w: Math.round(b.getBoundingClientRect().width), regions: b.querySelectorAll('.fig-region').length, list: !!document.querySelector('.lightbox .fig-list') }; })()`);
+    assert(big && big.w > r.w && big.regions === 2 && big.list, 'full size: ' + JSON.stringify(big));
+    await page.shot('viz-figure-full');
+    await page.key?.('Escape');
+    await page.eval(`document.querySelector('.lightbox')?.click()`); await sleep(200);
+    assert(!(await page.eval(`!!document.querySelector('.lightbox')`)), 'lightbox closes');
+  });
   await test('visual language: the topic legend colours keys in prose and drawings, ctx.legend draws the key; wiki, resume, CLI', async () => {
     assert(/added membrane #d6b450 "membrane" in cells's legend$/m.test(learn('legend', 'cells', 'set', 'membrane', '#d6b450', 'membrane', '--term', 'plasma membrane')), 'set');
     learn('legend', 'cells', 'set', 'dna', '#3d7fd0', 'DNA strand');

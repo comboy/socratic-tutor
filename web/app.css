@@ -459,6 +459,25 @@ details.callout[open] summary { border-bottom: 1px solid var(--line-soft); }
 .viz > svg, .viz > canvas, .viz > img { display: block; margin-inline: auto; }
 .bars { margin-inline: auto; } .mx-wrap { justify-content: center; }
 .viz-err-msg { color: var(--bad); font: 12px var(--mono); }
+/* viz figure: a real image with focus regions, numbered callouts and arrows drawn over it */
+.viz-figure { padding: 10px; }
+.fig-stage { position: relative; width: fit-content; max-width: 100%; margin: 0 auto; line-height: 0; cursor: zoom-in; background: #fff; border-radius: 5px; overflow: hidden; box-sizing: border-box; }
+.md .fig-stage img, .fig-stage img { display: block; max-width: 100%; height: auto; margin: 0; padding: 0; border-radius: 0; background: none; box-shadow: none; }
+.fig-over { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.fig-dim { fill: #141a24; }
+.fig-box { fill: none; stroke: var(--kc, var(--k0)); stroke-width: 2.5px; pointer-events: all; }
+.fig-region.hl .fig-box, .fig-region.pin .fig-box { stroke-width: 4.5px; }
+.fig-region.hl, .fig-region.pin { box-shadow: none; background: none !important; }
+.fig-badge { fill: var(--kc, var(--k0)); stroke: #fff; stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+.fig-badge-n { fill: #fff; font-family: var(--sans); font-weight: 700; }
+.fig-arrow-label { font-family: var(--sans); font-weight: 650; paint-order: stroke; stroke: #fff; stroke-linejoin: round; }
+.fig-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 3px; font-size: 13px; line-height: 1.4; }
+.fig-list li { display: flex; gap: 8px; align-items: baseline; padding: 2px 6px; border-radius: 4px; }
+.fig-n { flex: none; min-width: 1.5em; height: 1.5em; line-height: 1.5em; border-radius: 50%; text-align: center; font-size: 11.5px; font-weight: 700; color: #fff; background: var(--kc, var(--k0)); }
+.fig-cap { margin-top: 4px; }
+.lightbox .fig-big { cursor: zoom-out; width: min(94vw, calc((100vh - 220px) * var(--ar))); max-width: none; }
+.lightbox .fig-big img { width: 100%; max-width: none; max-height: none; padding: 0; border-radius: 0; box-shadow: none; }
+.fig-big-cap .fig-list { text-align: left; }
 /* a drawing in a preview (msg: hover card): a placeholder panel, never the drawing's code */
 .viz-ph { margin: .5em 0; padding: 5px 10px; border: 1px dashed var(--line); border-radius: 6px; background: var(--well); color: var(--muted); font-size: 12px; }
 .mx-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

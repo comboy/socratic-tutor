@@ -75,6 +75,7 @@ export function setMedia(slug, index = {}) {
   media = { slug, index: index || {}, lookup };
 }
 // media:<file>, or a hotlinked Commons URL whose file was downloaded -> { src, info }
+export function mediaImage(href) { return localImage(String(href || '')); }
 function localImage(href) {
   if (!media.slug) return null;
   const m = href.match(/^media:(.+)$/);

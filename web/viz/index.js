@@ -4,3 +4,4 @@ export { registry, register, h, fmt } from './core.js';
 import './core.js';
 import './llm.js';
 import './residual.js';
+import './figure.js';

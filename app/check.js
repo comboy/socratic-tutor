@@ -25,6 +25,11 @@ function linkChecker(slug) {
   const media = new Set(Object.keys(S.readMedia(slug)));
   return text => {
     const out = [];
+    // a `viz figure` draws a media file: it must be downloaded like a ![…](media:…) image
+    for (const m of String(text || '').matchAll(/^ {0,3}(`{3,}|~{3,})[ \t]*viz[ \t]+figure\b[^\n]*\n([\s\S]*?)^ {0,3}\1[ \t]*$/gm)) {
+      const f = (m[2].match(/\bsrc\s*:\s*(["'`])(.+?)\1/) || [])[2];
+      if (f && !/^https?:/.test(f) && !media.has(f.replace(/^media:/, ''))) out.push({ type: 'media', id: f.replace(/^media:/, ''), why: 'viz figure src not in media/ (download it first: bin/learn image)', error: true });
+    }
     // a link written as code (an example in the notes) is not a link
     text = String(text || '').replace(/```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`/g, ' ');
     for (const m of text.matchAll(/!\[[^\]\n]*\]\(media:([^)\s]+)\)/g))

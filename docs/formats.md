@@ -121,6 +121,14 @@ literal (JSON or relaxed: unquoted keys, trailing commas, comments). Types:
 ```viz residual    // a 2-layer toy transformer worked by hand: embedding → (RMSNorm → q/k/v → masked
 { token: "bank" }  // scores → softmax → Σ a·v → W_O → +x → RMSNorm → MLP → +x) × 2, live maths,
 ```                // step-through, token picker, editable embeddings. Options: web/viz/README.md
+```viz figure      // a real image (media: file) with only what matters brought forward: the rest dimmed,
+{ src: "replication-fork.png", caption: "Look at **1** and **2** only",   // numbered regions + a list,
+  focus: [ { x: .52, y: .18, w: .26, h: .22, label: "helicase unzips it", key: "helicase" },
+           { x: .08, y: .56, w: .36, h: .26, label: "lagging strand, in pieces" } ],
+  arrows: [ { from: [.95, .5], to: [.62, .5], label: "the fork moves this way" } ],  // e.g. reading direction
+  hide: [ { x: 0, y: .9, w: .3, h: .1 } ] }   // blank out labels that would distract
+```                // x, y, w, h: fractions of the image from the top left (or pixels: any value > 1);
+                   // look at the downloaded file to place them. Hover a row = its region lights up.
 ```viz js          // anything else: a function body with el, ctx and d3 already in scope
 // (don't declare them: `const d3 = …` is a SyntaxError). ctx.slider(label,min,max,value,step,onChange)
 // returns an element: append it. ctx.key(element, key), ctx.md(markdownString) -> HTMLElement, ctx.color(key),

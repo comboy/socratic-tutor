@@ -71,7 +71,8 @@ Markdown extensions, in brief (details and every `viz` type in `docs/formats.md`
 (everything sharing a key lights up together, so connect prose ↔ formula ↔ matrix rows) ·
 `[text](msg:2026-11-13.42)`, `term:`, `skill:`, `map:`, `wiki:` links · `[phrase](tip:a hover note for this message only)` ·
 `![caption](media:file.png)` images downloaded with `bin/learn image` (offline, credited) ·
-```` ```viz matrix|vector|bars|tokens|flow|plot|steps|residual|js ```` blocks (`post` refuses one that
+```` ```viz matrix|vector|bars|tokens|flow|plot|steps|residual|figure|js ```` blocks (`figure`: a real
+image with focus regions, numbered callouts and arrows) (`post` refuses one that
 doesn't parse; in `viz js`, `el`, `ctx` and `d3` are already in scope).
 
 ## Bookkeeping commands
