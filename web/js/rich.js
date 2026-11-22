@@ -73,7 +73,7 @@ function buildTermIndex(entries) {
   cfg.formMap = new Map(forms.map(f => [f.form.toLowerCase(), f]));
   cfg.termRe = forms.length ? new RegExp(`(?<![\\w-])(${forms.map(f => reEsc(f.form)).join('|')})(?:e?s)?(?![\\w])`, 'gi') : null;
 }
-const SKIP = 'code, pre, a, button, .katex, .term, .lk, h1, h2, .mx, .tok, .callout-label, summary, .no-terms, input, textarea';
+const SKIP = 'code, pre, a, button, .katex, .term, .lk, h1, h2, .mx, .tok, .callout-label, summary, .no-terms, input, textarea, svg';  // svg: an HTML span inside <text> doesn't render, so the word would vanish
 export function linkTerms(root) {
   if (!cfg.termRe) return;
   const seen = new Set();

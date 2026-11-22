@@ -367,7 +367,7 @@ body.resizing-v { cursor: row-resize; user-select: none; }
 .md th { background: var(--band); font-weight: 650; }
 .md hr { border: 0; border-top: 1px solid var(--line); margin: 1em 0; }
 .md a { color: var(--accent); }
-.md img { max-width: 100%; background: #fff; border-radius: 6px; padding: 6px; box-sizing: border-box; } /* transparent diagrams assume a white page */
+.md img { display: block; margin: .6em auto; max-width: 100%; background: #fff; border-radius: 6px; padding: 6px; box-sizing: border-box; } /* transparent diagrams assume a white page; centred in the column */
 .katex { font-size: 1.07em; }
 .katex-display { overflow-x: auto; overflow-y: hidden; padding: 6px 0; margin: .6em 0; }
 
@@ -420,6 +420,9 @@ details.callout[open] summary { border-bottom: 1px solid var(--line-soft); }
 .viz-caption { font-size: 12.5px; line-height: 1.45; color: var(--muted); margin-top: 6px; }
 .viz-caption p { margin: 0; }
 .viz-error { border-color: var(--bad); }
+/* diagrams sit centred in the column (the .viz box itself stays full width) */
+.viz > svg, .viz > canvas, .viz > img { display: block; margin-inline: auto; }
+.bars { margin-inline: auto; } .mx-wrap { justify-content: center; }
 .viz-err-msg { color: var(--bad); font: 12px var(--mono); }
 .mx-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .mx-name { font: italic 600 15px var(--sans); padding: 0 2px; color: var(--fg-strong); }
