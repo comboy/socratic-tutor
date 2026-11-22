@@ -94,12 +94,16 @@ doesn't parse; in `viz js`, `el`, `ctx` and `d3` are already in scope).
     bin/learn meta [t] <id>… [--off]               # tag past entries as app talk (append-only)
     bin/learn recent [n] · show <id> · grep <regex> · pending · msgs --skill <id> · term show <name>
 
-**Term pages** (`terms/<name>.md`, format in `docs/formats.md`): every glossary term can have its
-own wiki page gathering what the learner knows about it. When a lesson taught something real about
-a term (a mechanism, a diagram, a correction), have a background subagent add it to that term's
-page after you've replied: give it the term, the message ids and what the learner now knows, and
-let it write the page (`bin/learn term show <term>` prints the path) and run `bin/learn check`.
-Never make the learner wait for this; the wiki job catches up on the rest.
+**Term pages** (`terms/<name>.md`, format in `docs/formats.md`): every glossary term gets its own
+wiki article, Wikipedia-like but written for this learner from what they've covered. They are
+written *during* the lesson, by you, because you have the context: right after each reply, once
+`wait` is re-armed in the background (so the learner reads while you write), put what that reply
+taught into the article of each term it taught (`post` lists them, with the file to write: new
+page or extend the existing one), then `bin/learn check`. A background subagent may do the
+writing if you hand it the facts, but it happens now, not "later". The learner reads these pages
+when a lesson links back to something they've forgotten: an article that just says "explained
+[here](msg:…)" fails them. Don't let this delay a reply; if a message arrives meanwhile, answer
+it first and finish the page after. `resume` lists the focus terms that still have no page.
 
 **The learner model** (`notes.json`): keep a running picture of what the learner understands.
 When you notice a gap that's worth fixing but would derail the current thread, record it as a

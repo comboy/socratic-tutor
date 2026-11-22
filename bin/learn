@@ -231,8 +231,16 @@ commands.resume = () => {
   sec('Notes: suspected holes (probe when relevant, not urgent)', byKind('hole'));
   sec('Notes: parked learner questions', byKind('parked'));
 
-  const gl = S.readGlossary(slug).map(g => g.term);
+  const G = S.readGlossary(slug), gl = G.map(g => g.term);
   sec(`Glossary terms (${gl.length}; add with \`bin/learn term add\`, see one with \`term show\`)`, gl.join(', ') || '(none yet)');
+  // term pages: the learner's encyclopedia, written during the lesson (docs/protocol.md "Term pages")
+  if (G.length) {
+    const TP = S.readTermPages(slug), has = g => !!S.pageForTerm(g, TP);
+    const near = new Set(); if (meta.focus) { const fs0 = S.findSkill(meta, meta.focus); if (fs0) S.walkSkills([fs0], x => near.add(String(x.id))); }
+    const todo = G.filter(g => !has(g) && g.skills.some(x => near.has(String(x)))).map(g => g.term);
+    sec(`Term pages (${G.filter(has).length} of ${G.length} terms have one; \`bin/learn term pages\` for the most-mentioned without)`,
+      todo.length ? `Focus ${meta.focus} terms without a page: ${todo.join(', ')}. Write each when you next teach it (after replying).` : 'Every focus term has a page.');
+  }
   const pages = S.readPages(slug);
   if (pages.length) sec('Wiki pages (wiki:page/<name>)', pages.map(p => `${p.name}: ${p.title}`).join('\n'));
   sec('Visual language: draw these things in these colours, always (ctx.color(key), {{text|key}}, ctx.legend([keys]); add with `bin/learn legend set`)',
@@ -399,6 +407,9 @@ commands.post = async () => {
   if (text && !f.meta) {
     const miss = require('../app/check').missingTerms(topic, { texts: [{ text }] }).missing.map(g => `"${g.phrase}"`);
     if (miss.length) console.log(`glossary: bold here but not in the glossary: ${miss.join(', ')}. Add the real terms afterwards (\`bin/learn term add\`); ignore emphasis.`);
+    // the wiki grows during the lesson, not later: each term this message taught gets its page now
+    const taught = require('../app/check').taughtTerms(topic, text);
+    if (taught.length) console.log(`term pages (after re-arming wait; docs/protocol.md "Term pages"): put what this message taught into the article of ${taught.map(t => `"${t.term}" (${t.page ? 'extend ' + rel(t.path) : 'new: ' + rel(t.path)})`).join(', ')}${miss.length ? ', and of the new terms above' : ''}. Skip a term only if this message added nothing about it.`);
   }
 };
 

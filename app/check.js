@@ -206,6 +206,20 @@ function missingTerms(slug, { last = 20, texts = null } = {}) {
   return { missing: all.filter(g => !g.has.length), partial: all.filter(g => g.has.length), scanned: msgs.length };
 }
 
+// Glossary terms a message presents in bold (being taught or recapped), with their page if they
+// have one: `post` reminds the tutor to write or extend those pages right after replying.
+function taughtTerms(slug, text) {
+  const G = S.readGlossary(slug), m = termMatcher(G), pages = S.readTermPages(slug), seen = new Set(), out = [];
+  for (const p of boldPhrases(text)) {
+    const g = m.lookup(p);
+    if (!g || seen.has(g.term)) continue;
+    seen.add(g.term);
+    const pg = S.pageForTerm(g, pages);
+    out.push({ term: g.term, page: pg ? pg.name : null, path: pg ? path.join(S.termPagesDir(slug), pg.name + '.md') : S.termPagePath(slug, g.term) });
+  }
+  return out;
+}
+
 // ```viz <type>``` blocks that would show an error box instead of a drawing: an unknown type, a
 // spec that isn't a JS expression, a `viz js` body that doesn't parse (an unterminated string,
 // `const d3 = …` when d3 is already a parameter). Parse only, nothing runs. -> [{ type, line, why }]
@@ -236,4 +250,4 @@ function vizProblems(text) {
   return out;
 }
 
-module.exports = { checkTopic, linkChecker, boldPhrases, missingTerms, vizProblems };
+module.exports = { checkTopic, linkChecker, boldPhrases, missingTerms, vizProblems, taughtTerms };

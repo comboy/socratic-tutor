@@ -211,7 +211,7 @@ export function termPanel(body, name, { full = false } = {}) {
   if (page) body.append(h('div', { class: 'group term-page' }, h('div', { class: 'group-h' }, icon('page'), 'What you know', h('span', { class: 'spacer' }),
       h('span', { class: 'group-note', title: `topics/${app.topic.slug}/terms/${page.name}.md`, text: `written from your lessons · ${fmtDate(page.mtime.slice(0, 10))}` })),
     h('div', { class: full ? 'sheet-pad' : 'group-b' }, own(rich(page.text, 'wiki-md term-md hl-scope')))));
-  else if (full) body.append(group([icon('page'), 'What you know'], h('div', { class: 'empty-row', text: 'No page for this term yet. The tutor writes one once there’s more to say than the definition; the wiki job (I’m away) fills in the rest.' })));
+  else if (full) body.append(group([icon('page'), 'What you know'], h('div', { class: 'empty-row', text: 'No page for this term yet. The tutor writes it right after the next lesson that teaches this term; the wiki job (I’m away) catches up on the ones taught earlier.' })));
   if (t.parts.length) body.append(group(['Built from', h('span', { class: 'count', text: String(t.parts.length) })], h('div', { class: 'parts' }, ...t.parts.map(partRow))));
   if (t.see.length) body.append(group('Related terms', h('div', { class: 'group-b chips' }, ...t.see.map(s => h('button', { class: 'chip chip-btn' + (termEntry(s) ? '' : ' missing'), text: s, onclick: () => openDock('term', s) })))));
   const L = linkedFrom(t);

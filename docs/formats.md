@@ -16,7 +16,7 @@ never contains any. Layout:
 | `topics/<slug>/cheatsheet.md` | reference sheet (pipeline, formulas), a wiki tab | you |
 | `topics/<slug>/map.json` | concept map: how the subject works, as far as the learner knows | you (or a subagent) |
 | `topics/<slug>/pages/<name>.md` | standalone wiki pages (worked examples, interactive walkthroughs) | you, or the wiki job |
-| `topics/<slug>/terms/<name>.md` | a glossary term's own page: what the learner knows about it | you (a subagent), or the wiki job |
+| `topics/<slug>/terms/<name>.md` | a glossary term's own article: what the learner knows about it | you, right after the reply that taught it; the wiki job catches up |
 | `topics/<slug>/tags.json` | extra skill tags for old journal entries | you |
 | `topics/<slug>/media/` | downloaded images + `index.json` (author, licence, source) | `bin/learn image` |
 | `topics/<slug>/journal/YYYY-MM-DD.jsonl` | every message both ways, grades, level changes, tags (format below) | `bin/learn` only, never by hand |
@@ -323,11 +323,16 @@ listing it), "Pictures from your lessons" (images in messages whose caption name
   that have one and the most-mentioned terms that don't.
 - No title line: the term is the title (a leading `# …` line is dropped). Don't repeat the short
   definition either; it's shown right above. Start with what the learner knows beyond it.
-- Write only what the learner has actually covered, in their words where possible, and link the
-  explanations (`[explained](msg:…)`). Same markdown as messages: images (`media:`), `viz` blocks
-  (re-use the lesson's drawing, so the page shows the picture they learned it from), formulas,
-  highlights, `term:`/`skill:`/`wiki:` links. Sections are up to you; a few short ones beat one
-  long one ("What it does", "How it works", "Where you've met it", "Careful").
+- **An article, not an index.** It must read on its own, like a good encyclopedia entry written
+  for this learner: someone who forgot the lessons understands the term from this page alone,
+  without clicking anything. Explain it in full sentences (the mechanism, the numbers, the
+  picture); never put a link where the explanation should be ("explained [here](msg:…)" alone is
+  a failure). Lesson links are small references after the sentence they back up (`([lesson](msg:…))`).
+- Write only what the learner has actually covered, in their words where possible, connecting it
+  to the other terms they know (`term:` links). Same markdown as messages: images (`media:`),
+  `viz` blocks (re-use the lesson's drawing, so the page shows the picture they learned it from),
+  formulas, highlights, `term:`/`skill:`/`wiki:` links. Sections are up to you; a few short ones
+  beat one long one ("What it does", "How it works", "Where you've met it", "Careful").
 - End with a `:::fog` block: a few bullets on what there is still to learn about it (with the
   skill it belongs to), faded, so the page shows the edge of what they know.
 - Keep it current: when a lesson adds something about the term, add it to the page.

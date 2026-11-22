@@ -603,6 +603,17 @@ async function main() {
     assert(/every bold phrase in the last tutor message is a glossary term or alias/.test(learn('terms-missing', 'cells')), 'after adding it');
     assert(!/glossary:/.test(post('cells', 'Now **helicases** are known.')), 'plural of a known term reported');
   });
+  await test('term pages during the lesson: post names the terms a message taught and their page file; resume lists focus terms without one', async () => {
+    const out = post('cells', 'The **nucleus** holds the DNA; **DNA polymerase** copies it. **Ribosomes** come later.');
+    assert(/^term pages \(after re-arming wait;.*"nucleus" \(new: \S*topics\/cells\/terms\/nucleus\.md\), "DNA polymerase" \(new: \S*dna-polymerase\.md\), and of the new terms above\./m.test(out), out);
+    fs.mkdirSync(path.join(HOME, 'topics/cells/terms'), { recursive: true });
+    fs.writeFileSync(path.join(HOME, 'topics/cells/terms/nucleus.md'), 'The nucleus is where the DNA is kept.');
+    assert(/"nucleus" \(extend \S*nucleus\.md\)/.test(post('cells', 'Inside the **nucleus**.')), 'existing page');
+    assert(!/term pages/.test(post('cells', 'No bold terms here.')), 'reminder without bold terms');
+    const r = learn('resume', 'cells');
+    assert(/## Term pages \(1 of \d+ terms have one/.test(r), r.slice(r.indexOf('## Term pages'), r.indexOf('## Term pages') + 300));
+    fs.rmSync(path.join(HOME, 'topics/cells/terms/nucleus.md'));
+  });
   await test('show: ids repeat across topics, so show takes --topic t or t/<id> and says when an id is in two topics', async () => {
     const ids = topic => fs.readdirSync(path.join(HOME, 'topics', topic, 'journal')).flatMap(f => fs.readFileSync(path.join(HOME, 'topics', topic, 'journal', f), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l).id));
     const demo = new Set(ids('demo')), both = ids('cells').find(id => demo.has(id));

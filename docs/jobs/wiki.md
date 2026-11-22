@@ -27,12 +27,16 @@ Writes for the learner, from the messages that taught them.
    connect it; mark anything new as such.
 4. **Term pages** (`terms/<name>.md`, format in `docs/formats.md`): `bin/learn term pages <topic>`
    lists the pages that exist (and which are stale: the term was mentioned since the last update)
-   and the most-mentioned terms without one. Bring up to 2 stale pages up to date, then write up to
-   4 new ones for the most-mentioned terms, prioritising terms of the current focus area. For
-   each: `bin/learn term show <term>` (path, current page), the messages that mention it
-   (`bin/learn grep "<term>" --topic <topic>`, then `show <id>`), the learner's answers about it.
-   Write what the learner knows, linked to the messages, with the lesson's own pictures; end with
-   a `:::fog` list of what's not covered yet. Any drawing uses the topic's legend colours
+   and the most-mentioned terms without one; `bin/learn resume <topic>` lists the focus terms
+   without one. Priorities: terms the learner asked about or said they forgot (feedback.md, recent
+   app talk and asks), then every focus term without a page, then stale pages, then the
+   most-mentioned terms. Write up to 12 pages per run. For each: `bin/learn term show <term>`
+   (path, current page), the messages that mention it (`bin/learn grep "<term>" --topic <topic>`,
+   then `show <id>`), the learner's answers about it. Each page is a self-contained article
+   (docs/formats.md, "An article, not an index"): the learner understands the term from it alone,
+   explained in full at their level, with the lesson's own pictures and small links back to the
+   lessons as references, never in place of the explanation; end with a `:::fog` list of what's
+   not covered yet. Any drawing uses the topic's legend colours
    (`bin/learn legend`: `ctx.color(key)`, `ctx.legend([…])`).
 5. `bin/learn check <topic>` (fix every problem), then `bin/learn commit "wiki: …" -- <the files you changed>` (e.g.
    `topics/<t>/terms topics/<t>/pages`; a tutor may be writing other files right now).

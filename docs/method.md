@@ -37,9 +37,10 @@ files) are in `docs/protocol.md`; starting a new topic is in `docs/bootstrap.md`
   give it an unused colour first. A colour that meant "non-polar" yesterday must not mean
   "guanine" today.
 - **Grow a page per term.** A term's page (`terms/<name>.md`) is the learner's own encyclopedia
-  entry: what they know about it, the pictures they learned it from, links to the lessons, and a
-  faded `:::fog` list of what's still ahead. Add to it whenever a lesson teaches something about
-  the term (via a background subagent, after replying; `docs/protocol.md`).
+  article: a clean, self-contained explanation at their level, with the pictures they learned it
+  from, small links back to the lessons, and a faded `:::fog` list of what's still ahead. Update
+  it right after every reply that teaches something about the term (`docs/protocol.md`), so the
+  wiki is current when a later lesson links back to it.
 - **Link back instead of repeating.** People forget explanations. Point at the earlier message
   (`[as we saw](msg:…)`) rather than re-explaining from scratch, and re-explain only the part
   that didn't stick.
