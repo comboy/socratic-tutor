@@ -104,7 +104,8 @@ bin/learn show [--topic t] <id> · show <topic>/<id>   ids repeat across topics 
 bin/learn image [t] <Commons file/URL | file --author a --license l> · image search "words" · image list [t]
                                          keep a real image in the topic (offline, credited): ![caption](media:<file>)
 bin/learn check [t]                      validate topic files (JSON, skill ids, links, map) after editing
-bin/learn commit "message"               commit the learning data (data/ is its own git repo)
+bin/learn commit "message" [-- path…]    commit the learning data (data/ is its own git repo); with paths, only
+                                         those (relative to it), so a job and a tutor don't commit each other's files
 bin/learn handoff [--topic t] [--reason s]   end this tutor session; a fresh one takes over
 bin/learn new <slug> "Title"             create an empty topic (the learner usually does this in the browser)
 bin/learn import <transcript.jsonl>... --topic t   import old terminal sessions
@@ -665,9 +666,22 @@ commands.meta = async () => {
   console.log(`(${saved.id}: ${f.off ? 'back in' : 'out of'} the learning record: wiki, session pages, stats, msgs, resume)`);
 };
 
+// `commit "message"` commits everything; `commit "message" -- paths…` only those files/directories
+// (relative to the data home). Use paths when someone else may be writing: a background job while
+// a tutor works, or the tutor while a job runs, so neither commits the other's half-written files.
 commands.commit = () => {
-  const msg = argv.join(' ').trim();
-  console.log(S.commitData(msg || `Update learning data ${S.localDate()}`));
+  const i = argv.indexOf('--');
+  const msg = (i >= 0 ? argv.slice(0, i) : argv).join(' ').trim();
+  const paths = i >= 0 ? argv.slice(i + 1).map(S.dataPath) : [];
+  if (i >= 0 && !paths.length) die('usage: commit "message" [-- path…]   (paths relative to the data home, e.g. topics/<t>/terms)');
+  if (!paths.length) {
+    const jobs = S.readJSON(path.join(S.STATE, 'jobs.json'), null);
+    const job = jobs?.runner && T.alive(jobs.runner.pid) && jobs.current?.name;
+    const tutor = process.env.LEARN_JOB && T.launcherAlive();
+    if (job && process.env.LEARN_JOB !== job) console.error(`warning: the background job "${job}" is running and may be mid-edit; this commit takes its files too. Next time: bin/learn commit "…" -- <your files>`);
+    else if (tutor) console.error('warning: a tutor session may be writing too; this commit takes its files as well. Next time: bin/learn commit "…" -- <your files>');
+  }
+  console.log(S.commitData(msg || `Update learning data ${S.localDate()}`, paths));
 };
 
 commands.pending = () => {

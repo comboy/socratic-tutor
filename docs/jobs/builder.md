@@ -21,7 +21,7 @@ from the learner's feedback box and from tutors) and implements them, with tests
    commit to the code repo with a clear message. One item per commit where possible.
 4. Mark the item done in `data/feedback.md`: change `- [ ]` to `- [x]` and append
    ` → done: <one line on what changed> (<commit>)`. For "ask" items append ` → question in
-   report <date>` and leave them open. Commit the data repo: `bin/learn commit "feedback: …"`.
+   report <date>` and leave them open. Commit the data repo: `bin/learn commit "feedback: …" -- feedback.md`.
 5. Never break the running app: the server restarts itself when `app/` changes and browsers
    reload `web/` when the learner is idle, so a half-done edit is visible. Make each commit
    complete and tested.

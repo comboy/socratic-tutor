@@ -89,7 +89,8 @@ doesn't parse; in `viz js`, `el`, `ctx` and `d3` are already in scope).
     bin/learn legend [t] set <key> <#color> "label" [--term t]   # one colour per recurring thing in drawings
     bin/learn log [t] "what happened this session"
     bin/learn check [t]                             # after editing topic files by hand
-    bin/learn commit "message"                      # the data home is its own git repo
+    bin/learn commit "message" [-- paths…]          # the data home is its own git repo; paths: only those
+                                                    # (pass them while a background job runs: it warns)
     bin/learn meta [t] <id>… [--off]               # tag past entries as app talk (append-only)
     bin/learn recent [n] · show <id> · grep <regex> · pending · msgs --skill <id> · term show <name>
 

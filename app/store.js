@@ -84,13 +84,28 @@ Keep it short: one line per item, with the topic and skill ids.
 ## Suggested topics
 `;
 
-// Commit everything in the data home (its own repo). Returns the git output or a reason it didn't.
-function commitData(message) {
+// Commit the data home (its own repo): everything, or only `paths` (files or directories, relative
+// to the data home), so a tutor and a background job writing at the same time don't sweep each
+// other's half-written files into their commits. Returns the git output or a reason it didn't.
+function commitData(message, paths = []) {
   if (!fs.existsSync(path.join(ROOT, '.git'))) return 'data home is not a git repo';
-  const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8' });
-  git('add', '-A');
-  if (!git('status', '--porcelain').trim()) return 'nothing to commit';
-  return git('commit', '-q', '-m', message || 'Update learning data').trim() || 'committed';
+  const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const only = paths.length ? ['--', ...paths] : [];
+  git('add', '-A', ...only);
+  if (!git('status', '--porcelain', ...only).trim()) return 'nothing to commit' + (paths.length ? ` in ${paths.join(' ')}` : '');
+  // with paths, commit just those (whatever else is staged stays staged for its owner)
+  git('commit', '-q', '-m', message || 'Update learning data', ...only);
+  const files = git('diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD').trim().split('\n').filter(Boolean);
+  return `committed ${git('rev-parse', '--short', 'HEAD').trim()}: ${files.length} file(s)${files.length <= 6 ? ' (' + files.join(', ') + ')' : ''}`;
+}
+// A path given on the command line -> relative to the data home. Accepts paths relative to the data
+// home (topics/x/terms), to the working directory (data/topics/x), or absolute; refuses ones outside.
+function dataPath(p) {
+  const fromCwd = path.resolve(p);
+  const abs = path.isAbsolute(p) ? p : fromCwd.startsWith(ROOT + path.sep) || fromCwd === ROOT ? fromCwd : path.join(ROOT, p);
+  const rel = path.relative(ROOT, abs);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) throw new Error(`${p} is outside the data home (${ROOT})`);
+  return rel || '.';
 }
 
 // ---------- topics ----------
@@ -444,7 +459,7 @@ function setLevel(slug, skillId, level, reason) {
 
 module.exports = {
   CODE, ROOT, TOPICS, LEARNER, REPORTS, FEEDBACK, CONFIG, STATE, INBOX, PORT,
-  ensureDir, readText, readJSON, writeJSON, localDate, config, ensureHome, commitData,
+  ensureDir, readText, readJSON, writeJSON, localDate, config, ensureHome, commitData, dataPath,
   listTopics, topicDir, slugify, createTopic, readPages, PAGE_NAME, readTermPages, termPagePath, termPagesDir, termSlug, TERM_PAGE, pageForTerm, MEDIA_NAME, mediaDir, readMedia, loadTopicMeta, saveTopicMeta,
   walkSkills, findSkill, leafSkills, parseGlossary, readGlossary, addTerm, META_KEYS,
   NOTE_KINDS, readNotes, addNote, closeNote, parseDue, appendLog,

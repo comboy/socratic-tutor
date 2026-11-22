@@ -143,6 +143,29 @@ async function main() {
     assert(/@linalg/.test(r) && /needs 4\.1,3\.2/.test(r), 'needs and foundations shown');
     assert(/Short gap|day or more|week or more/.test(r), 'gap advice');
   });
+  await test('commit -- paths commits only those files (a job and a tutor writing at once); a pathless commit warns while a job runs', async () => {
+    const G = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-git-'));
+    try {
+      const genv = { ...ENV, LEARN_HOME: G, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.com', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.com' };
+      const git = (...a) => execFileSync('git', a, { cwd: G, env: genv, encoding: 'utf8' });
+      const commit = (...a) => spawnSync(process.execPath, [BIN, 'commit', ...a], { env: genv, encoding: 'utf8', cwd: G });
+      fs.cpSync(path.join(CODE, 'test', 'fixture', 'topics'), path.join(G, 'topics'), { recursive: true });
+      git('init', '-q'); git('add', '-A'); git('commit', '-qm', 'init');
+      fs.appendFileSync(path.join(G, 'topics/demo/progress.md'), '\ntutor edit\n');           // the tutor's
+      fs.mkdirSync(path.join(G, 'topics/demo/terms'), { recursive: true });
+      fs.writeFileSync(path.join(G, 'topics/demo/terms/new-page.md'), 'half-written');       // the job's
+      const r = commit('wiki: a page', '--', 'topics/demo/terms');
+      assert(r.status === 0 && /committed \w+: 1 file\(s\) \(topics\/demo\/terms\/new-page\.md\)/.test(r.stdout), r.stdout + r.stderr);
+      assert(git('status', '--porcelain').trim() === 'M topics/demo/progress.md', 'the tutor\'s file was committed: ' + git('status', '--porcelain'));
+      assert(/outside the data home/.test(commit('x', '--', '../elsewhere').stderr) && /usage: commit/.test(commit('x', '--').stderr), 'bad paths');
+      assert(/nothing to commit in topics\/demo\/terms/.test(commit('again', '--', 'topics/demo/terms').stdout), 'nothing to commit');
+      // a job is running (this test process stands in for its runner): a pathless commit warns
+      fs.mkdirSync(path.join(G, 'state'), { recursive: true });
+      fs.writeFileSync(path.join(G, 'state/jobs.json'), JSON.stringify({ runner: { pid: process.pid }, current: { name: 'wiki' }, queue: [], history: [] }));
+      const all = commit('tutor: everything');
+      assert(all.status === 0 && /background job "wiki" is running/.test(all.stderr) && !git('status', '--porcelain').replace(/^\?\? state\/\n?/m, '').trim(), all.stderr + git('status', '--porcelain'));
+    } finally { fs.rmSync(G, { recursive: true, force: true }); }
+  });
   await test('note / focus / summary / term / tree / log commands', async () => {
     assert(/added n5 \(hole, 4\.1\)/.test(learn('note', 'hole', '--topic', 'demo', '--skill', '4.1', 'test hole')), 'note add');
     assert(/closed n5/.test(learn('note', 'done', 'n5', 'fixed', '--topic', 'demo')), 'note done');

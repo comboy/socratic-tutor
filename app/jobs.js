@@ -75,7 +75,7 @@ function promptFor(name, reportFile) {
   const rel = p => path.relative(S.CODE, p) || '.';
   return `You are running as a background job ("${name}") for the learning workspace in ${S.CODE}, while the learner is away from the keyboard. Nobody is watching: never ask questions or wait for input; make sensible decisions and list open questions in your final message.
 - Code (shareable, no personal data): ${S.CODE}. Commit code changes there with git, in small commits.
-- Learner data (personal, its own git repo): ${rel(S.ROOT)}/. Commit data changes with \`bin/learn commit "…"\`. Never copy personal data into the code repo.
+- Learner data (personal, its own git repo): ${rel(S.ROOT)}/. Commit data changes with \`bin/learn commit "…" -- <the files you changed>\` (a tutor may be writing other files). Never copy personal data into the code repo.
 - A live tutor session may be running: never touch ${rel(S.STATE)}/, never post to the learner, never stop processes, and run the UI only through \`bin/learn test\` / \`bin/learn demo\` (they use throwaway copies and other ports).
 - Read AGENTS.md first for the layout of the repo.
 - Your final message is saved verbatim as the report the learner reads when they're back (${rel(reportFile)}). Start it with a "# " title line, then keep it short and concrete: what you did (with commit hashes or file names), what you skipped and why, anything that needs their decision.

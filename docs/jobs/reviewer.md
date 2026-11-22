@@ -32,7 +32,8 @@ model; doesn't teach.
    feedback items for the builder: `bin/learn feedback "…"`. Teaching-method changes that should
    apply to every tutor: propose them in the report (the learner decides; don't edit
    docs/method.md yourself).
-5. `bin/learn check`, then `bin/learn commit "review: …"`.
+5. `bin/learn check`, then `bin/learn commit "review: …" -- <the files you changed>` (a tutor may be
+   writing other files right now; paths keep its half-done edits out of your commit).
 
 Your report: 3–8 bullets the learner will actually want to read (how they're doing, the one or
 two holes worth fixing, any suggested topic), then the process insights and proposed method

@@ -34,6 +34,7 @@ Writes for the learner, from the messages that taught them.
    Write what the learner knows, linked to the messages, with the lesson's own pictures; end with
    a `:::fog` list of what's not covered yet. Any drawing uses the topic's legend colours
    (`bin/learn legend`: `ctx.color(key)`, `ctx.legend([…])`).
-5. `bin/learn check <topic>` (fix every problem), then `bin/learn commit "wiki: …"`.
+5. `bin/learn check <topic>` (fix every problem), then `bin/learn commit "wiki: …" -- <the files you changed>` (e.g.
+   `topics/<t>/terms topics/<t>/pages`; a tutor may be writing other files right now).
 
 Report: which pages you wrote, one line each.
