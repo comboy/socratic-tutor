@@ -874,6 +874,36 @@ async function main() {
     assert(forced.status === 0, '--force: ' + forced.stderr);
     assert(/viz js shows an error box \(line 2\): SyntaxError: Identifier 'el'/.test(learn('check', 'demo')), 'check lists it');
   });
+  await test('msg: hover preview shows a drawing as a placeholder, never its code or an error; viz js marker ids are scoped per drawing', async () => {
+    const draw = color => ['```viz js', 'const svg = d3.select(el).append("svg").attr("width", 120).attr("height", 30);',
+      `svg.append("defs").append("marker").attr("id", "ah").attr("viewBox", "0 0 10 10").attr("refX", 10).attr("refY", 5).attr("markerWidth", 6).attr("markerHeight", 6).attr("orient", "auto").append("path").attr("d", "M0,0L10,5L0,10z").attr("fill", "${color}");`,
+      `svg.append("line").attr("x1", 5).attr("y1", 15).attr("x2", 110).attr("y2", 15).attr("stroke", "${color}").attr("marker-end", "url(#ah)");`,
+      'el.dataset.uid = ctx.uid("ah");', '```'].join('\n');
+    // A: the drawing sits where a 1400-character cut used to land, inside its code
+    post('demo', 'Long one.\n\n' + 'word '.repeat(270) + '\n\n' + draw('#c33') + '\n\nAfter the drawing.');
+    const A = lastTutor('demo').id;
+    post('demo', 'Short one.\n\n' + draw('#36c') + '\n\nThe end.');
+    const B = lastTutor('demo').id;
+    post('demo', `See [the long one](msg:${A}) and [the short one](msg:${B}).`);
+    const C = lastTutor('demo').id;
+    await page.nav(`${BASE}/#/demo/learn`, 1200);
+    await page.waitFor(`document.querySelector('[id="m-${C}"] .ref-msg')`, { timeout: 4000 });
+    const card = async i => {
+      await page.mouse('mouseMoved', 5, 5); await sleep(400);
+      await page.eval(`document.querySelectorAll('[id="m-${C}"] .ref-msg')[${i}].id = 'zz-pv${i}'`);
+      await page.hover(`#zz-pv${i}`, 700);
+      return page.waitFor(`(() => { const c = document.querySelector('.hovercard.on'); return c && { ph: c.querySelectorAll('.viz-ph').length, err: c.querySelectorAll('.viz-error, .viz-err-msg').length,
+        viz: c.querySelectorAll('.viz').length, code: /viz js|d3\\.select|Invalid or unexpected/.test(c.textContent), end: /…\\s*Click/.test(c.textContent) }; })()`, { timeout: 2000 });
+    };
+    const a = await card(0), b = await card(1);
+    assert(!a.err && !a.viz && !a.code && a.end, 'long preview: ' + JSON.stringify(a));
+    assert(b.ph === 1 && !b.err && !b.viz && !b.code, 'short preview: ' + JSON.stringify(b));
+    await page.shot('msg-preview-drawing');
+    await page.mouse('mouseMoved', 5, 5); await sleep(400);
+    const ids = await page.eval(`[${JSON.stringify(A)}, ${JSON.stringify(B)}].map(id => { const v = document.querySelector('[id="m-' + id + '"] .viz-js'); const mk = v.querySelector('marker');
+      return { marker: mk.id, ref: v.querySelector('line').getAttribute('marker-end'), uid: v.dataset.uid }; })`);
+    assert(ids[0].marker !== ids[1].marker && ids.every(x => x.ref === `url(#${x.marker})` && x.uid === x.marker && /^ah-/.test(x.marker)), 'marker ids: ' + JSON.stringify(ids));
+  });
   await test('post refuses links to grade entries and unknown skills; --expect stores the rubric', async () => {
     const grade = journal().find(e => e.kind === 'grade');
     const bad = (() => { try { execFileSync(process.execPath, [BIN, 'post', '--topic', 'demo'], { env: ENV, input: `see [this](msg:${grade.id})`, encoding: 'utf8' }); return ''; } catch (e) { return String(e.stderr); } })();

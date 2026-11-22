@@ -459,6 +459,8 @@ details.callout[open] summary { border-bottom: 1px solid var(--line-soft); }
 .viz > svg, .viz > canvas, .viz > img { display: block; margin-inline: auto; }
 .bars { margin-inline: auto; } .mx-wrap { justify-content: center; }
 .viz-err-msg { color: var(--bad); font: 12px var(--mono); }
+/* a drawing in a preview (msg: hover card): a placeholder panel, never the drawing's code */
+.viz-ph { margin: .5em 0; padding: 5px 10px; border: 1px dashed var(--line); border-radius: 6px; background: var(--well); color: var(--muted); font-size: 12px; }
 .mx-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .mx-name { font: italic 600 15px var(--sans); padding: 0 2px; color: var(--fg-strong); }
 .mx-eq { color: var(--muted); }

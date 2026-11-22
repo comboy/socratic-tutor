@@ -123,7 +123,8 @@ literal (JSON or relaxed: unquoted keys, trailing commas, comments). Types:
 ```                // step-through, token picker, editable embeddings. Options: web/viz/README.md
 ```viz js          // anything else: a function body with el, ctx and d3 already in scope
 // (don't declare them: `const d3 = …` is a SyntaxError). ctx.slider(label,min,max,value,step,onChange)
-// returns an element: append it. ctx.key(element, key), ctx.md(markdownString) -> HTMLElement, ctx.color(key)
+// returns an element: append it. ctx.key(element, key), ctx.md(markdownString) -> HTMLElement, ctx.color(key),
+// ctx.uid("ah") -> an id unique to this drawing (marker/gradient ids are scoped automatically)
 const svg = ctx.d3.select(el).append("svg").attr("width", 300).attr("height", 80);
 ```
 ````

@@ -17,6 +17,7 @@ To add a reusable component:
      // ctx.md(src, cls)  markdown -> element (terms linked, nested viz mounted)
      // ctx.inline(src)   inline markdown -> HTML string (labels)
      // ctx.key(el, k)    tag an element with highlight key(s); same as data-k="k"
+     // ctx.uid(name)     an id unique to this drawing ("ah" -> "ah-v12"), for SVG markers/gradients
      // ctx.color(k)      CSS colour of key k: the topic legend's colour if k is in it, else one
      //                   of the six highlight colours (per message)
      // ctx.legend([k…])  a row of swatches + labels from the topic legend (all entries if no keys);
@@ -45,7 +46,10 @@ Reusing the built-in components inside your own: `import { registry } from './co
 A ```` ```viz js ```` block is the body of `function (el, ctx, d3) { … }`: `el`, `ctx` and `d3`
 are already in scope, so use them and don't declare them (`const d3 = ctx.d3` is a SyntaxError,
 "Identifier 'd3' has already been declared"). Helpers like `ctx.slider()` and `ctx.legend()`
-return elements: append them. `bin/learn post` parses every viz block (nothing runs) and refuses
+return elements: append them. SVG ids are page-wide, so marker/gradient/clip ids in a `viz js`
+drawing are given the drawing's own suffix after it draws (references follow), and two messages
+with `<marker id="ah">` keep their own arrowheads; use `ctx.uid("ah")` to know the final id.
+Hover previews of a message (msg: links) show a drawing as a placeholder. `bin/learn post` parses every viz block (nothing runs) and refuses
 a message whose drawing would show an error box; `bin/learn check` lists old ones.
 
 ## Components in this folder

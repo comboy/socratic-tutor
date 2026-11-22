@@ -3,7 +3,7 @@
 import { h, $, store, levelOf, skillById, descendants, lvChip, meter, fmtLevel, LEVEL_NAMES, fmtDate, shortId } from './util.js';
 import { rich, legendEntries } from './rich.js';
 import { termMatcher, pageForTerm } from './terms.js';
-import { plain, md } from './md.js';
+import { plain, md, previewSource } from './md.js';
 import { icon } from './icons.js';
 import { app, go, renderLeft } from './app.js';
 import * as learn from './learn.js';
@@ -383,7 +383,7 @@ export function hoverCard(t) {
     const e = app.d.byId.get(t.dataset.id);
     if (!e) return h('div', { class: 'hc-body muted', text: 'Message not found' });
     return h('div', {}, h('div', { class: 'hc-head' }, h('b', { text: e.role === 'tutor' ? 'Tutor' : 'You' }), h('span', { class: 'muted small', text: shortId(e.id) })),
-      rich(e.text.length > 1400 ? e.text.slice(0, 1400) + '\n\n…' : e.text, 'hc-body hc-msg hl-scope', { terms: false }),
+      rich(previewSource(e.text), 'hc-body hc-msg hl-scope', { terms: false }),
       h('div', { class: 'hc-foot', text: 'Click to open in the side panel' }));
   }
   if (t.dataset.ref === 'skill') {

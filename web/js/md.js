@@ -151,6 +151,27 @@ export function questionText(src) {
   return m ? m[1].trim() : null;
 }
 
+// Markdown for a short preview (the hover card of a msg: link): drawings become a small
+// placeholder (a preview never runs one), and the cut never lands inside a code block, a viz or
+// display maths, so the preview can't show a half-parsed block.
+const VIZ_FENCE = /^ {0,3}(`{3,}|~{3,})[ \t]*viz[ \t]+([A-Za-z0-9_-]+)[^\n]*\n[\s\S]*?^ {0,3}\1[ \t]*$/gm;
+export function previewSource(src, max = 1400) {
+  let t = String(src || '').replace(VIZ_FENCE, (_, f, type) => `\n<div class="viz-ph">${type.toLowerCase() === 'js' ? 'Drawing' : `Diagram (${esc(type.toLowerCase())})`} · open the message to see it</div>\n`);
+  if (t.length <= max) return t;
+  t = t.slice(0, max);
+  const para = t.lastIndexOf('\n\n');
+  if (para > max / 2) t = t.slice(0, para);
+  // an unclosed fence or $$ at the cut: drop everything from where it opened
+  for (;;) {
+    const fences = [...t.matchAll(/^ {0,3}(`{3,}|~{3,})/gm)];
+    if (fences.length % 2) { t = t.slice(0, fences.at(-1).index); continue; }
+    const dm = [...t.matchAll(/\$\$/g)];
+    if (dm.length % 2) { t = t.slice(0, dm.at(-1).index); continue; }
+    break;
+  }
+  return t.replace(/\s+$/, '') + '\n\n…';
+}
+
 // Plain text preview of markdown (for lists / search results)
 export function plain(src, n = 200) {
   const t = String(src || '')

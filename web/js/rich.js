@@ -39,10 +39,38 @@ export function mountAll(root) {
       if (!comp) throw new Error(`unknown viz type "${spec.type}" (known: ${Object.keys(registry).join(', ')})`);
       const parsed = spec.type === 'js' ? null : new Function(`return (${spec.src}\n)`)();
       comp(box, parsed, ctx, spec.src);
+      if (spec.type === 'js') scopeIds(box);
     } catch (e) {
       box.classList.add('viz-error');
       box.append(h('div', { class: 'viz-err-msg', text: `viz ${spec.type}: ${e.message}` }), h('details', {}, h('summary', { text: 'source' }), h('pre', { text: spec.src })));
     }
+  }
+}
+
+// SVG ids in a hand-written drawing (an arrowhead <marker id="ah">, a gradient) are global to
+// the page, so two messages using the same id share one marker: the first one on the page,
+// possibly hidden or in another colour. After a `viz js` block draws (and whenever it redraws),
+// its marker/gradient/clip/… ids get the viz's own suffix and its url(#…)/href="#…" references
+// follow. ctx.uid(name) gives the same scoped id up front, for code that looks one up later.
+const DEF_TAGS = new Set(['marker', 'lineargradient', 'radialgradient', 'clippath', 'mask', 'pattern', 'filter', 'symbol']);
+const REF_ATTRS = ['marker-start', 'marker-mid', 'marker-end', 'fill', 'stroke', 'clip-path', 'mask', 'filter', 'href', 'xlink:href', 'style'];
+const uidOf = (box, name) => `${name}-${box.dataset.viz}`;
+function scopeIds(box) {
+  const map = box.__ids || (box.__ids = new Map()), suf = '-' + box.dataset.viz;
+  const rewrite = () => {
+    for (const d of box.querySelectorAll('[id]')) if (DEF_TAGS.has(d.tagName.toLowerCase()) && !d.id.endsWith(suf)) { map.set(d.id, d.id + suf); d.id += suf; }
+    if (!map.size) return;
+    for (const el of box.querySelectorAll('*')) for (const a of [...el.attributes]) {
+      if (!REF_ATTRS.includes(a.name) || !a.value.includes('#')) continue;
+      const v = a.value.replace(/url\(\s*(['"]?)#([^'")\s]+)\1\s*\)/g, (all, q, id) => map.has(id) ? `url(#${map.get(id)})` : all)
+        .replace(/^#(.+)$/, (all, id) => map.has(id) ? '#' + map.get(id) : all);
+      if (v !== a.value) el.setAttribute(a.name, v);
+    }
+  };
+  rewrite();
+  if (!box.__idObs) {
+    box.__idObs = new MutationObserver(rewrite);
+    box.__idObs.observe(box, { subtree: true, childList: true, attributes: true, attributeFilter: [...REF_ATTRS, 'id'] });
   }
 }
 
@@ -54,6 +82,7 @@ function makeCtx(box) {
     md: (src, cls = '') => { const d = rich(src, cls); return d; },
     inline: s => (s == null ? '' : md(String(s), { inline: true })),
     key: (el, k) => { el.setAttribute('data-k', k); return el; },
+    uid: (name = 'id') => uidOf(box, name),
     color: k => keyColor(scope(), k),
     // the topic's legend as a row of swatches (all entries, or these keys); each item carries its
     // key, so hovering it lights up the parts of the drawing tagged with ctx.key(el, key)
