@@ -116,7 +116,7 @@ function checkTopic(slug) {
   try { notes = S.readJSON(file('notes.json'), null); } catch (e) { bad('notes.json', e.message); }
   for (const n of notes?.items || []) {
     if (!S.NOTE_KINDS.includes(n.kind)) bad(`note ${n.id}`, `unknown kind ${n.kind}`);
-    if (n.skill && !skills.has(String(n.skill))) warn(`note ${n.id}`, `unknown skill ${n.skill}`);
+    if (n.skill && !skills.has(String(n.skill)) && !found.has(String(n.skill))) warn(`note ${n.id}`, `unknown skill or foundation ${n.skill}`);
   }
 
   try { for (const f of fs.readdirSync(file('pages'))) if (!(f.endsWith('.md') && S.PAGE_NAME.test(f.slice(0, -3)))) warn('pages/', `${f}: not shown (pages are <name>.md, name a-z 0-9 -)`); } catch {}

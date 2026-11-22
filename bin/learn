@@ -81,7 +81,7 @@ bin/learn post --meta [--topic t]  < markdown   a reply about the app (to a META
 bin/learn meta [t] <id>… [--off]         tag past entries as app talk (append-only; --off takes the tag back)
 bin/learn level [t] <skill> <0-5> "reason"
 bin/learn focus [t] <skill>              set the current focus
-bin/learn note <review|hole|parked|misconception> [--skill id] [--ref msg] [--due 3d] "text"
+bin/learn note <review|hole|parked|misconception> [--skill id|@foundation] [--ref msg] [--due 3d] "text"
 bin/learn note done <id> ["outcome"]  ·  note list [--all]
 bin/learn summary [t] <skill> "- bullet with (msg:…) links"   append to a skill's summary
 bin/learn term add [t] "name" --short "…" [--skill id] [--full …] [--aliases a,b] [--parts …] [--see …] [--refs …] [--body "…" | --body - < file]
@@ -91,7 +91,8 @@ bin/learn tree [t]                       print the skill tree as an outline · t
 bin/learn legend [t] [set <key> <#color> "label" [--term name] | rm <key>]   colours for recurring things in diagrams
 bin/learn log [t] "what happened"        append to today's entry in log.md
 bin/learn feedback "remark"              a note for the builder about the app or the process (not the lesson)
-bin/learn pending [t] · recent [n] [--topic t] · msgs [t] --skill id · status · show <id> · grep <regex> [--topic t]
+bin/learn pending [t] · recent [n] [--topic t] · msgs [t] --skill id · status · grep [-i] <regex> [--topic t]
+bin/learn show [--topic t] <id> · show <topic>/<id>   ids repeat across topics (2026-11-21.4 in two topics)
                                          (msgs and grep leave out app talk; --all includes it)
 bin/learn image [t] <Commons file/URL | file --author a --license l> · image search "words" · image list [t]
                                          keep a real image in the topic (offline, credited): ![caption](media:<file>)
@@ -191,7 +192,10 @@ commands.resume = () => {
 
   const tree = [];
   const notes = S.readNotes(slug);
-  for (const fd of meta.foundations || []) tree.push(`  @${fd.id}  ${fd.name}  ${fd.level ?? '?'}${fd.topic ? `  (topic ${fd.topic})` : ''}  [foundation]`);
+  for (const fd of meta.foundations || []) {
+    const open = notes.items.filter(n => n.status === 'open' && n.skill === fd.id).length;
+    tree.push(`  @${fd.id}  ${fd.name}  ${fd.level ?? '?'}${fd.topic ? `  (topic ${fd.topic})` : ''}  [foundation]${open ? `  (${open} note${open > 1 ? 's' : ''})` : ''}`);
+  }
   S.walkSkills(meta.skills, (s, parent) => {
     const kids = s.children?.length;
     const lv = kids ? (s.children.reduce((a, c) => a + (c.level || 0), 0) / s.children.length).toFixed(1) : String(s.level ?? 0);
@@ -211,7 +215,8 @@ commands.resume = () => {
 
   const today = S.localDate();
   const open = notes.items.filter(n => n.status === 'open');
-  const fmt = n => `  ${n.id}${n.skill ? ` [${n.skill}]` : ''} ${n.text}${n.due ? ` (due ${n.due}${n.due <= today ? ', DUE' : ''})` : ''}${n.ref ? ` (msg:${n.ref})` : ''}`;
+  const fids = new Set((meta.foundations || []).map(x => x.id));
+  const fmt = n => `  ${n.id}${n.skill ? ` [${fids.has(n.skill) ? '@' : ''}${n.skill}]` : ''} ${n.text}${n.due ? ` (due ${n.due}${n.due <= today ? ', DUE' : ''})` : ''}${n.ref ? ` (msg:${n.ref})` : ''}`;
   const byKind = k => open.filter(n => n.kind === k).sort((a, b) => (a.due || '9') < (b.due || '9') ? -1 : 1).map(fmt).join('\n');
   sec('Notes: spaced review (re-test; close with `bin/learn note done <id> "outcome"`)', byKind('review'));
   sec('Notes: open misconceptions', byKind('misconception'));
@@ -425,7 +430,12 @@ commands.note = () => {
     for (const n of S.readNotes(topic).items.filter(n => f.all || n.status === 'open'))
       console.log(`${n.id} ${n.kind}${n.skill ? ` [${n.skill}]` : ''}${n.status === 'done' ? ' (done' + (n.outcome ? ': ' + n.outcome : '') + ')' : ''}${n.due ? ` due ${n.due}` : ''}: ${n.text}`);
   } else {
-    if (f.skill && !S.findSkill(S.loadTopicMeta(topic), f.skill)) die(`no skill ${f.skill} in ${topic}`);
+    // a skill id, or a foundation id (@chem or chem): cross-topic holes usually live in foundations
+    if (f.skill) {
+      const meta = S.loadTopicMeta(topic), fid = f.skill.replace(/^@/, '');
+      if ((meta.foundations || []).some(x => x.id === fid)) f.skill = fid;
+      else if (!S.findSkill(meta, f.skill)) die(`no skill or foundation ${f.skill} in ${topic} (foundations: ${(meta.foundations || []).map(x => '@' + x.id).join(', ') || 'none'})`);
+    }
     if (f.ref && !S.findEntry(f.ref, topic)) die(`no message ${f.ref}`);
     const it = S.addNote(topic, { kind: sub, text: f._.join(' '), skill: f.skill, ref: f.ref, due: S.parseDue(f.due) });
     console.log(`added ${it.id} (${it.kind}${it.skill ? ', ' + it.skill : ''}${it.due ? ', due ' + it.due : ''})`);
@@ -723,8 +733,17 @@ commands.status = async () => {
 };
 
 commands.show = () => {
-  const e = S.findEntry(argv[0] || '', defaultTopic());
-  if (!e) die('not found');
+  const f = flags(argv, { topic: 'string' });
+  const id = f._[0];
+  if (!id) die('usage: show [--topic t] <id>  ·  show <topic>/<id>');
+  if (f.topic && !S.listTopics().includes(f.topic)) die(`unknown topic ${f.topic}`);
+  // an id without a topic: the current topic first; say so when another topic has the same id
+  const e = f.topic ? S.findEntry(`${f.topic}/${id.replace(/^[a-z0-9-]+\//, '')}`) : S.findEntry(id, defaultTopic());
+  if (!e) die(`not found: ${id}${f.topic ? ` in ${f.topic}` : ''}`);
+  if (!f.topic && !id.includes('/')) {
+    const also = S.listTopics().filter(t => t !== e.topic && S.findEntry(`${t}/${id}`));
+    if (also.length) console.error(`(${id} is in ${e.topic}; also in ${also.join(', ')}: \`show ${also[0]}/${id}\`)`);
+  }
   const app = e.kind !== 'meta' && S.metaIds(S.readJournal(e.topic)).has(e.id) ? ' (app talk)' : '';
   console.log(`${e.id} ${e.role} ${e.kind}${app} ${e.ts}\n\n${e.text || JSON.stringify(e, null, 2)}${e.expect ? `\n\n(rubric: ${e.expect})` : ''}`);
 };

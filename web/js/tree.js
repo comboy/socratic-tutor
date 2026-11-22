@@ -5,7 +5,7 @@
 // picks one, the layout that shows the whole tree bigger wins. Prerequisites are soft: the tree
 // shows readiness, it never locks. Without any `needs` in topic.json it is always "Branches".
 import { h, store, flatSkills, levelOf, lvChip, lvClass, levelScale, fmtLevel, LEVEL_NAMES } from './util.js';
-import { openDock } from './panels.js';
+import { openDock, noteRow } from './panels.js';
 /* global d3 */
 
 const NWT = 176, NWB = 200, NH = 56, CG = 68, RG = 12, RH = NH + RG, HH = 40, PAD = 18, LANE = 10;
@@ -496,6 +496,7 @@ function openFoundation(id) {
   selected = id; markSel(id); hot(id);
   const f = n.f, z = ui.z ?? 1;
   const lv = n.level;
+  const fNotes = (appRef?.topic?.notes?.items || []).filter(x => x.skill === f.id && x.status === 'open');
   const go = f.topic
     ? h('button', { class: 'btn btn-primary', text: 'Open topic', title: `Go to the “${f.topic}” topic`, onclick: () => { location.hash = '#/' + f.topic; } })
     : h('button', { class: 'btn btn-primary', text: 'Learn this as a topic', title: 'Start a new topic for this foundation', onclick: () => { location.hash = '#/new?goal=' + encodeURIComponent(f.name || f.id); } });
@@ -512,6 +513,7 @@ function openFoundation(id) {
       f.why ? h('p', { class: 'tree-pop-why', text: f.why }) : h('p', { class: 'tree-pop-why muted', text: 'No note yet on why this topic builds on it.' }),
       n.deps.length ? h('div', { class: 'tree-pop-deps' }, h('span', { class: 'muted small', text: 'Needed by' }),
         ...n.deps.slice().sort(cmpId).map(d => { const s = ui.G.nodes.get(d); return h('button', { class: 'chip chip-btn ' + lvClass(s.level), title: s.name, onclick: () => selectSkill(d) }, h('b', { text: d }), ' ', s.name.length > 26 ? s.name.slice(0, 25) + '…' : s.name); })) : null,
+      fNotes.length ? h('div', { class: 'notes-list tree-pop-notes' }, ...fNotes.map(noteRow)) : null,
       h('div', { class: 'tree-pop-act' }, go)));
   ui.sizer.append(pop);
   ui.popover = pop;

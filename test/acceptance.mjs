@@ -7,7 +7,7 @@
 // port and data directory, then drives the UI in headless Chrome. Never touches topics/ or a
 // running tutor. Screenshots land in test/out/ (gitignored) for a quick look.
 //   --real   also smoke-test rendering of every message in your real topics (read-only copy)
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -139,6 +139,12 @@ async function main() {
   await test('note / focus / summary / term / tree / log commands', async () => {
     assert(/added n5 \(hole, 4\.1\)/.test(learn('note', 'hole', '--topic', 'demo', '--skill', '4.1', 'test hole')), 'note add');
     assert(/closed n5/.test(learn('note', 'done', 'n5', 'fixed', '--topic', 'demo')), 'note done');
+    // a foundation is where a cross-topic hole lives: --skill @linalg (or linalg)
+    assert(/added n6 \(hole, linalg\)/.test(learn('note', 'hole', '--topic', 'demo', '--skill', '@linalg', 'matrix shapes shaky')), 'note on a foundation');
+    assert(/n6 \[@linalg\] matrix shapes shaky/.test(learn('resume', 'demo')) && /@linalg .*\(1 note\)/.test(learn('resume', 'demo')), 'resume shows the foundation note');
+    assert(/^demo: ok/m.test(learn('check', 'demo')) && !/unknown skill/.test(learn('check', 'demo')), 'check accepts it');
+    assert(/no skill or foundation @nope/.test((() => { try { learn('note', 'hole', '--topic', 'demo', '--skill', '@nope', 'x'); return ''; } catch (e) { return String(e.stderr); } })()), 'unknown foundation refused');
+    learn('note', 'done', 'n6', '--topic', 'demo');
     assert(/demo focus: 4\.2/.test(learn('focus', 'demo', '4.2')), 'focus');
     learn('summary', 'demo', '4.2', `- tested ([x](msg:${journal().find(e => e.role === 'tutor' && e.kind === 'message').id}))`);
     const meta = JSON.parse(fs.readFileSync(path.join(HOME, 'topics/demo/topic.json'), 'utf8'));
@@ -566,6 +572,17 @@ async function main() {
     learn('term', 'add', 'cells', 'helicase', '--short', 'Unzips DNA.', '--skill', '1.2');
     assert(/every bold phrase in the last tutor message is a glossary term or alias/.test(learn('terms-missing', 'cells')), 'after adding it');
     assert(!/glossary:/.test(post('cells', 'Now **helicases** are known.')), 'plural of a known term reported');
+  });
+  await test('show: ids repeat across topics, so show takes --topic t or t/<id> and says when an id is in two topics', async () => {
+    const ids = topic => fs.readdirSync(path.join(HOME, 'topics', topic, 'journal')).flatMap(f => fs.readFileSync(path.join(HOME, 'topics', topic, 'journal', f), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l).id));
+    const demo = new Set(ids('demo')), both = ids('cells').find(id => demo.has(id));
+    assert(both, 'no id in both topics to test with');
+    const showErr = (...a) => spawnSync(process.execPath, [BIN, 'show', ...a], { env: ENV, encoding: 'utf8' });
+    const a = showErr('--topic', 'cells', both), b = showErr(`cells/${both}`), c = showErr(both), d = showErr('--topic', 'demo', both);
+    assert(a.status === 0 && b.stdout === a.stdout && d.status === 0 && d.stdout !== a.stdout, 'show --topic / t/<id>: ' + a.stderr + b.stderr);
+    assert(/also in (cells|demo): `show (cells|demo)\//.test(c.stderr), 'no hint about the other topic: ' + c.stderr);
+    assert(/^learn: not found: 2099-01-01\.1 in cells/m.test(showErr('--topic', 'cells', '2099-01-01.1').stderr), 'missing id');
+    assert(/show \[--topic t\] <id> · show <topic>\/<id>/.test(learn('help')), 'help lists the topic/id form');
   });
   await test('images: bin/learn image keeps a Commons file (fake API) or a local file in the topic; media: shows it with its credit, offline; click zooms', async () => {
     const http = await import('node:http');

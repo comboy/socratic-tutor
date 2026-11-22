@@ -316,6 +316,12 @@ function depChip(d) {
 
 // ---------------------------------------------------------------- tutor's notes (notes.json)
 export const NOTE_KIND = { review: ['Re-test', 'quiz'], hole: ['Possible gap', 'hole'], parked: ['Parked question', 'ask'], misconception: ['Misconception', 'lost'] };
+// a note is about a skill, or about a foundation (knowledge from outside the topic, e.g. chemistry)
+function noteSkillChip(id) {
+  const fd = (app.topic.meta.foundations || []).find(f => f.id === id);
+  if (fd) return h('button', { class: 'chip chip-btn chip-found', text: fd.name, title: `Foundation (outside this topic): ${fd.name}`, onclick: () => go('tree', id) });
+  return h('button', { class: 'chip chip-btn', text: id, title: skillById(app.topic.meta, id)?.name || '', onclick: () => openDock('skill', id) });
+}
 export function noteRow(n) {
   const [label, ic] = NOTE_KIND[n.kind] || [n.kind, 'dot'];
   const due = n.due && n.status === 'open' && n.due <= new Date().toISOString().slice(0, 10);
@@ -324,7 +330,7 @@ export function noteRow(n) {
     h('div', { class: 'note-text' }, h('span', { html: md(n.text, { inline: true }) }),
       n.outcome ? h('span', { class: 'muted small', text: ' → ' + n.outcome }) : null),
     h('span', { class: 'note-meta' },
-      n.skill ? h('button', { class: 'chip chip-btn', text: n.skill, title: skillById(app.topic.meta, n.skill)?.name || '', onclick: () => openDock('skill', n.skill) }) : null,
+      n.skill ? noteSkillChip(n.skill) : null,
       n.ref ? h('button', { class: 'icon-btn', title: 'The message it came from', onclick: () => openDock('msg', n.ref) }, icon('link')) : null,
       n.due && n.status === 'open' ? h('span', { class: 'small ' + (due ? 'note-due' : 'muted'), text: due ? 'due' : 'due ' + fmtDate(n.due) }) : null,
       n.status === 'done' ? h('span', { class: 'muted small', text: n.closed ? fmtDate(n.closed) : 'done' }) : null));
