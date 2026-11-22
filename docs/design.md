@@ -22,12 +22,14 @@ a minimalist "modern web" page.
   reading: the UI reloads itself for code changes only when the learner is idle, otherwise it
   offers a "reload" button. New messages show a pill instead of yanking the scroll position.
   Only a new tutor reply (shown from its start) or the learner's own message may scroll the
-  conversation; anything else (grades, level changes, redraws, images loading, above or below)
-  leaves the text at the top edge where it is (`learn.js`, "keeping the reader's place").
+  conversation; anything else (grades, level changes, tags, redraws, images loading, above or
+  below) leaves the text at the top edge where it is (`learn.js`, "keeping the reader's place").
   Bookkeeping updates the thread in place instead of redrawing it.
 - **The learner thinks about the topic, not the tool.** Anything about the tool goes into the
   feedback box and gets built while they're away (`bin/learn away`). Don't make them configure
-  things; pick good defaults.
+  things; pick good defaults. Talk about the app in the conversation ("About the app" next to
+  Ask, the tutor's `--meta` replies, tagged entries) is shown dimmed and folded to one line, and
+  kept out of the learning record (wiki, sessions, stats).
 - **No dependencies, no build step.** Plain ES modules; d3, marked and KaTeX are vendored in
   `web/vendor/`. Vendor a small library only if it's really needed.
 

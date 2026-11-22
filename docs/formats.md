@@ -19,7 +19,7 @@ never contains any. Layout:
 | `topics/<slug>/terms/<name>.md` | a glossary term's own page: what the learner knows about it | you (a subagent), or the wiki job |
 | `topics/<slug>/tags.json` | extra skill tags for old journal entries | you |
 | `topics/<slug>/media/` | downloaded images + `index.json` (author, licence, source) | `bin/learn image` |
-| `topics/<slug>/journal/YYYY-MM-DD.jsonl` | every message both ways, grades, level changes | `bin/learn` only, never by hand |
+| `topics/<slug>/journal/YYYY-MM-DD.jsonl` | every message both ways, grades, level changes, tags (format below) | `bin/learn` only, never by hand |
 | `learner/profile.md` | who the learner is, how they like to be taught (all topics) | tutors, reviewer job, the learner |
 | `learner/knowledge.md` | knowledge across topics: islands, shaky foundations, connections, suggested topics | tutors, reviewer job |
 | `feedback.md` | queue of remarks about the app and process, for the builder job | UI feedback box, `bin/learn feedback`, builder |
@@ -332,6 +332,22 @@ listing it), "Pictures from your lessons" (images in messages whose caption name
 - Keep it current: when a lesson adds something about the term, add it to the page.
   `bin/learn term pages` marks pages whose term was mentioned since the page was last updated.
 - `bin/learn check` validates the links, and warns about a file that no term or alias owns.
+
+### journal/YYYY-MM-DD.jsonl
+
+One JSON object per line, appended by `bin/learn` and the server, never edited (ids are
+`<date>.<n>`). Common fields: `id`, `ts`, `topic`, `role` (`user`/`tutor`/`system`), `kind`:
+- `answer`, `ask`, `action`, `start`, `meta` (the learner; `text`, optional `replyTo`, `quote`)
+- `message` (the tutor; `text`, `skills`, `question`, `expect`, `replyTo`)
+- `grade` (`target`, `verdict`, `skill`, `note`), `level` (`skill`, `from`, `to`, `reason`),
+  `session` (a divider; `handoff`)
+- `tag`: `{"kind": "tag", "tag": "meta", "ids": ["2026-11-22.33", …]}` marks earlier entries
+  (`bin/learn meta`); `"off": true` takes the tag back.
+
+**App talk** (`web/js/journal.js`): an entry with `"meta": true` (the learner's "About the app"
+message, kind `meta`; a tutor reply posted with `--meta`), a tag entry, or an entry a tag names. It
+stays in the conversation (dimmed, folded) but is left out of the learning record: wiki, session
+pages, stats, term mentions, `msgs`, `grep`, `resume`, and the pending question.
 
 ### tags.json (optional)
 

@@ -7,6 +7,8 @@ from the learner's feedback box and from tutors) and implements them, with tests
 
 1. Read `data/feedback.md` (or `$LEARN_HOME/feedback.md`; `bin/learn status` prints the data dir).
    Open items are `- [ ]` bullets. Also skim `docs/roadmap.md` for context; it is not a queue.
+   Items from the "About the app" button name their message (`about the app · msg <id>`): the
+   tutor may have answered or promised something there (`bin/learn recent --topic <t>` around it).
 2. For each open item, oldest first, decide:
    - **Do it** when it's a clear improvement you can make well in this run: a UI fix, a new view
      or viz, a CLI command, a doc fix, a protocol tweak. Read `AGENTS.md`, `docs/design.md` (the

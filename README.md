@@ -44,7 +44,9 @@ vendored in `web/vendor/`.
   foundations from outside the topic), **Wiki** (overview, cheat sheet, pages, glossary, skills,
   "You": what the tutor has noticed about your understanding, sessions), **Stats**.
 - **Feedback** (speech-bubble button): remarks about the app or the process. They never reach
-  the tutor; they queue up for the builder.
+  the tutor; they queue up for the builder. **About the app** (next to Ask) is the same, but the
+  tutor sees it too and can answer; that talk stays in the conversation, dimmed and folded, and
+  out of your wiki, sessions and stats.
 - **I'm away** (coffee-cup button): start background agents: the builder (implements your
   feedback, with tests), the reviewer (reads recent sessions with fresh eyes: gaps, links between
   topics, process ideas), the wiki writer, the janitor (code tidying). Their reports appear in

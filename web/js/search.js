@@ -26,7 +26,7 @@ export function openSearch() {
       for (const s of flatSkills(app.topic.meta.skills)) if (has(s.name) || has(s.summary || '')) items.push({ type: 'skill', id: s.id, title: `${s.id} ${s.name}`, sub: `level ${fmtLevel(levelOf(s.node))}`, score: has(s.name) ? 2.5 : 1 });
       for (const pg of app.topic.pages || []) if (has(pg.title) || has(pg.text)) items.push({ type: 'page', id: pg.name, title: pg.title, sub: `wiki page · pages/${pg.name}.md`, score: has(pg.title) ? 2.8 : 1.2 });
       for (const n of app.topic.map?.nodes || []) if (has(n.label) || has(n.desc || '')) items.push({ type: 'node', id: n.id, title: n.label, sub: n.sub || '', score: 2 });
-      for (const e of app.topic.journal) if (e.text && (e.kind === 'message' || e.role === 'user') && has(e.text)) items.push({ type: 'msg', id: e.id, title: `${e.role === 'tutor' ? 'Tutor' : 'You'} · ${shortId(e.id)}`, sub: snippet(e.text, words[0], 140), score: e.role === 'tutor' ? 0.5 : 0.3, ts: e.ts });
+      for (const e of app.topic.journal) if (e.text && (e.kind === 'message' || e.role === 'user') && has(e.text)) items.push({ type: 'msg', id: e.id, title: `${e.role === 'tutor' ? 'Tutor' : 'You'}${e._meta ? ' · about the app' : ''} · ${shortId(e.id)}`, sub: snippet(e.text, words[0], 140), score: e.role === 'tutor' ? 0.5 : 0.3, ts: e.ts });
       items.sort((a, b) => b.score - a.score || (b.ts || '').localeCompare(a.ts || ''));
       items = items.slice(0, 60);
     }

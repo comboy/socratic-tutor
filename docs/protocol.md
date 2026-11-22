@@ -39,6 +39,9 @@ followed by the text. Kinds:
   tutor": do the handoff steps that `wait` prints, and don't reply.
 - **start**: a new topic the learner created in the browser (their goal, what for, what they
   know). `docs/bootstrap.md`.
+- **meta**: the "About the app" button: a remark about the app or the process, not the lesson
+  (`── META  id=…  (about the app …) ──`). It is already an open item in `feedback.md` for the
+  builder. Answer briefly with `post --meta` (see "Meta remarks" below); the pending question stays.
 
 ## Posting
 
@@ -54,6 +57,9 @@ followed by the text. Kinds:
 - A message with a `:::question` block becomes the pending question, shown above the answer box.
   **One question per message, always inside `:::question`**: a question written as plain prose
   isn't tracked. Add `--expect` with the rubric, so any later session can grade the answer.
+- `--meta`: a reply about the app (to a META message), not the lesson: shown dimmed and foldable,
+  kept out of the wiki, session pages, stats, `msgs` and `resume`. No `--grade`/`--skill`/`--expect`
+  and no `:::question` (it would become the pending question); ask in prose instead.
 - `post` refuses broken `msg:` and `skill:` links (a `msg:` must point at a message, not a grade
   entry), and a message that ends with a question outside `:::question` (`--force` if it's
   rhetorical). `bin/learn msgs --skill 6.5` lists the real message ids for a skill. It also lists
@@ -83,6 +89,7 @@ Markdown extensions, in brief (details and every `viz` type in `docs/formats.md`
     bin/learn log [t] "what happened this session"
     bin/learn check [t]                             # after editing topic files by hand
     bin/learn commit "message"                      # the data home is its own git repo
+    bin/learn meta [t] <id>… [--off]               # tag past entries as app talk (append-only)
     bin/learn recent [n] · show <id> · grep <regex> · pending · msgs --skill <id> · term show <name>
 
 **Term pages** (`terms/<name>.md`, format in `docs/formats.md`): every glossary term can have its
@@ -126,6 +133,12 @@ it's a change to the app, to the builder: `bin/learn feedback "…"`. The learne
 feedback box for the same queue. Write your own remarks there too, when the tool held you back:
 "would have been easier to show with an interactive X", "a papers library would help here". The
 builder job works through the queue while the learner is away.
+
+The learner's "About the app" button (next to Ask) reaches you as META and goes to the queue too.
+Keep app talk out of the learning record: reply with `post --meta`, and when such an exchange
+came as an ordinary ask or answer, tag it afterwards with `bin/learn meta <id>…` (both sides: their
+message and your reply). Tags are appended, never edits; `--off` takes one back. `recent` and
+`show` mark app talk; `msgs`, `grep` and `resume` leave it out (`--all` for `msgs`/`grep`).
 
 You can also **build tools** when a topic needs a way of seeing or practising that doesn't exist:
 a new `viz` component (`web/viz/README.md`), an exercise type, a view. It's a big part of what

@@ -134,7 +134,7 @@ const P = {
   },
   sessions(el) {
     const days = new Map();
-    for (const e of app.topic.journal) { const d = e.ts.slice(0, 10); if (!days.has(d)) days.set(d, []); days.get(d).push(e); }
+    for (const e of app.topic.journal) { if (e._meta) continue; const d = e.ts.slice(0, 10); if (!days.has(d)) days.set(d, []); days.get(d).push(e); }
     const list = h('div', { class: 'sess-list' });
     for (const [d, es] of [...days].reverse()) {
       const tutor = es.filter(e => e.role === 'tutor' && e.kind === 'message');
@@ -152,8 +152,9 @@ const P = {
     el.append(sheet(group(['Sessions', h('span', { class: 'count', text: String(days.size) }), h('span', { class: 'spacer' }), h('span', { class: 'group-note', text: 'open one to re-read it in full' })]), list));
   },
   session(el, d) {
-    const es = app.topic.journal.filter(e => e.ts.slice(0, 10) === d && (e.text || e.kind === 'level'));
-    const days = [...new Set(app.topic.journal.map(e => e.ts.slice(0, 10)))];
+    const all = app.topic.journal.filter(e => e.ts.slice(0, 10) === d && (e.text || e.kind === 'level'));
+    const es = all.filter(e => !e._meta), appTalk = all.length - es.length;   // app talk: not part of the lesson
+    const days = [...new Set(app.topic.journal.filter(e => !e._meta).map(e => e.ts.slice(0, 10)))];
     const i = days.indexOf(d);
     const th = h('div', { class: 'thread reader' });
     for (const e of es) {
@@ -161,6 +162,7 @@ const P = {
       else if (e.kind === 'level') th.append(h('div', { class: 'sysline', text: `${e.skill}: ${e.from} → ${e.to} · ${e.reason || ''}` }));
       else th.append(messageNode(e, { compact: true }));
     }
+    if (appTalk) th.append(h('div', { class: 'empty-row', text: `${appTalk} message${appTalk > 1 ? 's' : ''} about the app not shown here (they’re in the conversation, dimmed).` }));
     el.append(sheet(
       h('div', { class: 'actions' },
         h('button', { class: 'btn btn-small', onclick: () => go('wiki', 'sessions') }, icon('back'), 'All sessions'),
@@ -187,7 +189,7 @@ function skillLine(s, extra) {
   return h('button', { class: 'ov-row', onclick: () => openDock('skill', s.id) }, lvChip(lv), h('span', { class: 'sid', text: s.id }), h('span', { class: 'ov-name', text: s.name, title: s.name }), extra || null);
 }
 function overview(el) {
-  const m = app.topic.meta, ov = overall(m), J = app.topic.journal;
+  const m = app.topic.meta, ov = overall(m), J = app.topic.journal.filter(e => !e._meta);
   const focus = m.focus ? skillById(m, m.focus) : null;
   const notes = (app.topic.notes?.items || []).filter(n => n.status === 'open');
   const today = new Date().toISOString().slice(0, 10);

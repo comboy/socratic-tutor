@@ -288,6 +288,17 @@ body.resizing { cursor: col-resize; user-select: none; }
 .msg time { color: var(--faint); font-size: 11.5px; }
 .msg .head-actions { display: flex; gap: 2px; }
 .imported-tag { font-size: 10.5px; font-weight: 600; color: var(--faint); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
+/* app talk ("About the app"): dimmed, folded to one line until opened; not part of the lesson */
+.msg.msg-meta { background: var(--well); border-style: dashed; box-shadow: none; }
+.msg-meta .msg-head { background: transparent; }
+.msg-meta .msg-body { color: var(--muted); }
+.msg-meta.folded .msg-head { border-bottom: 0; }
+.msg-user.msg-meta { border-left: 3px solid var(--faint); }
+.meta-tag { background: var(--card); color: var(--muted); border: 1px solid var(--line); flex: none; }
+.meta-preview { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; background: none; padding: 0 4px; text-align: left; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+.meta-preview:hover { color: var(--fg); }
+.meta-fold .ico { transition: transform .12s; }
+.meta-fold.open .ico { transform: rotate(90deg); }
 .msg.flash { animation: flash 1.6s ease-out; }
 @keyframes flash { 0%, 30% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: var(--shadow); } }
 .msg.pending-q { border-color: var(--accent-line); }
@@ -342,6 +353,8 @@ body.resizing-v { cursor: row-resize; user-select: none; }
 .box-ask:focus-within { border-color: color-mix(in srgb, var(--ask) 55%, var(--line)); }
 .box-f { display: flex; align-items: center; gap: 8px; padding: 5px 8px 5px 12px; border-top: 1px solid var(--line-soft); background: color-mix(in srgb, var(--band) 35%, var(--card)); }
 .box-f .hint { flex: 1; font-size: 11.5px; color: var(--faint); }
+.box-f .btn-meta { color: var(--muted); }
+.box-f .btn-meta:hover { color: var(--fg); }
 .quote-chip { display: flex; gap: 6px; align-items: center; font-size: 12.5px; background: var(--ask-soft); padding: 4px 8px 4px 12px; border-bottom: 1px solid var(--line-soft); }
 .quote-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: italic; }
 .quick { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 8px; }

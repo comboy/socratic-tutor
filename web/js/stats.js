@@ -8,7 +8,7 @@ export const routeAlways = true;
 const VERDICTS = [['correct', '✓ correct'], ['partial', '◐ partial'], ['wrong', '✗ not quite'], ['skipped', '↷ skipped']];
 
 export function render(center) {
-  const J = app.topic.journal, m = app.topic.meta;
+  const J = app.topic.journal.filter(e => !e._meta), m = app.topic.meta;   // app talk isn't learning
   const el = h('div', { class: 'stats' });
   center.replaceChildren(h('div', { class: 'view' }, h('div', { class: 'view-bar' }, h('h1', { text: `Statistics · ${m.title}` })), h('div', { class: 'view-body' }, el)));
 

@@ -142,7 +142,7 @@ export function occurrences(t) {
   if (occAll.journal !== J || occAll.n !== J.length || occAll.glossary !== G) {
     const m = termMatcher(G), map = new Map();
     for (const e of J) {
-      if (e.role !== 'tutor' || e.kind !== 'message' || !e.text) continue;
+      if (e.role !== 'tutor' || e.kind !== 'message' || !e.text || e._meta) continue;
       const counts = new Map();
       for (const hit of m.find(e.text.replace(/```[\s\S]*?```|`[^`\n]*`/g, ' '))) counts.set(hit.entry.term, (counts.get(hit.entry.term) || 0) + 1);
       for (const [term, n] of counts) (map.get(term) || map.set(term, []).get(term)).push({ e, n });
@@ -171,7 +171,7 @@ export function linkedFrom(t) {
     }
     for (const pg of T.pages || []) for (const term of mentions(pg.text)) slot(term).pages.add(pg);
     for (const e of T.journal) {
-      if (e.role !== 'tutor' || e.kind !== 'message' || !e.text) continue;
+      if (e.role !== 'tutor' || e.kind !== 'message' || !e.text || e._meta) continue;
       for (const im of prose(e.text).matchAll(/!\[([^\]\n]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g))
         for (const term of mentions(im[1])) slot(term).pics.push({ alt: im[1], src: im[2], msg: e.id });
     }
@@ -284,12 +284,12 @@ export function skillPanel(body, id, { full = false } = {}) {
   if (s.misconceptions?.length) body.append(group('Misconceptions seen', h('div', { class: 'group-b' }, h('ul', { class: 'plain-list' }, ...s.misconceptions.map(x => h('li', { html: md(x, { inline: true }) }))))));
   if (s.unknown?.length) body.append(group('Not covered yet', h('div', { class: 'group-b' }, h('ul', { class: 'plain-list fog-list' }, ...s.unknown.map(x => h('li', { html: md(x, { inline: true }) }))))));
   const ids = descendants(m, id), J = app.topic.journal;
-  const hist = J.filter(e => (e.kind === 'level' || e.kind === 'grade') && ids.has(String(e.skill)));
+  const hist = J.filter(e => (e.kind === 'level' || e.kind === 'grade') && ids.has(String(e.skill)) && !e._meta);
   if (hist.length) body.append(group('Checks & level changes', h('div', { class: 'hist' }, ...hist.slice().reverse().map(e => h('div', { class: 'hist-row' },
     h('span', { class: 'muted small', text: fmtDate(e.ts) }),
     e.kind === 'level' ? h('span', { class: 'chip', text: `${e.skill}: ${e.from} → ${e.to}` }) : h('button', { class: `badge verdict-${e.verdict}`, text: e.verdict, onclick: () => openDock('msg', e.target) }),
     h('span', { class: 'small', text: e.reason || e.note || '' }))))));
-  const msgs = J.filter(e => e.role === 'tutor' && e.kind === 'message' && e._skills.some(x => ids.has(x)));
+  const msgs = J.filter(e => e.role === 'tutor' && e.kind === 'message' && !e._meta && e._skills.some(x => ids.has(x)));
   body.append(group(['Explanations', h('span', { class: 'count', text: String(msgs.length) })], h('div', { class: 'occ' }, ...msgs.slice(0, full ? 999 : 15).map(e => msgLine(e, null)),
     !msgs.length ? h('div', { class: 'empty-row', text: 'No messages tagged with this skill yet.' }) : null)));
   const pages = (app.topic.pages || []).filter(pg => [...pg.text.matchAll(/\]\(skill:([^)\s]+)\)/g)].some(x => ids.has(x[1])));

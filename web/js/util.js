@@ -1,6 +1,7 @@
 // Shared helpers: DOM, skills, derived journal data.
 export { h } from '../viz/core.js';
 import { h } from '../viz/core.js';
+import { metaIds } from './journal.js';
 
 export const $ = (s, r = document) => r.querySelector(s);
 export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -70,13 +71,18 @@ export function derive(topic) {
   const grades = new Map();       // answer id -> grade entry
   for (const e of J) if (e.kind === 'grade') grades.set(e.target, e);
   const tags = topic.tags || {};
+  // _meta: app talk ("About the app", --meta replies, tagged entries, the tags themselves): shown
+  // dimmed in the thread, left out of the learning record (wiki, sessions, stats, term mentions)
+  const meta = metaIds(J);
   for (const e of J) {
     const t = tags[e.id];
     e._skills = [...new Set([...(e.skills || []), ...(t || [])].map(String))];
+    e._meta = meta.has(e.id);
   }
   // pending question: last tutor question not followed by an answer to it
   let pending = null;
   for (const e of J) {
+    if (e._meta) continue;
     if (e.role === 'tutor' && e.kind === 'message' && e.question) pending = e;
     else if (e.role === 'user' && e.kind === 'answer' && pending && (!e.replyTo || e.replyTo === pending.id)) pending = null;
   }

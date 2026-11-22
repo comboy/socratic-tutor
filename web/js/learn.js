@@ -28,7 +28,7 @@ export function render(center) {
 }
 export function update(args) { if (args[0] === 'm' && args[1]) reveal(args[1]); }
 
-const visible = e => ['message', 'answer', 'ask', 'action', 'start', 'level', 'session'].includes(e.kind);
+const visible = e => ['message', 'answer', 'ask', 'action', 'start', 'meta', 'level', 'session'].includes(e.kind);
 // keep: redraw the same stretch of the conversation (earlier messages the learner opened stay), in place
 function drawThread(keep = false) {
   const J = app.topic.journal.filter(visible);
@@ -83,23 +83,33 @@ function appendEntry(e, prevDate) {
 
 const KIND = { answer: ['Answer', 'send'], ask: ['Question', 'ask'], action: ['Button', 'chev'], start: ['New topic', 'plus'] };
 const VERDICT = { correct: '✓ Correct', partial: '◐ Partly right', wrong: '✗ Not quite', skipped: '↷ Skipped' };
+// App talk (e._meta: "About the app", --meta replies, entries the tutor tagged) is dimmed and folded
+// to one line in the conversation. Open: the ones that arrived while the page was open, or opened by hand.
+const openMeta = new Set();
 export function messageNode(e, { compact = false, pinnable = false } = {}) {
   const tutor = e.role === 'tutor';
-  const art = h('article', { class: `msg ${tutor ? 'msg-tutor' : 'msg-user'} kind-${e.kind} hl-scope` + (e.imported ? ' imported' : ''), id: compact ? null : 'm-' + e.id, 'data-id': e.id });
+  const folded = e._meta && !compact && !openMeta.has(e.id);
+  const art = h('article', { class: `msg ${tutor ? 'msg-tutor' : 'msg-user'} kind-${e.kind} hl-scope` + (e.imported ? ' imported' : '') + (e._meta ? ' msg-meta' : '') + (folded ? ' folded' : ''),
+    id: compact ? null : 'm-' + e.id, 'data-id': e.id });
+  const fold = () => toggleMeta(e, art);
   const head = h('header', { class: 'msg-head' });
   head.append(h('span', { class: 'who' }, tutor ? icon('bulb') : null, tutor ? 'Tutor' : 'You'));
-  if (!tutor && KIND[e.kind]) head.append(h('span', { class: 'kind-tag' }, icon(KIND[e.kind][1]), KIND[e.kind][0]));
+  if (e._meta) head.append(h('span', { class: 'kind-tag meta-tag', title: 'About the app, not the lesson: kept out of the wiki, the session pages and the stats' }, icon('feedback'), 'About the app'));
+  else if (!tutor && KIND[e.kind]) head.append(h('span', { class: 'kind-tag' }, icon(KIND[e.kind][1]), KIND[e.kind][0]));
   if (e.kind === 'action') head.append(h('span', { class: 'action-text', text: e.text, title: e.text }));
+  else if (folded) head.append(h('button', { class: 'meta-preview', title: 'Show the whole message', text: plain(e.text || '', 240), onclick: fold }));
   if (e.imported) head.append(h('span', { class: 'imported-tag', title: 'Imported from a terminal session', text: 'terminal' }));
   const g = app.d.grades.get(e.id);
   if (g) head.append(h('span', { class: `badge verdict-${g.verdict}`, title: g.note || '', text: VERDICT[g.verdict] || g.verdict }));
-  for (const sid of e._skills || []) {
+  for (const sid of e._meta ? [] : e._skills || []) {   // app talk belongs to no skill
     const s = skillById(app.topic.meta, sid);
     head.append(h('button', { class: 'chip chip-skill ' + lvClass(s ? levelOf(s.node) : 0), text: sid, title: s ? `${s.name} (open skill)` : '', onclick: () => openDock('skill', sid) }));
   }
-  head.append(h('span', { class: 'spacer' }), h('time', { title: e.ts, text: compact ? shortId(e.id) : fmtTime(e.ts) }));
+  if (!folded || e.kind === 'action') head.append(h('span', { class: 'spacer' }));
+  head.append(h('time', { title: e.ts, text: compact ? shortId(e.id) : fmtTime(e.ts) }));
   if (!compact) head.append(h('button', { class: 'msg-id', title: 'Open this message in the side panel', text: '#' + e.id.split('.')[1], onclick: () => openDock('msg', e.id) }));
-  if (tutor && (!compact || pinnable)) {
+  if (e._meta && !compact) head.append(h('button', { class: 'icon-btn meta-fold' + (folded ? '' : ' open'), title: folded ? 'Show the whole message' : 'Fold it away', onclick: fold }, icon('chev')));
+  if (tutor && !folded && (!compact || pinnable)) {
     const pinned = isPinned(e.id);
     head.append(h('span', { class: 'head-actions' },
       h('button', { class: 'icon-btn' + (pinned ? ' on' : ''), title: pinned ? 'Unpin from the side panel' : 'Pin to the side panel (keep it visible while answering)',
@@ -107,6 +117,7 @@ export function messageNode(e, { compact = false, pinnable = false } = {}) {
       h('button', { class: 'icon-btn', title: 'Ask about this message', onclick: () => { quote = { id: e.id, text: plain(e.text, 300) }; prefillAsk(store.get('draft:ask:' + app.topic.slug, '')); } }, icon('ask'))));
   }
   art.append(head);
+  if (folded) return art;
   if (e.quote && !tutor) {
     const q = app.d.byId.get(e.quote);
     if (q) art.append(h('button', { class: 'quote-ref', onclick: () => openDock('msg', q.id) }, icon('link'), 'About ', h('b', { text: shortId(q.id) })));
@@ -118,6 +129,17 @@ export function messageNode(e, { compact = false, pinnable = false } = {}) {
   }
   if (tutor && e.question && !compact && app.d.pending?.id === e.id) art.classList.add('pending-q');
   return art;
+}
+function toggleMeta(e, art) {
+  if (openMeta.has(e.id)) openMeta.delete(e.id); else openMeta.add(e.id);
+  const n = messageNode(e, art.id ? {} : { compact: true });
+  art.replaceWith(n);
+  // folding a long message whose top is above the window: keep its (now one-line) header in sight
+  const sc = $('#threadScroll');
+  if (!sc || !thread?.contains(n)) return;
+  const above = n.getBoundingClientRect().top - sc.getBoundingClientRect().top;
+  if (above < 0) sc.scrollTop += above - 8;
+  takeAnchor();
 }
 
 function drawTyping() {
@@ -149,7 +171,9 @@ export function onEntries(fresh) {
   thread.querySelector('.empty')?.remove();
   for (const e of fresh) {
     if (e.kind === 'grade') { redrawEntry(e.target); continue; }
+    if (e.kind === 'tag') { retag(e.ids || []); continue; }
     if (!visible(e)) continue;
+    if (e._meta) openMeta.add(e.id);   // app talk arriving now is shown open; folded on a later visit
     const i = J.findIndex(x => x.id === e.id);
     appendEntry(e, i > 0 ? J[i - 1].ts.slice(0, 10) : null);
   }
@@ -160,7 +184,7 @@ export function onEntries(fresh) {
   keepAnchor();
   // Only two things move the conversation: a new tutor reply (shown from its beginning, where
   // reading starts, not the bottom of the thread) and the learner's own message. Anything else
-  // (a grade, a level change, a session divider) appears in place and the view stays put.
+  // (a grade, a level change, a tag, a session divider) appears in place and the view stays put.
   const reply = fresh.find(e => e.role === 'tutor' && e.kind === 'message');
   const mine = fresh.some(e => e.role === 'user');
   if (reply && (nearBottom || mine)) scrollToStart(reply.id, true);
@@ -170,6 +194,18 @@ export function onEntries(fresh) {
 function redrawEntry(id) {
   const n = thread.querySelector(`[id="m-${CSS.escape(id)}"]`), e = app.d.byId.get(id);
   if (n && e) n.replaceWith(messageNode(e));
+}
+// the tutor tagged (or untagged) entries as app talk: dim and fold them, except one the learner is
+// looking at right now (it folds on a later visit)
+function retag(ids) {
+  const sc = $('#threadScroll'), r = sc.getBoundingClientRect();
+  for (const id of ids) {
+    const n = thread.querySelector(`[id="m-${CSS.escape(id)}"]`);
+    if (!n) continue;
+    const b = n.getBoundingClientRect();
+    if (b.bottom > r.top && b.top < r.bottom) openMeta.add(id); else openMeta.delete(id);
+    redrawEntry(id);
+  }
 }
 export function onStatus() { if (thread) drawTyping(); }
 // Topic files changed (the tutor's bookkeeping): update what the conversation shows of them, in
@@ -295,6 +331,15 @@ function drawComposer(keepFocus) {
     await doSend('ask', text, extra, qBox, 'draft:ask:');
     quote = null; drawComposer();
   };
+  // "About the app": a remark about the interface or the process, not the lesson. Journaled as META
+  // (the tutor sees it labelled so, and can answer), added to feedback.md, kept out of the wiki and stats.
+  const sendM = async () => {
+    let text = qBox.value.trim(); if (!text) { qBox.focus(); return; }
+    const extra = {};
+    if (quote) { text = quote.text.split('\n').map(l => '> ' + l).join('\n') + '\n\n' + text; extra.quote = quote.id; }
+    await doSend('meta', text, extra, qBox, 'draft:ask:');
+    quote = null; drawComposer();
+  };
   const keys = fn => ev => { if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); fn(); } };
   aBox.addEventListener('keydown', keys(sendA));
   qBox.addEventListener('keydown', keys(sendQ));
@@ -314,6 +359,8 @@ function drawComposer(keepFocus) {
       h('button', { class: 'icon-btn', title: 'Remove quote', onclick: () => { quote = null; drawComposer(); } }, icon('close'))) : null,
     qBox,
     h('div', { class: 'box-f' }, h('span', { class: 'hint', text: 'Tip: select text in any message to ask about it.' }),
+      h('button', { class: 'btn btn-meta', id: 'metaBtn', onclick: sendM,
+        title: 'Send it as a remark about the app (the interface, a bug, a wish), not the lesson. The tutor sees it marked as such and can answer; it also goes to feedback.md for the builder, and stays out of your wiki, sessions and stats.' }, icon('feedback'), 'About the app'),
       h('button', { class: 'btn btn-ask', onclick: sendQ }, 'Ask ', h('kbd', { text: '⌘↵' }))));
   composer.replaceChildren(grip(), h('div', { class: 'composer-inner' },
     welcomeBack(),

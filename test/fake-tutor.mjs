@@ -3,7 +3,8 @@
 // It follows the real protocol (bin/learn wait / post / handoff), so the launcher, server and UI
 // are exercised end to end. Behaviour:
 //   - starts idle and posts nothing until the learner writes (like the real tutor)
-//   - every learner message gets an "Echo" reply with a new question; answers get graded
+//   - every learner message gets an "Echo" reply with a new question; answers get graded;
+//     a META message (About the app) gets an "Echo (meta)" reply posted with --meta, no question
 //   - a message containing STALL-ONCE is left unanswered the first time (simulates a stuck tutor)
 //   - writes a fake Claude transcript with growing token usage, so the context meter and the
 //     automatic handoff can be tested (CLAUDE_CONFIG_DIR must point somewhere disposable)
@@ -62,7 +63,7 @@ function parse(out) {
   const msgs = [];
   const re = /^── (\w+)  id=(\S+)  topic=(\S+)(.*?) ──\n([\s\S]*?)(?=^── |\(reply:|$(?![\s\S]))/gm;
   let m;
-  while ((m = re.exec(out))) msgs.push({ kind: m[1].toLowerCase(), id: m[2], topic: m[3], text: m[5].trim() });
+  while ((m = re.exec(out))) msgs.push({ kind: m[1].toLowerCase(), id: m[2], topic: m[3], extra: m[4].trim(), text: m[5].trim() });
   return msgs.filter(x => x.kind !== 'handoff');
 }
 const stalled = () => { try { return new Set(fs.readFileSync(path.join(HOME, 'state', 'fake-stalled'), 'utf8').split('\n')); } catch { return new Set(); } };
@@ -82,6 +83,7 @@ async function main() {
         log({ event: 'stalling', id: m.id });
         await hang();                                   // stuck until killed
       }
+      if (m.kind === 'meta') { post(`Echo (meta): ${m.text.slice(0, 300)}`, ['--topic', m.topic, '--meta']); log({ event: 'replied', id: m.id, meta: true, head: m.extra }); continue; }
       const grade = m.kind === 'answer' ? ['--grade', 'correct', '--note', 'fake tutor grades everything correct'] : [];
       post(`Echo (${m.kind}): ${m.text.slice(0, 300)}\n\n:::question\nFake follow-up question after ${m.id}?\n:::`, ['--topic', m.topic, ...grade]);
       log({ event: 'replied', id: m.id });

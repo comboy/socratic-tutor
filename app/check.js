@@ -10,7 +10,7 @@ const S = require('./store');
 
 const LINK = /\]\((msg|term|skill|map|wiki):([^)\n]+)\)/g;
 const WIKI_PAGES = /^(home|cheatsheet|glossary|skills|tree|sessions|notes|you|pages|page\/[a-z0-9-]+|session\/\d{4}-\d{2}-\d{2}|term\/.+|skill\/.+)$/;
-const TEXT_KINDS = new Set(['message', 'answer', 'ask', 'action', 'start']);
+const TEXT_KINDS = new Set(['message', 'answer', 'ask', 'action', 'start', 'meta']);
 
 // -> fn(text) returning [{ type, id, error: bool, why }]. Reads the topic once.
 function linkChecker(slug) {
@@ -187,7 +187,8 @@ function boldPhrases(text) {
 // texts: [{ id, text }] to check instead of the last tutor messages (`post` checks the new one).
 function missingTerms(slug, { last = 20, texts = null } = {}) {
   const m = termMatcher(S.readGlossary(slug));
-  const msgs = texts || S.readJournal(slug).filter(e => e.role === 'tutor' && e.kind === 'message' && e.text).slice(-last);
+  const J = texts ? null : S.readJournal(slug), meta = J && S.metaIds(J);
+  const msgs = texts || J.filter(e => e.role === 'tutor' && e.kind === 'message' && e.text && !meta.has(e.id)).slice(-last);
   const groups = new Map();
   msgs.forEach((e, i) => {
     for (const p of boldPhrases(e.text)) {

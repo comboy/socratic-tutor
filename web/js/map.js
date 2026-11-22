@@ -156,7 +156,7 @@ export function nodePanel(body, id, app) {
   if (n.desc) body.append(group('How it works', h('div', { class: 'group-b' }, rich(n.desc, 'hl-scope'))));
   if (n.terms?.length) body.append(group('Terms', h('div', { class: 'group-b chips' }, ...n.terms.map(t => h('button', { class: 'chip chip-btn' + (termEntry(t) ? '' : ' missing'), text: t, onclick: () => openDock('term', t) })))));
   const ids = n.skill ? descendants(app.topic.meta, n.skill) : new Set();
-  const tagged = app.topic.journal.filter(e => e.role === 'tutor' && e.kind === 'message' && e._skills.some(x => ids.has(x)));
+  const tagged = app.topic.journal.filter(e => e.role === 'tutor' && e.kind === 'message' && !e._meta && e._skills.some(x => ids.has(x)));
   const seen = new Set(tagged.map(e => e.id)), mentioned = [];
   for (const t of n.terms || []) { const te = termEntry(t); if (te) for (const o of occurrences(te)) if (!seen.has(o.e.id)) { seen.add(o.e.id); mentioned.push(o.e); } }
   mentioned.sort((a, b) => a.ts.localeCompare(b.ts));

@@ -280,6 +280,31 @@ async function main() {
     assert(await page.eval(`document.querySelector('#askBox').value === ''`), 'ask box not cleared');
     await page.waitFor(`[...document.querySelectorAll('.thread .msg')].some(m => m.innerText.includes('Echo (ask): side question'))`);
   });
+  await test('"About the app": journaled as meta, delivered as META, added to feedback.md; the --meta reply is dimmed; kept out of msgs, grep, resume', async () => {
+    const pendBefore = learn('pending', 'demo').split('\n')[0];
+    await page.click('#askBox');
+    await page.type('The hover cards could open faster (meta test)');
+    await page.click('#metaBtn', 300);
+    assert(await page.eval(`document.querySelector('#askBox').value === ''`), 'ask box not cleared');
+    const sent = await until(() => journal().find(e => e.kind === 'meta' && /meta test/.test(e.text)), 'meta entry');
+    assert(sent.role === 'user' && sent.meta === true, JSON.stringify(sent));
+    const fb = fs.readFileSync(path.join(HOME, 'feedback.md'), 'utf8');
+    assert(new RegExp(`^- \\[ \\] \\d{4}-\\d{2}-\\d{2} \\(learner, demo · about the app · msg ${sent.id.replace('.', '\\.')}\\): The hover cards could open faster \\(meta test\\)$`, 'm').test(fb), fb.slice(-300));
+    // the fake tutor answers with post --meta only what `wait` labelled META
+    const reply = await until(() => journal().find(e => e.role === 'tutor' && e.kind === 'message' && /^Echo \(meta\): The hover cards/.test(e.text)), 'meta reply');
+    assert(reply.meta === true && !reply.question && reply.replyTo === sent.id && reply.text === 'Echo (meta): The hover cards could open faster (meta test)', JSON.stringify(reply));
+    const seen = fakeLog().find(l => l.event === 'replied' && l.id === sent.id);
+    assert(seen?.meta && /about the app, not the lesson: reply with `post --meta`/.test(seen.head), 'wait did not label it META: ' + JSON.stringify(seen));
+    await page.waitFor(`document.querySelector('[id="m-${reply.id}"].msg-meta:not(.folded) .msg-body') && document.querySelector('[id="m-${sent.id}"].msg-meta .meta-tag')`);
+    await page.shot('about-the-app');
+    assert(learn('pending', 'demo').split('\n')[0] === pendBefore, 'the meta reply changed the pending question');
+    assert(!/Echo \(meta\)/.test(learn('msgs', 'demo')) && /\(app talk\) Echo \(meta\)/.test(learn('msgs', 'demo', '--all')), 'msgs');
+    assert(!learn('grep', 'open faster', '--topic', 'demo').trim() && learn('grep', 'open faster', '--topic', 'demo', '--all').trim(), 'grep');
+    const r = learn('resume', 'demo');
+    assert(!/meta test|Echo \(meta\)/.test(r) && /\(\+ 2 app-talk entries since /.test(r), r.slice(r.indexOf('## Last')));
+    const bad = (() => { try { execFileSync(process.execPath, [BIN, 'post', '--topic', 'demo', '--meta', '--skill', '4.1'], { env: ENV, input: 'x', encoding: 'utf8' }); return ''; } catch (e) { return String(e.stderr); } })();
+    assert(/--meta is a reply about the app/.test(bad), 'post --meta --skill accepted: ' + bad);
+  });
   await test('composer resize handle drags and remembers', async () => {
     const g = await page.eval(`(() => { const b = document.querySelector('.composer-grip').getBoundingClientRect(); return [b.left + b.width / 2, b.top + 4, document.querySelector('.composer').offsetHeight]; })()`);
     await page.drag(g[0], g[1], g[0], g[1] - 120);
@@ -672,7 +697,7 @@ async function main() {
     assert(off !== null, 'reply start not at the top of the thread');
     assert(await page.eval(`(() => { const sc = document.querySelector('#threadScroll'); return sc.scrollHeight - sc.scrollTop - sc.clientHeight > 200; })()`), 'scrolled to the bottom instead');
   });
-  await test('bookkeeping never moves the conversation: grade, level, note, term at the bottom; growth above, new lines below', async () => {
+  await test('bookkeeping never moves the conversation: grade, level, note, term at the bottom; growth, folds and new lines above and below', async () => {
     await page.nav(`${BASE}/#/demo/learn`, 1200);
     const place = id => page.eval(`(() => { const sc = document.querySelector('#threadScroll'), top = sc.getBoundingClientRect().top;
       const n = ${id ? `document.getElementById(${JSON.stringify(id)})` : `[...document.querySelectorAll('#thread > [id]')].find(n => n.getBoundingClientRect().bottom > top + 1)`};
@@ -695,7 +720,7 @@ async function main() {
     assert(Math.abs(b.st - a.st) <= 1 && b.gap > 10, `scrolled to the new line: ${JSON.stringify(a)} → ${JSON.stringify(b)}`);
     assert(await page.eval(`window.__probe.isConnected`), 'the conversation was redrawn instead of updated in place');
     assert(!await page.eval(`document.querySelector('.newpill')`), 'bookkeeping showed the "New message" pill');
-    // 2. reading in the middle: something above the window grows or shrinks (an image loading)
+    // 2. reading in the middle: something above the window grows (an image loading) or folds (tagged as app talk)
     await page.eval(`(() => { const sc = document.querySelector('#threadScroll'); sc.scrollTop = Math.round(sc.scrollHeight / 2); })()`);
     await sleep(400);
     const c = await place();
@@ -709,12 +734,56 @@ async function main() {
     await page.eval(`document.querySelector('.grow-probe').remove()`);
     await sleep(300);
     same(c, await place(c.id), 'content shrinking above');
+    const above = await page.eval(`(() => { const top = document.querySelector('#threadScroll').getBoundingClientRect().top;
+      return [...document.querySelectorAll('#thread .msg-tutor')].filter(m => m.getBoundingClientRect().bottom < top - 10).at(-1).dataset.id; })()`);
+    learn('meta', 'demo', above);
+    await page.waitFor(`document.querySelector('[id="m-${above}"].msg-meta.folded')`);
+    await sleep(300);
+    same(c, await place(c.id), 'an entry above folding');
+    learn('meta', 'demo', above, '--off');
+    await page.waitFor(`document.querySelector('[id="m-${above}"]:not(.msg-meta) .msg-body')`);
+    await sleep(300);
+    same(c, await place(c.id), 'an entry above unfolding');
     // 3. a level change below the window: no move, no pill
     learn('level', 'demo', '4.2', '1', 'scroll test again');
     await page.waitFor(`[...document.querySelectorAll('#thread .sysline')].some(x => /scroll test again/.test(x.textContent))`);
     await sleep(800);
     same(c, await place(c.id), 'a level change below');
     assert(!await page.eval(`document.querySelector('.newpill')`), 'a level change showed the "New message" pill');
+  });
+  await test('bin/learn meta tags an old exchange (append-only): folded in the thread, out of msgs --skill, the skill and session pages, stats, resume; --off undoes it', async () => {
+    const file = path.join(HOME, 'topics/demo/journal/2026-01-08.jsonl'), before = fs.readFileSync(file, 'utf8');
+    assert(/^2026-01-08\.13 \[4\.4\]/m.test(learn('msgs', 'demo', '--skill', '4.4')), 'not listed before');
+    const yours = async () => { await page.nav(`${BASE}/#/demo/stats`, 900); return Number(await page.waitFor(`[...document.querySelectorAll('.tile')].find(t => /Your messages/.test(t.textContent))?.querySelector('.tile-value span')?.textContent`)); };
+    const skillLists = async () => { await page.nav(`${BASE}/#/demo/wiki/skill/4.4`, 900); return page.eval(`[...document.querySelectorAll('.sheet .msgline-id')].some(x => /#13$/.test(x.textContent))`); };
+    const n0 = await yours();
+    assert(await skillLists(), 'skill page does not list it before');
+    const out = learn('meta', 'demo', '2026-01-08.12', '2026-01-08.13');
+    assert(/tagged 2026-01-08\.12 \[ask\]/.test(out) && /tagged 2026-01-08\.13 \[tutor\]/.test(out), out);
+    assert(fs.readFileSync(file, 'utf8') === before, 'an old journal file was rewritten');
+    const tag = journal().at(-1);
+    assert(tag.kind === 'tag' && tag.tag === 'meta' && tag.ids.join() === '2026-01-08.12,2026-01-08.13', JSON.stringify(tag));
+    assert(/already tagged/.test(learn('meta', 'demo', '2026-01-08.13')), 'tagging twice appends again');
+    assert(/is a grade entry/.test((() => { try { learn('meta', 'demo', '2026-01-08.4'); return ''; } catch (e) { return String(e.stderr); } })()), 'tagged a grade');
+    assert(!/2026-01-08\.13/.test(learn('msgs', 'demo', '--skill', '4.4')), 'msgs --skill still lists it');
+    assert(!/2026-01-08\.1[23] \[/.test(learn('resume', 'demo')), 'resume still shows it');
+    assert(/^2026-01-08\.13 \[tutor, app talk\]/m.test(learn('recent', '80', '--topic', 'demo')) && /\(app talk\)/.test(learn('show', '2026-01-08.13')), 'recent/show do not mark it');
+    assert(!/KV cache last time/.test(learn('grep', 'KV cache', '--topic', 'demo')), 'grep finds it');
+    assert(await yours() === n0 - 1, 'stats still count the tagged ask');
+    assert(!await skillLists(), 'the skill page lists it');
+    await page.nav(`${BASE}/#/demo/wiki/session/2026-01-08`, 900);
+    const sess = await page.eval(`({ has: !!document.querySelector('.sheet [data-id="2026-01-08.13"]'), note: /2 messages about the app not shown/.test(document.querySelector('.sheet').innerText) })`);
+    assert(!sess.has && sess.note, 'session page: ' + JSON.stringify(sess));
+    await page.nav(`${BASE}/#/demo/learn/m/2026-01-08.13`, 1500);
+    const t = await page.eval(`(() => { const n = document.querySelector('[id="m-2026-01-08.13"]'), q = document.querySelector('[id="m-2026-01-08.12"]');
+      return { folded: n.matches('.msg-meta.folded') && q.matches('.msg-meta.folded'), body: !!n.querySelector('.msg-body'), preview: n.querySelector('.meta-preview')?.textContent || '' }; })()`);
+    assert(t.folded && !t.body && /^Short version/.test(t.preview), 'thread: ' + JSON.stringify(t));
+    await page.click('[id="m-2026-01-08.13"] .meta-fold');
+    assert(await page.eval(`!!document.querySelector('[id="m-2026-01-08.13"].msg-meta:not(.folded) .msg-body')`), 'does not unfold');
+    await page.shot('meta-folded');
+    learn('meta', 'demo', '2026-01-08.12', '2026-01-08.13', '--off');
+    assert(/^2026-01-08\.13 \[4\.4\]/m.test(learn('msgs', 'demo', '--skill', '4.4')), '--off did not bring it back');
+    await page.waitFor(`document.querySelector('[id="m-2026-01-08.13"]:not(.msg-meta) .msg-body')`);
   });
   await test('glossary sort: newest first by first mention, remembered, in wiki and dock', async () => {
     await page.eval(`localStorage.removeItem('learn:glossarySort')`);

@@ -77,6 +77,8 @@ Tutor commands (docs/protocol.md). [t] = optional topic, defaults to the current
 bin/learn resume [t]                     everything needed to pick up a topic, in one compact print
 bin/learn wait                           block until the learner sends something
 bin/learn post [--topic t] [--skill ids] [--grade v] [--grade-skill id] [--note s] [--expect rubric] [--force]  < markdown
+bin/learn post --meta [--topic t]  < markdown   a reply about the app (to a META message), kept out of the lesson
+bin/learn meta [t] <id>… [--off]         tag past entries as app talk (append-only; --off takes the tag back)
 bin/learn level [t] <skill> <0-5> "reason"
 bin/learn focus [t] <skill>              set the current focus
 bin/learn note <review|hole|parked|misconception> [--skill id] [--ref msg] [--due 3d] "text"
@@ -90,6 +92,7 @@ bin/learn legend [t] [set <key> <#color> "label" [--term name] | rm <key>]   col
 bin/learn log [t] "what happened"        append to today's entry in log.md
 bin/learn feedback "remark"              a note for the builder about the app or the process (not the lesson)
 bin/learn pending [t] · recent [n] [--topic t] · msgs [t] --skill id · status · show <id> · grep <regex> [--topic t]
+                                         (msgs and grep leave out app talk; --all includes it)
 bin/learn image [t] <Commons file/URL | file --author a --license l> · image search "words" · image list [t]
                                          keep a real image in the topic (offline, credited): ![caption](media:<file>)
 bin/learn check [t]                      validate topic files (JSON, skill ids, links, map) after editing
@@ -153,11 +156,12 @@ commands.resume = () => {
   if (process.env.LEARN_SESSION && sess?.id === process.env.LEARN_SESSION && sess.topic !== slug) T.writeSession({ ...sess, topic: slug });
   const meta = S.loadTopicMeta(slug), dir = S.topicDir(slug);
   const J = S.readJournal(slug);
+  const appTalk = S.metaIds(J);
   const out = [];
   const sec = (title, body) => { if (body && String(body).trim()) out.push(`\n## ${title}\n${String(body).replace(/\s+$/, '')}`); };
 
-  const lastUser = [...J].reverse().find(e => e.role === 'user' && !e.imported);
-  const last = [...J].reverse().find(e => e.kind !== 'session');
+  const lastUser = [...J].reverse().find(e => e.role === 'user' && !e.imported && !appTalk.has(e.id));
+  const last = [...J].reverse().find(e => e.kind !== 'session' && e.kind !== 'tag');
   const gapMs = last ? Date.now() - Date.parse(last.ts) : null;
   let advice;
   if (!meta.skills?.length) advice = 'NEW TOPIC: no skill tree yet. Follow docs/bootstrap.md (first reply fast: one line + diagnostic question 1; then write the tree).';
@@ -199,7 +203,7 @@ commands.resume = () => {
   const pend = S.pendingQuestion(J);
   if (pend) {
     const q = (pend.text.match(/^:::question[^\n]*\n([\s\S]*?)^:::\s*$/m) || [])[1] || pend.text.slice(-500);
-    const answered = J.filter(e => e.role === 'user' && e.ts > pend.ts && !e.imported);
+    const answered = J.filter(e => e.role === 'user' && e.ts > pend.ts && !e.imported && !appTalk.has(e.id));
     sec(`Pending question ${pend.id}${pend.skills?.length ? ` (skill ${pend.skills.join(',')})` : ''}`, q.trim() +
       (pend.expect ? `\nGood answer needs: ${pend.expect}` : '\n(no rubric stored: post questions with --expect "…")') +
       (answered.length ? `\nLearner messages since: ${answered.map(e => `${e.id} [${e.kind}]`).join(', ')}` : ''));
@@ -223,13 +227,16 @@ commands.resume = () => {
   const fb = S.openFeedback().length;
   if (fb) out.push(`\n(${fb} open feedback item(s) in data/feedback.md for the builder: not your job mid-lesson)`);
 
+  // the lesson only: app talk (META messages, replies posted with --meta, tagged entries) is left out
   const n = Number(f.messages) || 6;
-  const vis = J.filter(e => ['message', 'answer', 'ask', 'action', 'start'].includes(e.kind) || e.kind === 'grade').slice(-n);
+  const shown = e => (['message', 'answer', 'ask', 'action', 'start', 'meta'].includes(e.kind) || e.kind === 'grade');
+  const vis = J.filter(e => shown(e) && !appTalk.has(e.id)).slice(-n);
+  const skipped = vis.length ? J.filter(e => shown(e) && appTalk.has(e.id) && e.ts >= vis[0].ts).length : 0;
   sec(`Last ${vis.length} journal entries (more: \`bin/learn recent 20\`, \`bin/learn show <id>\`)`, vis.map(e => {
     if (e.kind === 'grade') return `${e.id} [grade] ${e.verdict} on ${e.target} (${e.skill || '-'}) ${e.note || ''}`;
     const text = e.role === 'tutor' && e.text.length > 900 ? e.text.slice(0, 450) + ' … ' + e.text.slice(-400) : e.text;
     return `${e.id} [${e.role === 'tutor' ? 'tutor' : e.kind}]\n${text.replace(/^/gm, '  ')}`;
-  }).join('\n'));
+  }).join('\n') + (skipped ? `\n(+ ${skipped} app-talk entr${skipped > 1 ? 'ies' : 'y'} since ${vis[0].id}, not shown: \`bin/learn recent\` has them)` : ''));
   const q = S.inboxIds().length;
   if (q) out.push(`\n(${q} learner message(s) queued: \`bin/learn wait\` returns them right away)`);
   console.log(out.join('\n'));
@@ -272,6 +279,7 @@ commands.wait = async () => {
     const bits = [`id=${m.id}`, `topic=${m.topic}`];
     if (m.replyTo) bits.push(`replying-to=${m.replyTo}`);
     if (m.quote) bits.push(`quote=${m.quote}`);
+    if (m.kind === 'meta') bits.push('(about the app, not the lesson: reply with `post --meta`; already in feedback.md for the builder)');
     console.log(`── ${String(m.kind).toUpperCase()}  ${bits.join('  ')} ──`);
     console.log(m.text);
     console.log();
@@ -327,8 +335,10 @@ Then consider \`bin/learn handoff\` after your next reply: a fresh session is cl
 };
 
 commands.post = async () => {
-  const f = flags(argv, { topic: 'string', skill: 'string', grade: 'string', 'grade-skill': 'string', note: 'string', file: 'string', expect: 'string', force: 'bool' });
+  const f = flags(argv, { topic: 'string', skill: 'string', grade: 'string', 'grade-skill': 'string', note: 'string', file: 'string', expect: 'string', force: 'bool', meta: 'bool' });
+  if (f.meta && (f.grade || f.skill || f['grade-skill'] || f.expect)) die('--meta is a reply about the app, not the lesson: no --grade, --skill or --expect');
   const text = (f.file ? fs.readFileSync(f.file, 'utf8') : readStdin()).replace(/\s+$/, '');
+  if (f.meta && !text) die('nothing to post (markdown on stdin)');
   const verdicts = ['correct', 'partial', 'wrong', 'skipped'];
   if (f.grade && !verdicts.includes(f.grade)) die(`--grade must be one of ${verdicts.join('|')}`);
   if (!text && !f.grade) die('nothing to post (markdown on stdin)');
@@ -338,7 +348,8 @@ commands.post = async () => {
   const skills = list(f.skill);
   const meta = S.loadTopicMeta(topic);
   for (const id of [...skills, f['grade-skill']].filter(Boolean)) if (!S.findSkill(meta, id)) die(`no skill ${id} in ${topic}`);
-  const question = S.hasQuestion(text);
+  const question = !f.meta && S.hasQuestion(text);
+  if (f.meta && S.hasQuestion(text)) die('not posted: a --meta reply can\'t carry a :::question (it would become the lesson\'s pending question). Ask in prose; the learner answers with "About the app".');
   if (text) {
     const probs = require('../app/check').linkChecker(topic)(text);
     const errs = probs.filter(p => p.error);
@@ -347,12 +358,13 @@ commands.post = async () => {
     if (question && (text.match(/^:::question\b/gm) || []).length > 1) console.error('warning: more than one :::question block; only one is tracked as pending');
     // a question asked in prose isn't tracked: the answer box doesn't show it and the answer isn't linked to it
     const lastPara = text.replace(/```[\s\S]*?```/g, '').trim().split(/\n\s*\n/).pop() || '';
-    if (!question && /\?\s*$/.test(lastPara) && !f.force) die('not posted: the message ends with a question outside a :::question block, so the learner won\'t see it above the answer box. Put it in :::question … ::: (with --expect), or pass --force if it is rhetorical.');
+    if (!question && !f.meta && /\?\s*$/.test(lastPara) && !f.force) die('not posted: the message ends with a question outside a :::question block, so the learner won\'t see it above the answer box. Put it in :::question … ::: (with --expect), or pass --force if it is rhetorical.');
     if (f.expect && !question) console.error('warning: --expect given but the message has no :::question block');
   }
 
   const entries = [];
-  const lastUser = S.lastEntry(e => e.topic === topic && e.role === 'user' && !e.imported, [topic]);
+  // a lesson message replies to the learner's last lesson message; a --meta one to their last message
+  const lastUser = S.lastEntry(e => e.topic === topic && e.role === 'user' && !e.imported && (f.meta || e.kind !== 'meta'), [topic]);
   if (f.grade) {
     const target = S.lastEntry(e => e.topic === topic && e.role === 'user' && e.kind === 'answer', [topic]);
     if (!target) die('no answer to grade');
@@ -360,14 +372,14 @@ commands.post = async () => {
       verdict: f.grade, skill: f['grade-skill'] || skills[0] || null, note: f.note || '' });
   }
   if (text) entries.push({ role: 'tutor', kind: 'message', text, skills, question,
-    replyTo: lastUser ? lastUser.id : null, ...(f.expect && question ? { expect: f.expect } : {}) });
+    replyTo: lastUser ? lastUser.id : null, ...(f.expect && question ? { expect: f.expect } : {}), ...(f.meta ? { meta: true } : {}) });
 
   let saved;
   if (await serverUp()) saved = await api('POST', '/api/append', { topic, entries });
   else saved = S.appendJournal(topic, entries);
-  for (const e of saved) console.log(`posted ${e.kind} ${e.id}${e.kind === 'grade' ? ` (${e.verdict} → ${e.target})` : ''}${e.question ? ` [question${e.expect ? ' + rubric' : ', no --expect rubric'}]` : ''}`);
+  for (const e of saved) console.log(`posted ${e.meta ? 'meta ' : ''}${e.kind} ${e.id}${e.kind === 'grade' ? ` (${e.verdict} → ${e.target})` : ''}${e.question ? ` [question${e.expect ? ' + rubric' : ', no --expect rubric'}]` : ''}`);
   // a reminder for the bookkeeping step: bold phrases (new terms, usually) not in the glossary yet
-  if (text) {
+  if (text && !f.meta) {
     const miss = require('../app/check').missingTerms(topic, { texts: [{ text }] }).missing.map(g => `"${g.phrase}"`);
     if (miss.length) console.log(`glossary: bold here but not in the glossary: ${miss.join(', ')}. Add the real terms afterwards (\`bin/learn term add\`); ignore emphasis.`);
   }
@@ -456,7 +468,8 @@ commands.term = () => {
     const G = S.readGlossary(topic), P = S.readTermPages(topic);
     const { termMatcher } = require('../web/js/terms.js');
     const m = termMatcher(G), count = new Map(), last = new Map();
-    for (const e of S.readJournal(topic)) if (e.role === 'tutor' && e.kind === 'message' && e.text)
+    const J = S.readJournal(topic), meta = S.metaIds(J);
+    for (const e of J) if (e.role === 'tutor' && e.kind === 'message' && e.text && !meta.has(e.id))
       for (const term of new Set(m.find(e.text.replace(/```[\s\S]*?```|`[^`\n]*`/g, ' ')).map(x => x.entry.term))) { count.set(term, (count.get(term) || 0) + 1); last.set(term, e.ts); }
     const withP = G.map(g => ({ g, p: S.pageForTerm(g, P) })).filter(x => x.p);
     console.log(`${topic}: ${withP.length} term page(s) in ${rel(S.termPagesDir(topic))}/`);
@@ -607,6 +620,30 @@ commands.feedback = () => {
   console.log(`added to ${r.file}`);
 };
 
+// Tag past entries as app talk ("meta"): an appended { kind: 'tag', tag: 'meta', ids } entry, never
+// an edit. They stay in the journal and the thread (dimmed, collapsed), but out of the learning
+// record: wiki, session pages, stats, msgs, resume. --off appends a tag that takes it back.
+commands.meta = async () => {
+  const f = flags(argv, { topic: 'string', off: 'bool' });
+  if (!f.topic) f.topic = (String(f._.find(x => /^[a-z0-9][a-z0-9-]*\/\d/.test(x)) || '').match(/^([a-z0-9-]+)\//) || [])[1];
+  const topic = topicOf(f, true);
+  const J = S.readJournal(topic), byId = new Map(J.map(e => [e.id, e]));
+  const ids = [...new Set(f._.map(x => String(x).replace(/^(msg:|[a-z0-9-]+\/)/, '')))];
+  if (!ids.length) die('usage: meta [topic] <id>… [--off]   (ids like 2026-11-22.33; `bin/learn recent` lists them)');
+  for (const id of ids) {
+    const e = byId.get(id);
+    if (!e) die(`no entry ${id} in ${topic}`);
+    if (!['message', 'answer', 'ask', 'action', 'start', 'meta'].includes(e.kind)) die(`${id} is a ${e.kind} entry, not a message`);
+  }
+  const was = S.metaIds(J);
+  const todo = ids.filter(id => was.has(id) === !!f.off);
+  if (!todo.length) { console.log(`nothing to do: ${ids.join(', ')} ${f.off ? 'not' : 'already'} tagged as app talk`); return; }
+  const entries = [{ role: 'tutor', kind: 'tag', tag: 'meta', ids: todo, ...(f.off ? { off: true } : {}) }];
+  const [saved] = (await serverUp()) ? await api('POST', '/api/append', { topic, entries }) : S.appendJournal(topic, entries);
+  for (const id of todo) console.log(`${f.off ? 'untagged' : 'tagged'} ${id} [${byId.get(id).role === 'tutor' ? 'tutor' : byId.get(id).kind}] ${firstLine(byId.get(id).text, 80)}`);
+  console.log(`(${saved.id}: ${f.off ? 'back in' : 'out of'} the learning record: wiki, session pages, stats, msgs, resume)`);
+};
+
 commands.commit = () => {
   const msg = argv.join(' ').trim();
   console.log(S.commitData(msg || `Update learning data ${S.localDate()}`));
@@ -626,11 +663,13 @@ commands.msgs = () => {
   const tags = S.readJSON(path.join(S.topicDir(topic), 'tags.json'), {}) || {};
   const want = new Set();
   if (f.skill) { const s = S.findSkill(S.loadTopicMeta(topic), f.skill); if (!s) die(`no skill ${f.skill}`); S.walkSkills([s], x => want.add(String(x.id))); }
-  for (const e of S.readJournal(topic)) {
+  const J = S.readJournal(topic), meta = S.metaIds(J);
+  for (const e of J) {
     if (e.role !== 'tutor' || e.kind !== 'message') continue;
+    if (meta.has(e.id) && !f.all) continue;   // app talk isn't part of any skill
     const sk = [...(e.skills || []), ...(tags[e.id] || [])].map(String);
     if (want.size && !sk.some(x => want.has(x))) continue;
-    console.log(`${e.id}${sk.length ? ` [${[...new Set(sk)].join(',')}]` : ''}${e.question ? ' ?' : ''} ${firstLine(e.text)}`);
+    console.log(`${e.id}${sk.length ? ` [${[...new Set(sk)].join(',')}]` : ''}${e.question ? ' ?' : ''}${meta.has(e.id) ? ' (app talk)' : ''} ${firstLine(e.text)}`);
   }
 };
 
@@ -655,12 +694,14 @@ commands.recent = () => {
   const n = Number(f._[0]) || 12;
   const topic = f.topic || defaultTopic();
   if (!topic) die('no topic');
-  const J = S.readJournal(topic).slice(-n);
+  const all = S.readJournal(topic), meta = S.metaIds(all);
+  const J = all.slice(-n);
   for (const e of J) {
     if (e.kind === 'session') { console.log(`\n── ${e.text} · ${e.ts.slice(0, 16).replace('T', ' ')} ──`); continue; }
     if (e.kind === 'level') { console.log(`${e.id} [level] ${e.skill}: ${e.from} → ${e.to} ${e.reason || ''}`); continue; }
     if (e.kind === 'grade') { console.log(`${e.id} [grade] ${e.verdict} on ${e.target} (${e.skill || '-'}) ${e.note || ''}`); continue; }
-    const tag = e.role === 'tutor' ? `tutor${e.question ? ' ?' : ''}` : `${e.kind}${e.replyTo ? ' → ' + e.replyTo : ''}`;
+    if (e.kind === 'tag') { console.log(`${e.id} [tag ${e.tag}${e.off ? ' off' : ''}] ${(e.ids || []).join(', ')}`); continue; }
+    const tag = (e.role === 'tutor' ? `tutor${e.question ? ' ?' : ''}` : `${e.kind}${e.replyTo ? ' → ' + e.replyTo : ''}`) + (meta.has(e.id) && e.kind !== 'meta' ? ', app talk' : '');
     const text = e.role === 'tutor' && e.text.length > 700 ? e.text.slice(0, 350) + ' … ' + e.text.slice(-300) : e.text;
     console.log(`${e.id} [${tag}]${e.skills?.length ? ' skills=' + e.skills.join(',') : ''}\n${text.replace(/^/gm, '  ')}`);
   }
@@ -684,20 +725,23 @@ commands.status = async () => {
 commands.show = () => {
   const e = S.findEntry(argv[0] || '', defaultTopic());
   if (!e) die('not found');
-  console.log(`${e.id} ${e.role} ${e.kind} ${e.ts}\n\n${e.text || JSON.stringify(e, null, 2)}${e.expect ? `\n\n(rubric: ${e.expect})` : ''}`);
+  const app = e.kind !== 'meta' && S.metaIds(S.readJournal(e.topic)).has(e.id) ? ' (app talk)' : '';
+  console.log(`${e.id} ${e.role} ${e.kind}${app} ${e.ts}\n\n${e.text || JSON.stringify(e, null, 2)}${e.expect ? `\n\n(rubric: ${e.expect})` : ''}`);
 };
 
 commands.grep = () => {
-  const f = flags(argv, { topic: 'string' });
-  if (!f._[0]) die('usage: grep <regex>');
+  const f = flags(argv, { topic: 'string', all: 'bool' });
+  if (!f._[0]) die('usage: grep <regex> [--topic t] [--all]');
   const re = new RegExp(f._[0], 'i');
-  for (const slug of f.topic ? [f.topic] : S.listTopics())
-    for (const e of S.readJournal(slug)) {
-      if (!e.text || !re.test(e.text)) continue;
+  for (const slug of f.topic ? [f.topic] : S.listTopics()) {
+    const J = S.readJournal(slug), meta = f.all ? new Set() : S.metaIds(J);   // app talk only with --all
+    for (const e of J) {
+      if (!e.text || !re.test(e.text) || meta.has(e.id)) continue;
       const i = e.text.search(re);
       const snip = e.text.slice(Math.max(0, i - 60), i + 100).replace(/\s+/g, ' ');
       console.log(`${S.listTopics().length > 1 && !f.topic ? slug + '/' : ''}${e.id} [${e.role}] …${snip}…`);
     }
+  }
 };
 
 commands.new = () => {
