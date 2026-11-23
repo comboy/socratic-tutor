@@ -32,8 +32,8 @@ model; doesn't teach.
    messages, a question that was really two, a missing visual, bookkeeping eating time, a tool
    the tutor lacked: "a papers library would have helped"). Tool or protocol ideas become
    feedback items for the builder (`bin/learn feedback "…"`). Teaching-method changes that should
-   apply to every tutor: make them in `docs/method.md` yourself (the learner asked agents to
-   decide these). Write each as a peer would want it: what you saw, why it matters, what you
+   apply to every tutor: make them in `docs/method.md` yourself (agents own the method; the
+   learner sees your changes in the report and can object). Write each as a peer would want it: what you saw, why it matters, what you
    suggest, so a tutor can judge when it applies, rather than a bare rule. The file is shared
    code, so describe the pattern in general terms, without this learner's topics or message ids.
    Commit it to the code repo and list the changes in the report so the learner can object.

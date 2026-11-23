@@ -69,4 +69,4 @@ What the setup depends on, and why:
   changed only through `bin/learn` commands. `data/state/` is a live tutor's queue and session
   files, and a tutor session you didn't start is someone's lesson: leave both alone.
 - No dependencies and no build step, so anyone can clone and run it; the UI follows
-  `docs/design.md` (the learner's taste, with the reasons).
+  `docs/design.md` (the UI's principles, with the reasons).

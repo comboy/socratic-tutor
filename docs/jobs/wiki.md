@@ -15,15 +15,15 @@ Writes for the learner, from the messages that taught them.
 3. Write `data/topics/<topic>/pages/<name>.md` (format: `docs/formats.md`, "pages"): a page the
    learner can read top to bottom in a few minutes:
    - What it is and why it matters, then the mechanism step by step with the concrete small
-     numbers and shapes the tutor used (re-use their `viz` blocks and highlight keys: they're
-     the learner's favourite part).
+     numbers and shapes the tutor used (re-use their `viz` blocks and highlight keys: a picture
+     the learner already worked through is the fastest way back into an idea).
    - Link each section to the message that explained it (`[explained](msg:…)`), and to related
      skills (`skill:`), terms and pages. Keep the tutor's wording where it worked.
    - Misconceptions that came up (from notes.json / topic.json) as a short "Careful" callout.
    - What isn't covered yet, in one line (the skill's `unknown`).
    - End with a "Related skills" line of `skill:` links.
-   Follow the learner's taste (data/learner/profile.md): concrete numbers over analogies, define
-   terms, honest about what's empirical. Don't invent content beyond what was taught, except to
+   Write it the way the learner likes to be taught (data/learner/profile.md), define terms, and be
+   honest about what's empirical. Don't invent content beyond what was taught, except to
    connect it; mark anything new as such.
 4. **Term pages** (`terms/<name>.md`, format in `docs/formats.md`): `bin/learn term pages <topic>`
    lists the pages that exist (and which are stale: the term was mentioned since the last update)

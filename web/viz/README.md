@@ -3,6 +3,10 @@
 A message can contain a fenced block ```` ```viz <type> ```` whose body is a JS object literal.
 The UI looks up `<type>` in the registry and calls `component(el, spec, ctx)`.
 
+The components here grow with use: tutors build one when a topic needs it and promote it here when
+it's reusable. The first ones (`llm.js`, `residual.js`) came from a topic on how LLMs work; the
+general ones (`core.js`: matrix, vector, bars, tokens, flow, plot, steps, free-form `viz js`; `figure.js`: an annotated real image) serve any topic.
+
 To add a reusable component:
 
 1. Create `web/viz/<name>.js`:

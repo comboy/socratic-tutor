@@ -6,8 +6,8 @@ from the learner's feedback box and from tutors) and implements them, with tests
 ## Context
 
 The learner writes feedback in passing, often mid-lesson and among distractions, and then trusts
-the agents to make it real. They've asked agents to make the decisions themselves and manage the
-process, so they can focus on learning. So read each item for the intent behind it, decide how to
+the agents to make it real. The system is built so agents make the decisions and manage the
+process while the learner focuses on learning. So read each item for the intent behind it, decide how to
 serve it, build it, and say in the report what you decided and why. A choice you're unsure of is
 usually better built (in a way that's easy to change) and explained than left open, because an
 open question waits days for an answer. Ask only what only the learner can know (their goals,
@@ -25,7 +25,7 @@ visible).
    the "About the app" button name their message (`about the app · msg <id>`): the tutor may have
    answered or promised something there (`bin/learn recent --topic <t>` around it).
 2. Before changing an area, read the code around it and the docs for it: `AGENTS.md`,
-   `docs/design.md` for anything visual (the learner's UI taste, with reasons), `docs/formats.md`
+   `docs/design.md` for anything visual (the UI's principles, with reasons), `docs/formats.md`
    for data files. The app stays dependency-free so anyone can run it.
 3. After each change, `bin/learn test` (add or adjust a test for what you built) and, for visual
    changes, look at the screenshots in `test/out/` (Read shows PNGs). Then commit to the code

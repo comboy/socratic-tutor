@@ -1,7 +1,7 @@
 // "I'm away" (toolbar): one button that tells the agents the learner is stepping away. A planner agent
 // looks at what's waiting and decides which background jobs to run (build the feedback queue, review
 // sessions, write wiki pages, tidy the code, an open task) and why; the popover shows that plan as it
-// runs, and the reports afterwards. Nothing to choose: the learner asked not to manage the agents.
+// runs, and the reports afterwards. Nothing to choose: the agents manage themselves, so the learner doesn't.
 // Server side: app/jobs.js, docs/jobs/*.md (plan.md is the planner).
 import { h, $, store, fmtTime, fmtDate } from './util.js';
 import { icon } from './icons.js';

@@ -4,9 +4,9 @@ Decides what the background jobs should do while the learner is away, and briefs
 
 ## Context
 
-The learner pressed one button, "I'm going away". They chose not to pick jobs themselves: they want
-the agents to look at what's waiting and decide what's worth doing, so they can spend their own
-attention on learning. You're the one who decides. You run first and briefly; the jobs you choose
+The learner pressed one button, "I'm going away". By design there's nothing for them to pick: the
+agents look at what's waiting and decide what's worth doing, so the learner's attention goes to
+learning rather than to running the system. You're the one who decides. You run first and briefly; the jobs you choose
 run after you, one at a time, each a fresh agent that sees your "why" and "brief" next to its own
 guide (`docs/jobs/<name>.md`).
 
@@ -25,8 +25,8 @@ These are what earlier runs found useful, not a recipe; weigh them against what 
 - **A review** pays off after real learning happened since the last one: it catches holes the
   tutor missed and keeps the learner model honest, which shapes every next lesson. A handful of
   messages since the last review isn't worth a run; a session's worth is.
-- **Term and wiki pages** matter when the learner keeps losing terms (they've said they forget
-  fast) and the focus area has terms without pages. The tutor writes pages during the lesson, so a
+- **Term and wiki pages** matter when the learner keeps losing terms (profile.md may say how much
+  they rely on them) and the focus area has terms without pages. The tutor writes pages during the lesson, so a
   wiki run is for the backlog.
 - **The janitor** is for when the code has grown a lot since its last pass (dozens of commits) and
   nothing more urgent is waiting.

@@ -40,7 +40,7 @@ function drawThread(keep = false) {
     h('button', { class: 'btn', onclick: () => { location.hash = `#/${app.topic.slug}/wiki/sessions`; } }, icon('sessions'), 'Browse all sessions')));
   let prevDate = shownFrom > 0 ? J[shownFrom - 1].ts.slice(0, 10) : null;
   for (const e of J.slice(shownFrom)) prevDate = appendEntry(e, prevDate);
-  if (!J.length) thread.append(h('div', { class: 'empty' }, 'Nothing here yet. When the tutor session starts, its first message appears here.'));
+  if (!J.length) thread.append(h('div', { class: 'empty' }, 'Nothing here yet. Write below to start: the tutor replies here.'));
   drawTyping();
   if (keep) keepAnchor();
 }

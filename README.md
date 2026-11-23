@@ -28,8 +28,9 @@ write. After a break, a "welcome back" bar offers a recap (or you just carry on)
 `bin/learn test` (acceptance tests, needs Chrome), `bin/learn help` (all commands, including the
 tutor's); `AGENTS.md` is where an agent working on the code starts.
 
-Requirements: Node 22+, [Claude Code](https://claude.com/claude-code) (or another CLI agent, see
-"Agents" below), and Chrome or Chromium for the tests. No npm install: d3, marked and KaTeX are
+Requirements: Node 22+, git, [Claude Code](https://claude.com/claude-code) (or another CLI agent,
+see "Agents" below), and Chrome or Chromium for the tests. Built and used on macOS; Linux should
+work (untested). No npm install: d3, marked and KaTeX are
 vendored in `web/vendor/`.
 
 ## Using it
@@ -58,10 +59,23 @@ vendored in `web/vendor/`.
   open task. The popover shows the plan as it runs; the reports appear there too.
 - The UI picks up code changes by itself when you're idle, or shows an "Updated · reload" button,
   so it never blinks while you read.
+- **Tell it how you learn:** `data/learner/profile.md`, section "In my own words", is yours (the
+  agents never edit it, and it overrides what they derive). The rest of that file, and Wiki → You,
+  is what the tutors have noticed; the knowledge pill there is what you know in a topic, as one
+  file you can hand to any other tool.
 
-The tutor runs unattended in the terminal, so it doesn't stop for permission prompts: it may run
-`bin/learn`, git and read-only shell tools and edit files in the repo (`"tutorPermissions": "ask"`
-in `data/config.json` turns that off).
+**What the agents may do.** The tutor runs in a terminal nobody watches (you're in the browser)
+and the background jobs run headless, so a permission prompt would stall them. By default both run
+in Claude Code's auto mode (`--permission-mode auto`): any tool, with risky actions blocked by
+Claude Code rather than asked about. That's what lets the tutor build a visualization mid-lesson,
+and the builder job change the app and **commit to your clone** while you're away. Everything runs
+on your own Claude Code subscription or API usage. To keep the agents on a shorter leash, set
+`tutorPermissionMode` / `jobPermissionMode` (or `"tutorPermissions": "ask"`) in
+`data/config.json` (see `docs/formats.md`, "config.json"). On the first run Claude Code may ask you
+to trust the folder in the terminal.
+
+The web server listens on 127.0.0.1 only and answers only pages it served itself (requests from
+other sites are refused), since what you type there reaches agents that run commands.
 
 ### Long sessions
 
@@ -104,6 +118,12 @@ ln -s ../my-learning/tutor data     # in this checkout; or set LEARN_HOME=/path/
 
 The app then commits only its own folders in that repo and leaves the rest alone (`bin/learn
 status` shows where everything is).
+
+## Updating
+
+`git pull` in this checkout. The builder job commits its own app changes here too, so a pull may
+merge; your data is in `data/` and never touched by it. The command is `bin/learn` for historical
+reasons (the repo is socratic-tutor, the UI says "learn").
 
 ## Agents
 
