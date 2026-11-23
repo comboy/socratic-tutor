@@ -275,9 +275,10 @@ async function main() {
       assert(/not empty/.test(run('export', X).stderr), 'refuses a non-empty dir');
     } finally { fs.rmSync(R, { recursive: true, force: true }); fs.rmSync(X, { recursive: true, force: true }); }
   });
-  await test('knowledge pill: one portable file per topic (levels, what was covered, notes, vocabulary, how they learn), workspace ids stripped; --write / --all', async () => {
+  await test('knowledge pill: what they understand per skill (level with its reason, graded checks, difficulties, not covered yet) for a reader who knows the subject: no subject summaries, third person, workspace ids stripped; --write / --all', async () => {
     const t = learn('pill', 'demo');
-    assert(/^# What I know: How LLMs work \(demo\)/.test(t) && /## Skills/.test(t) && /\*\*4\.1 [^*]+: \d\*\*/.test(t) && /## Vocabulary they've met \(\d+ terms\)\n\n[^\n]*KV cache/.test(t) && /## How they learn/.test(t), t.slice(0, 1500));
+    assert(/^# What I understand: How LLMs work \(demo\)/.test(t) && /## Skills/.test(t) && /\*\*4\.1 [^*]+: \d\/5\*\*/.test(t) && /## Terms they've been taught \(\d+\)\n\n[^\n]*\n\n[^\n]*KV cache/.test(t) && /## How they learn/.test(t), t.slice(0, 1500));
+    assert(/^  - [✓◐✗–] /m.test(t) && !/^  - Covered:/m.test(t) && !/\b[Yy]ou\b/.test(t.replace(/^#[^\n]*\n\n[^\n]*\n\n[^\n]*\n/, '')), 'checks listed, no subject summaries, no second person: ' + t.slice(0, 2500));
     assert(!/\]\((msg|skill|term|wiki):|\b20\d\d-\d\d-\d\d\.\d+\b/.test(t), 'workspace links or message ids left: ' + (t.match(/.*(\]\((msg|skill|term|wiki):|\b20\d\d-\d\d-\d\d\.\d+\b).*/) || [])[0]);
     assert(/wrote \S*learner\/pills\/demo\.md/.test(learn('pill', 'demo', '--write')) && fs.readFileSync(path.join(HOME, 'learner/pills/demo.md'), 'utf8') === t, 'written');
     assert(/pills\/cells\.md/.test(learn('pill', '--all')), '--all');
@@ -528,7 +529,7 @@ async function main() {
     await page.nav(`${BASE}/#/demo/wiki/you`, 900);
     await page.waitFor(`document.querySelector('#pillShow')`, { timeout: 4000 });
     await page.click('#pillShow');
-    await page.waitFor(`/^What I know: How LLMs work/.test(document.querySelector('.pill-text h1')?.textContent || '')`, { timeout: 4000 });
+    await page.waitFor(`/^What I understand: How LLMs work/.test(document.querySelector('.pill-text h1')?.textContent || '')`, { timeout: 4000 });
     await page.eval(`document.querySelector('.pill-text').scrollIntoView()`);
     await page.shot('wiki-you-pill');
   });

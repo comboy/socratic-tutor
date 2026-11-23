@@ -283,7 +283,7 @@ function pillSheet(slug) {
     try { body.append(h('div', { class: 'pill-text' }, rich(await load(), 'wiki-md', { terms: false }))); show.lastChild.textContent = 'Hide'; } catch (e) { body.append(h('div', { class: 'error', text: e.message })); }
   } }, icon('book'), h('span', { text: 'Show' }));
   return sheet(group(['Your knowledge pill', h('span', { class: 'spacer' }), note, copy, show]),
-    h('div', { class: 'sheet-pad pill-desc' }, h('p', { class: 'muted' }, 'What you know in this topic as one portable markdown file: levels with what each covered, foundations, open gaps and misconceptions, links to your other topics, the vocabulary you\u2019ve met and how you learn. Hand it to any other tutor or system to start from where you are. Made fresh from your data each time; ',
+    h('div', { class: 'sheet-pad pill-desc' }, h('p', { class: 'muted' }, 'What you understand in this topic, as one portable markdown file for a reader who knows the subject: each skill\u2019s level with the evidence behind it (your checks, what you got right and what you missed), difficulties and misconceptions, what isn\u2019t covered yet, links to your other topics and how you learn. Hand it to any other tutor or agent to start from where you are. Made fresh from your data each time; ',
       h('code', { text: 'bin/learn pill --all' }), ' saves every topic\u2019s to ', h('code', { text: 'learner/pills/' }), '.')),
     body);
 }

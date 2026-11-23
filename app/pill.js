@@ -1,8 +1,11 @@
-// A "knowledge pill": what the learner knows in one topic, as one portable markdown file that any
-// other tutor or system could start from (instead of from zero, or from this workspace's files).
-// Generated from the structured data (levels, skill summaries, notes, foundations, glossary,
-// knowledge.md, profile.md), so it's always as current as they are; nothing in it is hand-kept.
-// Workspace-specific bits (msg: links, message and note ids) are stripped: they mean nothing elsewhere.
+// A "knowledge pill": what the learner understands in one topic, as one portable markdown file for
+// any other tutor, agent or tool. Its reader knows the subject, so the pill never explains the
+// subject: it says what this learner has shown they understand, how well (unprompted, after a
+// narrower question, with help), what they got wrong, what they hold mistakenly, and what they
+// haven't shown yet. Generated from the evidence in the workspace (level changes with reasons,
+// graded checks with notes, misconceptions, notes, knowledge.md, profile.md), so it's as current as
+// they are and nothing in it is hand-kept. Workspace-specific bits (msg: links, message and note
+// ids) are stripped: they mean nothing elsewhere.
 //
 //   bin/learn pill [t]            print it
 //   bin/learn pill [t] --write    write learner/pills/<slug>.md · pill --all: every topic
@@ -23,34 +26,58 @@ function portable(t) {
     .replace(/\{\{([^{}|\n]+?)(?:\|[^{}\n]+?)?\}\}/g, '$1')
     // message ids ("2026-11-22.67", ".67", ".121–.127", "msg llms 2026-…") and note ids ("n12"), with
     // the "in"/"at" that pointed at them ("explained in .74" -> "explained")
-    .replace(/(?:\s+(?:in|at|from|since|see)\b)?(?:\s+msg)?(?:\s+[a-z][a-z0-9-]*(?=\s+\d{4}-))?\s*\b\d{4}-\d{2}-\d{2}\.\d+(?:\s*[–-]\s*\.?\d+)?\b/g, '')
-    .replace(/(?:\s+(?:in|at|from|since|see)\s+|(?<=[\s(,;]|^))\.\d+(?:\s*[–-]\s*\.?\d+)?\b/gm, '')
+    .replace(/(?:\s+(?:in|at|from|since|see|over|after|across)\b)?(?:\s+msg)?(?:\s+[a-z][a-z0-9-]*(?=\s+\d{4}-))?\s*\b\d{4}-\d{2}-\d{2}\.\d+(?:\s*[–→-]\s*\.?\d+)?\b/g, '')
+    .replace(/(?:\s+(?:in|at|from|since|see|over|after|across)\s+|(?<=[\s(,;]|^))\.\d+(?:\s*[–→-]\s*\.?\d+)?\b/gm, '')
     .replace(/(?<![\w.])n\d+\b/g, '')
     .replace(/\(\s*msg\s*(?:[a-z][a-z0-9-]*)?\s*\)/g, '')
-    .replace(/\(\s*(?:[,;/]\s*|and\s+|also\s+)*\)/g, '').replace(/\(\s*[,;]\s*/g, '(').replace(/\s*[,;]\s*\)/g, ')')
+    .replace(/\(\s*(?:[,;/]\s*|and\s+|also\s+)*\)/g, '').replace(/\(\s*(?:[,;:]\s*)+/g, '(').replace(/(?:\s*[,;])+\s*\)/g, ')')
     .replace(/ {2,}/g, ' ').replace(/ +([,.;:)])/g, '$1').trim();
 }
 const oneLine = t => portable(t).replace(/^\s*[-*]\s+/gm, '').split('\n').map(s => s.trim()).filter(Boolean);
 
+// A summary line about the learner rather than the subject: older sessions recorded evidence inside
+// the skill summaries ("You derived …", "Diagnostic: you knew …"). -> third person, or null.
+function aboutThem(line) {
+  return /\b(you|your|yourself|learner)\b/i.test(line) ? third(line).replace(/^Diagnostic: /, 'In the diagnostic: ') : null;
+}
+// The tutor wrote to the learner ("you"); the pill is about them.
+function third(t) {
+  const cap = (m, w) => m[0] === m[0].toUpperCase() ? w[0].toUpperCase() + w.slice(1) : w;
+  return t.replace(/\b(you're|you've|you'd|yourself|your|you)\b/gi, m => cap(m, { "you're": "they're", "you've": "they've", "you'd": "they'd", yourself: 'themselves', your: 'their', you: 'they' }[m.toLowerCase()]));
+}
+const MARK = { correct: '✓', partial: '◐', wrong: '✗', skipped: '–' };
+const MAX_CHECKS = 6;
+
 function pill(slug) {
   const meta = S.loadTopicMeta(slug);
+  const J = S.readJournal(slug);
   const leaves = []; S.walkSkills(meta.skills, s => { if (!s.children?.length) leaves.push(s); });
   const avg = xs => xs.length ? xs.reduce((a, s) => a + (s.level || 0), 0) / xs.length : 0;
-  const out = [`# What I know: ${meta.title || slug}`, '',
-    `A portable summary of one learner's knowledge in this topic, generated ${S.localDate()} from their learning workspace (\`bin/learn pill\`). For any tutor or system: start from here rather than from zero, and treat it as evidence-based but fallible.`, ''];
-  if (meta.goal) out.push(`**Goal, in their words:** ${portable(meta.goal)}`, '');
-  out.push(`**Overall:** ${avg(leaves).toFixed(1)} / 5 across ${leaves.length} skills (target ${meta.target ?? 4}). Levels: ${LEVELS.map((l, i) => `${i} ${l}`).join(' · ')}. A level was raised only on evidence: two or more independent checks, at least one of them unprompted recall.`, '');
+  const ids = e => String(e.skill || '').split(',').map(x => x.trim());
+  const grades = id => J.filter(e => e.kind === 'grade' && ids(e).includes(id) && e.note);
+  const lastLevel = id => J.filter(e => e.kind === 'level' && e.skill === id && e.reason).pop();
+  const out = [`# What I understand: ${meta.title || slug}`, '',
+    `What one learner has shown they understand in this topic, generated ${S.localDate()} from their tutoring sessions (\`bin/learn pill\`). It's written for a reader who knows the subject: nothing here explains the subject; it says what they understand and how well, so you can start from there instead of from zero. Evidence-based but fallible.`, '',
+    `How to read it: each skill has a level (${LEVELS.map((l, i) => `${i} ${l}`).join(' · ')}), raised only on two or more independent checks, at least one of them unprompted recall. Under it, the recorded checks: ✓ right, ◐ partly right, ✗ wrong; "after narrowing" means it took a narrower follow-up question. Then difficulties and misconceptions (resolved or still held), and parts of the skill not covered yet (the tutor's list; it can lag behind the lessons).`, ''];
+  if (meta.goal) out.push(`**Their goal, in their words:** ${portable(meta.goal)}`, '');
+  out.push(`**Overall:** ${avg(leaves).toFixed(1)} / 5 across ${leaves.length} skills (target ${meta.target ?? 4}).`, '');
 
   out.push('## Skills', '');
   for (const b of meta.skills || []) {
     const kids = b.children?.length ? b.children : [b];
     out.push(`### ${b.id} ${b.name} (${avg(kids).toFixed(1)})`, '');
-    const started = kids.filter(s => (s.level || 0) > 0 || s.summary), not = kids.filter(s => !started.includes(s));
+    const started = kids.filter(s => (s.level || 0) > 0), not = kids.filter(s => !started.includes(s));
     for (const s of started) {
-      out.push(`- **${s.id} ${s.name}: ${s.level || 0}** (${LEVELS[s.level || 0]})`);
-      const got = oneLine(s.summary);
-      if (got.length) out.push(`  - Covered: ${got.join('; ')}`);
+      const lv = lastLevel(s.id);
+      out.push(`- **${s.id} ${s.name}: ${s.level}/5** (${LEVELS[s.level]})${lv ? `. Why: ${third(portable(lv.reason))}` : ''}`);
+      const G = grades(s.id);
+      if (G.length > MAX_CHECKS) out.push(`  - (${G.length - MAX_CHECKS} earlier checks)`);
+      for (const g of G.slice(-MAX_CHECKS)) out.push(`  - ${MARK[g.verdict] || g.verdict} ${third(portable(g.note))}`);
+      for (const l of oneLine(s.summary).map(aboutThem).filter(Boolean)) out.push(`  - ${l}`);
+      for (const m of s.misconceptions || []) out.push(`  - Difficulty: ${third(portable(m))}`);
+      for (const u of s.unknown || []) out.push(`  - Not covered yet: ${third(portable(u))}`);
       if (s.notes) out.push(`  - Note: ${oneLine(s.notes).join(' ')}`);
+      if (!lv && !G.length && !out[out.length - 1].startsWith('  - ')) out.push('  - No recorded evidence (level set in early sessions, before checks were logged).');
     }
     if (not.length) out.push(`- Not started: ${not.map(s => `${s.id} ${s.name}`).join(', ')}`);
     out.push('');
@@ -77,7 +104,7 @@ function pill(slug) {
   if (cross.length) out.push('## Across topics', '', ...cross.map(l => '- ' + portable(l.replace(/^- /, '').replace(/\n\s+/g, ' '))), '');
 
   const G = S.readGlossary(slug);
-  if (G.length) out.push(`## Vocabulary they've met (${G.length} terms)`, '', G.map(g => g.term).join(', '), '');
+  if (G.length) out.push(`## Terms they've been taught (${G.length})`, '', 'Safe to use with them; each was defined in a lesson, though a reminder may be needed.', '', G.map(g => g.term).join(', '), '');
 
   const prof = S.readText(path.join(S.LEARNER, 'profile.md'), '');
   const own = (prof.match(/^## In my own words[^\n]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m) || [])[1];

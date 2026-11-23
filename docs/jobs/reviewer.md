@@ -37,8 +37,12 @@ model; doesn't teach.
    suggest, so a tutor can judge when it applies, rather than a bare rule. The file is shared
    code, so describe the pattern in general terms, without this learner's topics or message ids.
    Commit it to the code repo and list the changes in the report so the learner can object.
-5. `bin/learn pill --all` refreshes the knowledge pills (`learner/pills/`, the learner's portable
-   summary per topic, generated from what you just updated). Then `bin/learn check`, and
+5. `bin/learn pill --all` refreshes the knowledge pills (`learner/pills/`: what the learner
+   understands per topic, for other tutors and agents, generated from the evidence). They're only
+   as true as their sources, so first bring those up to date where the sessions show they've
+   drifted: a skill's `unknown` list still naming things the lessons have since covered, a
+   misconception that was resolved but isn't marked so, a level that no longer matches the
+   checks (`bin/learn level`, with the reason). Then `bin/learn check`, and
    `bin/learn commit "review: …" -- <the files you changed> learner/pills` (a tutor may be
    writing other files right now; paths keep its half-done edits out of your commit).
 

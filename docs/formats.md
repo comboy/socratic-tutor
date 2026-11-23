@@ -278,11 +278,16 @@ under ~2 KB each.
 
 ### learner/pills/<slug>.md
 
-The knowledge pill: what the learner knows in one topic, as a single markdown file any other tutor
-or system could start from (levels with what each skill covered, foundations, open misconceptions,
-gaps, reviews and parked questions, the cross-topic lines from knowledge.md, the vocabulary met, and
-how they learn from profile.md). Made by `app/pill.js` from the structured data, so nobody edits it
-by hand: improve the sources instead (skill summaries, notes). msg: links and message/note ids
+The knowledge pill: what the learner understands in one topic, as a single markdown file any other
+tutor or agent could start from. Its reader knows the subject, so it never explains the subject
+(skill summaries stay out, except their lines about the learner, from sessions before checks were
+logged); it carries the evidence of understanding: per skill, the level with the reason it was set,
+the graded checks with their notes (what was right, what was missed, unprompted or after
+narrowing), difficulties and misconceptions, and what's not covered yet (`unknown`); then
+foundations, open notes, the cross-topic lines from knowledge.md, the terms taught, and how they
+learn from profile.md. Made by `app/pill.js`, so nobody edits it by hand: improve the sources
+instead. That's why grade notes and level reasons are worth writing for a reader who wasn't there
+("✓ derived X unprompted; missed Y"), and why `unknown` and `misconceptions` should be kept current. msg: links and message/note ids
 are stripped, since they mean nothing outside this workspace. `bin/learn pill [t]` prints it,
 `--write` / `--all` saves it; the UI shows it under Wiki → You with a Copy button.
 
