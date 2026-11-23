@@ -73,23 +73,15 @@ The code in this repo contains no personal data, so it can be shared as is, and 
 versioned on its own: push `data/` to a private repo of yours to back it up or to use it on another
 machine.
 
-**Keeping it in a repo of your own.** If you'd rather have one repo for everything you learn (this
-app's data next to other tools' or your own notes), make `data/` a symlink to a folder in it. What
-you know and how you learn (`learner/`) isn't specific to this app, so it can sit at the top of that
-repo for other tools and agents to read, with `"learner": "../learner"` in the app's `config.json`:
+**Keeping it in a repo of your own.** `data/` *is* a repo of your own: clone it there on another
+machine (`git clone <your private repo> data`). If you want one repo for everything you learn,
+other tools' folders or your own notes can sit next to `topics/` in it, and `learner/` (what you
+know and how you learn) is plain markdown any tool or agent can read.
 
-```
-my-learning/               your repo
-├── learner/               profile.md, knowledge.md, pills/: about you, for any tool or agent
-└── tutor/                 this app's data home: topics/, feedback.md, reports/, config.json
-```
-
-```
-ln -s ../my-learning/tutor data     # in this checkout; or set LEARN_HOME=/path/to/my-learning/tutor
-```
-
-The app then commits only its own folders in that repo and leaves the rest alone (`bin/learn
-status` shows where everything is).
+Keep `data/` a real folder inside the checkout rather than a symlink to somewhere else. The agent
+is started in the checkout, and its permissions follow real paths: through a symlink, every read
+and write of your data asks first. (`LEARN_HOME=/path` and `"learner": "../somewhere"` in
+`config.json` still work, for setups that need them; `bin/learn status` shows where everything is.)
 
 ## Updating
 

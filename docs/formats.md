@@ -28,9 +28,10 @@ never contains any. Layout:
 | `config.json` | optional settings (below) | the learner |
 | `state/` | runtime only (inbox, session, jobs), gitignored | the app |
 
-The data home is versioned apart from the code: its own git repo, or a folder of a bigger repo of
-the learner's (then `data/` is a symlink to it). `learner/` can live outside the data home
-(config.json's `learner`); a `learner` link keeps the paths above working either way. Commit with
+The data home is versioned apart from the code: its own git repo, normally a real `data/` folder in
+the checkout (a symlink works, but the agent's permissions then prompt on every file). `learner/`
+can live outside the data home (config.json's `learner`); a `learner` link keeps the paths above
+working either way. Commit with
 `bin/learn commit "message" [-- paths]`: it commits the data home and the learner folder in
 whichever repo holds each, and nothing else in a shared repo. `bin/learn status` shows where both are.
 

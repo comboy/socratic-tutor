@@ -61,10 +61,11 @@ Code and personal data are kept apart so the code can be shared:
 - `test/`: acceptance tests, fixture topics, a fake tutor.
 - `data/` (gitignored here; versioned on its own): the learner's data: `topics/<slug>/`,
   `learner/` (profile, knowledge across topics, `pills/`: a portable summary per topic), `feedback.md` (queue for the builder), `reports/`
-  (job reports), `config.json`, `state/` (runtime). It's its own git repo, or a symlink to a folder
-  of the learner's bigger learning repo, with `learner/` possibly shared at that repo's top
-  (config.json `learner`; `data/learner` links to it). `LEARN_HOME=/elsewhere` moves it. `bin/learn
-  status` shows where things really are; `bin/learn commit` handles either setup.
+  (job reports), `config.json`, `state/` (runtime). It's a real folder and its own git repo
+  (the learner may clone their own learning repo there, with folders of other tools next to
+  ours). Keep it a real folder: agent permissions follow real paths, so a symlinked `data/` gets a
+  prompt on every file. `LEARN_HOME=/elsewhere` and config.json `learner` still work for other
+  setups; `bin/learn status` shows where things really are.
 
 ## Working here
 

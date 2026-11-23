@@ -122,7 +122,7 @@ bin/learn new <slug> "Title"             create an empty topic (the learner usua
 bin/learn import <transcript.jsonl>... --topic t   import old terminal sessions
 
 Data lives in ${S.ROOT}${S.ROOT !== S.realish(S.ROOT) ? ` (→ ${S.realish(S.ROOT)})` : ''}${S.LEARNER_OUTSIDE ? `, the learner folder in ${S.LEARNER}` : ''}.
-To keep it elsewhere: make data/ a symlink to that folder, or set LEARN_HOME (docs/how-it-works.md, "Your data").`);
+To use your own repo, clone it as data/ (a real folder: through a symlink the agent's permissions prompt on every file); LEARN_HOME points elsewhere (docs/how-it-works.md, "Your data").`);
 };
 
 commands.serve = () => { S.ensureHome(); require('../app/server').start(); };
