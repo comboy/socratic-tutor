@@ -2,3 +2,6 @@
 state/
 .DS_Store
 test/out/
+
+# machine-specific Claude Code settings (e.g. the learning repo as an extra allowed directory)
+.claude/settings.local.json
