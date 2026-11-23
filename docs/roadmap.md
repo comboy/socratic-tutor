@@ -39,16 +39,25 @@ worth keeping, roughly in order of how soon they'd pay off.
 ## Sharing
 
 The code is shareable as is: all personal data lives in the data home (`data/`, gitignored, its
-own repo). This repo's early history contains the original `topics/` and lesson commit messages,
-so publish a fresh repo instead of pushing this one:
+own repo or a folder of the learner's learning repo). Published as its own repo with the app's
+history from the point the data moved out (the earlier commits held lessons). Before making it
+public, or pushing after a big change:
 
 1. `bin/learn share check --history` (add `--terms` to also list textbook terms from your topics):
    personal traces in the tracked files, commit messages and history. Example ids and the demo
    topic's name in the docs are fine.
-2. `bin/learn share export ../learn-public`: the tracked files in a fresh repo, one commit; then
-   `bin/learn share check --dir ../learn-public`.
-3. Add a LICENSE, and check `bin/learn demo --empty` gives a good first run (the "What do you
-   want to learn?" screen). A new user needs only Node 22+ and their own agent CLI (Claude Code by
-   default, their subscription); `data/` is created on first run.
-4. Your knowledge stays yours: `data/` is its own repo, and `bin/learn pill` (see below) is the
-   portable summary of what you know, if you ever want to seed another system with it.
+2. A LICENSE (the owner's choice), and `bin/learn demo --empty` still gives a good first run (the
+   "What do you want to learn?" screen). A new user needs only Node 22+ and their own agent CLI
+   (Claude Code by default, their subscription); `data/` is created on first run.
+3. `bin/learn share export <dir>` remains for publishing a copy without history (one commit).
+
+## Learner data beyond this app
+
+- **`learner/` as shared ground.** It can already live outside the data home (config.json
+  `learner`), e.g. at the top of a learning repo that other tools also use. Worth keeping its files
+  tool-neutral: plain markdown, no `msg:`/`skill:` links, so any agent can read them as context.
+- **Learning content outside the app.** Term articles, wiki pages and cheat sheets are markdown
+  with the app's extensions (`viz` blocks, workspace links, `media:` images). If they're wanted
+  elsewhere (reading on a phone, another tool), generate a plain export (`bin/learn export
+  <topic>`: links resolved, viz as static images or dropped, images copied) rather than keeping a
+  second copy by hand.
