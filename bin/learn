@@ -196,7 +196,9 @@ commands.resume = () => {
 
   const prog = S.readText(path.join(dir, 'progress.md'), '');
   const rh = prog.match(/^## Resume here[^\n]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m);
-  sec('Resume here (progress.md)', rh ? rh[1] : prog);
+  const stale = require('../app/check').staleNoteRefs(slug);
+  sec('Resume here (progress.md)', (rh ? rh[1] : prog).replace(/\s+$/, '') + (stale.length ? `\n\n⚠ Possibly stale: it mentions note${stale.length > 1 ? 's' : ''} already closed (notes.json is current; rewrite "Resume here"):\n` +
+    stale.map(r => `  ${r.id} closed ${r.closed || '?'}${r.outcome ? ': ' + r.outcome.slice(0, 120) : ''}  (line ${r.line})`).join('\n') : ''));
 
   const tree = [];
   const notes = S.readNotes(slug);

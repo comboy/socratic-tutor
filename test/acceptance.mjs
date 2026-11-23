@@ -190,6 +190,17 @@ async function main() {
     assert(/a test log line/.test(fs.readFileSync(path.join(HOME, 'topics/demo/log.md'), 'utf8')), 'log');
     assert(/^demo: ok/m.test(learn('check', 'demo')), 'still valid');
   });
+  await test('progress.md naming a closed note: check warns, resume flags it under "Resume here"; a mention that says it is closed is fine', async () => {
+    const f = path.join(HOME, 'topics/demo/progress.md'), orig = fs.readFileSync(f, 'utf8');
+    try {
+      fs.writeFileSync(f, orig + '- Still to do: the residual stream link (n4).\n- n1 is open; n3 closed in .12.\n');
+      const out = learn('check', 'demo');
+      assert(/progress\.md: line \d+ mentions n4, closed/.test(out) && !/mentions n[13]\b/.test(out), out);
+      const r = learn('resume', 'demo');
+      assert(/Possibly stale[^\n]*\n  n4 closed/.test(r) && !/^  n[13] closed/m.test(r), r.slice(0, 2000));
+    } finally { fs.writeFileSync(f, orig); }
+    assert(!/Possibly stale/.test(learn('resume', 'demo')), 'clean progress.md: no warning');
+  });
   await test('glossary metadata: full and parts parse; entries without them are unchanged', async () => {
     const t = await api('/api/topic/demo');
     const bpe = t.glossary.find(g => g.term === 'BPE'), kv = t.glossary.find(g => g.term === 'KV cache'), tok = t.glossary.find(g => g.term === 'token');

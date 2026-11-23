@@ -255,7 +255,10 @@ session can grade an answer to a question it didn't ask.
 `progress.md` holds only "## Resume here (read first)": where we are, the plan, the learner's
 state of mind, small debts ("msg X linked the wrong id"). It is the free-form part of the hand-over;
 structured things live elsewhere (pending question + rubric in the journal, reviews/holes/parked in
-notes.json, focus and levels in topic.json). `log.md` is the session history:
+notes.json, focus and levels in topic.json). It goes stale quietly, because notes change every
+lesson and this file only when someone rewrites it: `check` warns, and `resume` flags under "Resume
+here", when it names a note id that's already closed (a mention that says so, "n9 closed", is fine).
+Rewrite the stale lines then; the next tutor reads this section first. `log.md` is the session history:
 `bin/learn log "…"` appends a bullet under today's date.
 
 ### learner/profile.md, learner/knowledge.md

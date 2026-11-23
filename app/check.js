@@ -131,6 +131,7 @@ function checkTopic(slug) {
   for (const g of glossary) links(`glossary "${g.term}"`, g.short + '\n' + g.body);
   links('cheatsheet.md', S.readText(file('cheatsheet.md'), ''));
   links('progress.md', S.readText(file('progress.md'), ''));
+  for (const r of staleNoteRefs(slug)) warn('progress.md', `line ${r.line} mentions ${r.id}, closed ${r.closed || ''}${r.outcome ? ': ' + r.outcome.slice(0, 100) : ''} (update "Resume here" so a fresh tutor doesn't read it as still to do)`);
   for (const n of map?.nodes || []) links(`map node ${n.id}`, n.desc);
   for (const p of S.readPages(slug)) links(`pages/${p.name}.md`, p.text);
   // terms/<name>.md: one page per glossary term, named after the term or an alias (termSlug)
@@ -155,6 +156,31 @@ function checkTopic(slug) {
     for (const p of vizProblems(e.text)) warn(`message ${e.id}`, `viz ${p.type} shows an error box (line ${p.line}): ${p.why}`);
   }
   return { problems, warnings };
+}
+
+// ---------------------------------------------------------------- progress.md vs notes.json
+// progress.md is free text a tutor rewrites now and then; notes.json changes every lesson. A note id
+// in progress.md that's already closed usually means "Resume here" went stale ("link not yet made
+// (n8)" hours after it was made), and `resume` prints it first, so a fresh tutor would act on it.
+// A mention that says so itself ("n9 closed", "n12 done") is fine. -> [{ id, line, text, closed, outcome }]
+function staleNoteRefs(slug) {
+  const prog = S.readText(path.join(S.topicDir(slug), 'progress.md'), '');
+  if (!prog) return [];
+  const byId = new Map(S.readNotes(slug).items.map(n => [n.id, n]));
+  const refs = [], said = new Set();
+  prog.split('\n').forEach((ln, i) => {
+    for (const m of ln.matchAll(/(?<![\w.\/-])(n\d+)(?![\w-])/g)) {
+      if (/^[\s,;:)]*(?:\w+\s+){0,2}(closed|done|resolved|fixed)\b/i.test(ln.slice(m.index + m[1].length))) said.add(m[1]);
+      else refs.push({ id: m[1], line: i + 1, text: ln.trim() });
+    }
+  });
+  const out = [];
+  for (const r of refs) {
+    const n = byId.get(r.id);
+    if (!n || n.status !== 'done' || said.has(r.id) || out.some(o => o.id === r.id)) continue;
+    out.push({ ...r, closed: n.closed || null, outcome: n.outcome || '' });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- glossary coverage
@@ -255,4 +281,4 @@ function vizProblems(text) {
   return out;
 }
 
-module.exports = { checkTopic, linkChecker, boldPhrases, missingTerms, vizProblems, taughtTerms };
+module.exports = { checkTopic, staleNoteRefs, linkChecker, boldPhrases, missingTerms, vizProblems, taughtTerms };
