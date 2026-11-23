@@ -858,10 +858,12 @@ details.callout[open] summary { border-bottom: 1px solid var(--line-soft); }
 .page-row.missing { opacity: .7; cursor: default; }
 
 /* ============ feedback box (toolbar) ============ */
-.fb-pop { width: 380px; }
+/* a real writing surface: long remarks are the norm, and the learner shouldn't have to scroll a
+   3-line box to re-read what they wrote */
+.fb-pop { width: min(720px, calc(100vw - 24px)); }
 .fb-pop .pop-h .ico { color: var(--accent); }
 .fb-desc { margin: 0 0 8px; }
-.fb-text { min-height: 96px; font-size: 13.5px; resize: vertical; }
+.fb-text { display: block; width: 100%; box-sizing: border-box; height: min(46vh, 440px); min-height: 160px; max-height: calc(100vh - 220px); font-size: 14.5px; line-height: 1.5; padding: 10px 12px; resize: vertical; }
 .fb-note:empty { display: none; }
 .fb-note { margin-top: 8px; }
 .pop-note.ok { background: color-mix(in srgb, var(--good) 15%, var(--card)); border: 1px solid color-mix(in srgb, var(--good) 40%, var(--line)); }

@@ -926,6 +926,8 @@ async function main() {
     await page.key('Enter', { meta: true });
     await page.waitFor(`document.querySelector('.fb-pop .pop-note.ok')`, { timeout: 3000 });
     await page.shot('feedback');
+    const box = await page.eval(`(() => { const r = document.querySelector('#feedbackBox').getBoundingClientRect(); return { w: r.width, h: r.height }; })()`);
+    assert(box.w >= 600 && box.h >= 160, 'the feedback box is a real writing surface: ' + JSON.stringify(box));
     const f = fs.readFileSync(path.join(HOME, 'feedback.md'), 'utf8');
     assert(/^- \[ \] \d{4}-\d{2}-\d{2} \(learner, demo · learn\): UI feedback from the box$/m.test(f), f);
     assert(await page.eval(`document.querySelector('#feedbackBox').value === '' && localStorage['learn:draft:feedback'] === '""'`), 'box/draft not cleared');
