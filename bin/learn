@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 // Learning workspace CLI. No dependencies. Run `bin/learn help`.
 'use strict';
+if (Number(process.versions.node.split('.')[0]) < 22) {
+  console.error(`learn: needs Node 22 or newer (this is ${process.version}). Install it from https://nodejs.org (or \`brew install node\`), or open a coding agent here and ask it to read docs/setup.md.`);
+  process.exit(1);
+}
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
@@ -76,6 +80,7 @@ commands.help = () => {
   console.log(`bin/learn [topic] [-c] [--no-open] [-- agent args]   web UI + idle tutor + browser; the only command
                                          the learner needs (already running? it just opens the browser).
                                          -c continues the last agent session instead of a fresh one
+bin/learn doctor                         check this machine has what's needed (Node, git, the agent and its login, Chrome)
 bin/learn serve                          web server only (http://localhost:${S.PORT})
 bin/learn demo [--empty|--real] [--port n] [--no-open] [--keep]   the UI on a throwaway copy of the demo data
                                          (--empty: the first-run screen; --real: your topics), with a fake tutor
@@ -117,7 +122,7 @@ bin/learn new <slug> "Title"             create an empty topic (the learner usua
 bin/learn import <transcript.jsonl>... --topic t   import old terminal sessions
 
 Data lives in ${S.ROOT}${S.ROOT !== S.realish(S.ROOT) ? ` (→ ${S.realish(S.ROOT)})` : ''}${S.LEARNER_OUTSIDE ? `, the learner folder in ${S.LEARNER}` : ''}.
-To keep it elsewhere: make data/ a symlink to that folder, or set LEARN_HOME (README, "Your data").`);
+To keep it elsewhere: make data/ a symlink to that folder, or set LEARN_HOME (docs/how-it-works.md, "Your data").`);
 };
 
 commands.serve = () => { S.ensureHome(); require('../app/server').start(); };
@@ -159,6 +164,7 @@ commands.pill = () => {
   const t = topicOf(f, true);
   if (f.write) console.log(`wrote ${rel(P.write(t))}`); else process.stdout.write(P.pill(t));
 };
+commands.doctor = () => require('../app/doctor').cli();
 commands.share = () => { try { require('../app/share').cli(argv); } catch (e) { die(e.message); } };
 
 // `bin/learn` is the only command the learner needs, and running it again is harmless: if the
@@ -171,6 +177,7 @@ commands.start = async () => {
     if (!f['no-open']) require('../app/client').openBrowser(url);
     return;
   }
+  if (!await require('../app/doctor').ready()) process.exit(1);
   await require('../app/launcher').start({
     topic: f._[0] || null, resume: !!(f.c || f.continue), open: !f['no-open'], claudeArgs: f['--'] || [],
   });

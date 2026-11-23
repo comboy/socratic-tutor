@@ -107,6 +107,7 @@ async function start({ topic: openTopic, resume, open = true, claudeArgs = [] })
     // move the prompt (last arg of interactive()) after any extra args
     if (claudeArgs.length) args.push(args.splice(args.length - claudeArgs.length - 1, 1)[0]);
     if (topic) S.appendJournal(topic, [{ role: 'system', kind: 'session', text: kind === 'handoff' ? 'Fresh tutor took over' : 'Session started', ...(kind === 'handoff' ? { handoff: true } : {}) }]);
+    const startedAt = Date.now();
     const run = runOnce(A.cmd(), args, agentEnv({ LEARN_SESSION: id }));
     current = run.child;
     T.writeSession({ id, launcherPid: process.pid, claudePid: run.child.pid, agent: A.name, topic, kind, startedAt: new Date().toISOString(), prevTokens });
@@ -116,7 +117,14 @@ async function start({ topic: openTopic, resume, open = true, claudeArgs = [] })
         ? `\n${A.cmd()} isn't on your PATH. Install it (Claude Code: https://claude.com/claude-code), or set "agent" in ${path.join(S.ROOT, 'config.json')} to another CLI agent (docs/formats.md, "config.json").` : ''));
       return shutdown(1);
     }
-    if (!r.handoff) return shutdown(r.exit);
+    if (!r.handoff) {
+      // gone within seconds with an error: it never got going, so say what usually causes that
+      if (r.exit && Date.now() - startedAt < 30000) console.error(`\nlearn: the agent (${A.cmd()}) stopped right after starting (exit ${r.exit}). Its message is above.
+Common causes: not logged in (run \`${A.cmd()}\` once), or the permission mode isn't available on this account
+(set "tutorPermissionMode": "acceptEdits" in ${path.join(S.ROOT, 'config.json')}; docs/formats.md, "config.json").
+\`bin/learn doctor\` checks the rest, or open a coding agent here and ask it to read docs/setup.md.`);
+      return shutdown(r.exit);
+    }
 
     // ---- handoff: let the tutor's last tool call return, stop it, start a fresh one
     const h = r.handoff;
