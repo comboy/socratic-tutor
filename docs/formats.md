@@ -283,7 +283,6 @@ A checklist: `- [ ] 2026-11-21 (learner, llms · learn): text`. The builder job 
   "agent": "claude",
   "handoffTokens": 400000,
   "handoffMessages": 80,
-  "awayJobs": ["builder", "reviewer"],
   "agentMcp": false,
   "tutorPermissionMode": "auto",
   "jobPermissionMode": "auto"
@@ -294,7 +293,8 @@ A checklist: `- [ ] 2026-11-21 (learner, llms · learn): text`. The builder job 
   ["exec", "{prompt}"] }` for any other CLI agent (see `app/agent.js`).
 - `handoffTokens`: context size at which the tutor hands over to a fresh session (Claude only).
   `handoffMessages`: the same, by tutor message count, for agents without a context meter.
-- `awayJobs`: default jobs for the "I'm away" button / `bin/learn away`.
+- `awayJobs`: fixed jobs for the "I'm going away" button / `bin/learn away`, instead of letting
+  the planner (`docs/jobs/plan.md`) choose. Unset by default: the planner decides.
 - `agentMcp`: `true` keeps the agent's MCP servers in tutor sessions (off by default: they cost
   context and the tutor doesn't use them).
 - `tutorPermissions`: the tutor runs in a terminal nobody watches and jobs run headless, so by

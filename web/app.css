@@ -878,12 +878,21 @@ details.callout[open] summary { border-bottom: 1px solid var(--line-soft); }
 
 /* ---------------------------------------------------------------- away popover */
 .away-pop { width: 400px; }
-.away-jobs { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin: 6px 0; }
-.away-job { display: flex; gap: 9px; align-items: flex-start; padding: 7px 10px; border-bottom: 1px solid var(--line-soft); cursor: pointer; background: var(--card); }
-.away-job:last-child { border-bottom: 0; }
-.away-job:hover { background: var(--hover); }
-.away-job input { margin-top: 3px; }
-.away-count { margin-left: 8px; font-size: 11.5px; color: var(--accent); }
+.away-waiting .pop-label { margin-bottom: 5px; }
+.away-wait { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
+.away-count { min-width: 22px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent); }
+.away-plan { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin: 5px 0 4px; }
+.away-step { display: flex; gap: 9px; align-items: flex-start; padding: 6px 10px; border-bottom: 1px solid var(--line-soft); background: var(--card); }
+.away-step:last-child { border-bottom: 0; }
+.away-step-st { flex: 0 0 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; border-radius: 50%; font-size: 11px; font-weight: 700; color: var(--muted); border: 1px solid var(--line); }
+.away-step-st .ico { width: 13px; height: 13px; }
+.away-step-st .dots { transform: scale(.7); }
+.away-step.done .away-step-st { color: var(--good); border-color: color-mix(in srgb, var(--good) 50%, var(--line)); }
+.away-step.done .away-step-b b { color: var(--muted); }
+.away-step.now { background: var(--accent-soft); }
+.away-step.now .away-step-st { border-color: var(--accent-line); }
+.away-step-b { min-width: 0; }
+.away-since { margin-left: 8px; font-size: 11.5px; color: var(--muted); }
 .away-run { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--accent-line); background: var(--accent-soft); border-radius: 6px; margin: 4px 0 8px; }
 .away-rep-h { margin-top: 10px; display: flex; align-items: center; }
 .away-reps { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }

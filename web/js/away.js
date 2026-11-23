@@ -1,16 +1,20 @@
-// "I'm away" (toolbar): start background agents while the learner is away (build the feedback queue,
-// review sessions, write wiki pages, tidy the code), see what's running, read their reports.
-// Server side: app/jobs.js, docs/jobs/*.md.
+// "I'm away" (toolbar): one button that tells the agents the learner is stepping away. A planner agent
+// looks at what's waiting and decides which background jobs to run (build the feedback queue, review
+// sessions, write wiki pages, tidy the code, an open task) and why; the popover shows that plan as it
+// runs, and the reports afterwards. Nothing to choose: the learner asked not to manage the agents.
+// Server side: app/jobs.js, docs/jobs/*.md (plan.md is the planner).
 import { h, $, store, fmtTime, fmtDate } from './util.js';
 import { icon } from './icons.js';
 import { app, getJSON } from './app.js';
 import { openDock } from './panels.js';
 
 let pop = null, st = null, note = '';
-const HINT = {
-  builder: c => c.feedback ? `${c.feedback} open feedback item${c.feedback > 1 ? 's' : ''}` : 'feedback queue is empty',
-  reviewer: c => c.sessionsSinceReview ? `${c.sessionsSinceReview} session${c.sessionsSinceReview > 1 ? 's' : ''} since the last review` : 'nothing new since the last review',
-};
+// what's waiting, shown before going away (the planner sees more: app/jobs.js snapshot())
+const WAITING = [
+  [c => c.feedback, n => `open feedback item${n > 1 ? 's' : ''}`],
+  [c => c.sessionsSinceReview, n => `session${n > 1 ? 's' : ''} since the last review`],
+  [c => c.focusTermsWithoutPage, n => `focus term${n > 1 ? 's' : ''} without a wiki page`],
+];
 const seen = () => store.get('reportsSeen', '');
 const unseen = () => (st?.reports || []).filter(r => r.file > seen());
 
@@ -26,7 +30,7 @@ export function renderAwayBtn() {
   b.querySelector('.badge-n')?.remove();
   const n = unseen().length;
   if (st?.running) b.title = `Background job running: ${st.current?.name || 'starting'}${st.queue?.length ? ', then ' + st.queue.join(', ') : ''}`;
-  else b.title = n ? `${n} new report${n > 1 ? 's' : ''} from background jobs` : "I'm away: let background agents build your feedback, review sessions, write wiki pages";
+  else b.title = n ? `${n} new report${n > 1 ? 's' : ''} from background jobs` : "I'm going away: agents decide what's worth doing meanwhile (your feedback, reviews, wiki pages…)";
   if (n && !st?.running) b.append(h('span', { class: 'badge-n', text: String(n) }));
 }
 
@@ -62,30 +66,41 @@ function fill() {
   if (!st) { pop.replaceChildren(head, h('div', { class: 'pop-b' }, h('p', { class: 'pop-hint', text: 'Loading…' }))); return; }
   const body = h('div', { class: 'pop-b' });
   let foot = null;
+  const title = name => st.available.find(j => j.name === name)?.title || (name === 'plan' ? 'Planning' : name);
   if (st.running) {
     const cur = st.current;
-    body.append(h('div', { class: 'away-run' }, h('span', { class: 'dots' }, h('i'), h('i'), h('i')),
-      h('div', {}, h('b', { text: cur ? (st.available.find(j => j.name === cur.name)?.title || cur.name) : 'Starting…' }),
-        h('div', { class: 'pop-hint', text: (cur ? `since ${fmtTime(cur.startedAt)}` : '') + (st.queue.length ? ` · then ${st.queue.join(', ')}` : '') }))),
-      h('p', { class: 'pop-hint', text: 'You can keep learning meanwhile. New features appear after a reload, which happens by itself when you’re idle.' }));
+    const planning = !st.plan;
+    if (planning) body.append(h('div', { class: 'away-run' }, h('span', { class: 'dots' }, h('i'), h('i'), h('i')),
+      h('div', {}, h('b', { text: cur ? (cur.name === 'plan' ? 'Deciding what’s worth doing' : title(cur.name)) : 'Starting…' }),
+        h('div', { class: 'pop-hint', text: (cur ? `since ${fmtTime(cur.startedAt)}` : '') + (cur?.why ? ` · ${cur.why}` : '') }))));
+    if (st.plan) {
+      const steps = st.plan.steps || [];
+      const left = st.queue.length + (cur && cur.name !== 'plan' ? 1 : 0), done = steps.length - left;
+      body.append(h('div', { class: 'pop-label' }, h('span', { text: 'Plan' }), h('span', { class: 'spacer' }),
+        st.plan.report ? h('button', { class: 'linkish small', text: 'why', title: 'The planner’s report', onclick: () => { close(); openDock('report', st.plan.report); } }) : null),
+        steps.length ? h('div', { class: 'away-plan' }, ...steps.map((x, i) => h('div', { class: 'away-step ' + (i < done ? 'done' : i === done && cur ? 'now' : 'next') },
+          h('span', { class: 'away-step-st' }, i < done ? icon('check') : i === done && cur ? h('span', { class: 'dots' }, h('i'), h('i'), h('i')) : String(i + 1)),
+          h('div', { class: 'away-step-b' }, h('b', { text: title(x.job) }), i === done && cur ? h('span', { class: 'away-since', text: `since ${fmtTime(cur.startedAt)}` }) : null,
+            x.why ? h('div', { class: 'pop-hint', text: x.why }) : null))))
+          : h('p', { class: 'pop-hint', text: 'Nothing worth a run right now.' }));
+    } else if (cur?.name === 'plan') body.append(h('p', { class: 'pop-hint', text: 'An agent is looking at what’s waiting and deciding which jobs to run.' }));
+    body.append(h('p', { class: 'pop-hint', text: 'You can keep learning meanwhile. New features appear after a reload, which happens by itself when you’re idle.' }));
     foot = h('div', { class: 'pop-f' }, h('span', { class: 'spacer' }),
       h('button', { class: 'btn btn-small btn-quiet', onclick: async () => { try { st = await post('/api/jobs/stop'); } catch (e) { note = e.message; } fill(); renderAwayBtn(); } }, 'Stop'));
   } else {
-    const chosen = new Set(store.get('awayJobs', ['builder', 'reviewer']));
-    const list = h('div', { class: 'away-jobs' });
-    for (const j of st.available) {
-      const cb = h('input', { type: 'checkbox', checked: chosen.has(j.name), onchange: () => { cb.checked ? chosen.add(j.name) : chosen.delete(j.name); store.set('awayJobs', [...chosen]); go.disabled = !chosen.size; } });
-      list.append(h('label', { class: 'away-job' }, cb, h('div', {}, h('b', { text: j.title }), HINT[j.name] ? h('span', { class: 'away-count', text: HINT[j.name](st.counts) }) : null,
-        h('div', { class: 'pop-hint', text: j.desc }))));
-    }
-    const go = h('button', { class: 'btn btn-primary btn-small', disabled: !chosen.size, onclick: async () => {
+    const waiting = WAITING.map(([n, label]) => [n(st.counts) || 0, label]).filter(([n]) => n);
+    const go = h('button', { class: 'btn btn-primary btn-small', id: 'awayGo', onclick: async () => {
       go.disabled = true;
-      try { st = await post('/api/away', { jobs: st.available.map(j => j.name).filter(n => chosen.has(n)) }); note = ''; }
+      try { st = await post('/api/away', {}); note = ''; }
       catch (e) { note = 'Could not start: ' + e.message; }
       fill(); renderAwayBtn();
-    } }, icon('away'), 'Start');
-    body.append(h('p', { class: 'pop-hint' }, 'Background agents (', h('code', { text: st.agent }), ', unattended) work through these one after another and leave a report here. Code changes are tested and committed; your data is committed to its own repo.'), list);
-    foot = h('div', { class: 'pop-f' }, h('span', { class: 'pop-hint', text: 'Takes a while and uses your agent’s quota.' }), h('span', { class: 'spacer' }), go);
+    } }, icon('away'), 'I’m going away');
+    body.append(h('p', { class: 'pop-desc' }, 'Step away and the agents (', h('code', { text: st.agent }), ') take it from here: one looks at what’s waiting and decides what’s worth doing, then they do it, one job after another, and leave a report here.'),
+      h('div', { class: 'pop-sec away-waiting' }, h('div', { class: 'pop-label', text: 'Waiting' }),
+        waiting.length ? h('div', {}, ...waiting.map(([n, label]) => h('div', { class: 'away-wait' }, h('span', { class: 'away-count', text: String(n) }), h('span', { text: label(n) }))))
+          : h('div', { class: 'pop-hint', text: 'Nothing obvious; they may still tidy up or find something.' })),
+      h('p', { class: 'pop-hint', text: 'Code changes are tested and committed; your data is committed to its own repo. Restarts are fine while you’re away.' }));
+    foot = h('div', { class: 'pop-f' }, h('span', { class: 'pop-hint', text: 'Uses your agent’s quota.' }), h('span', { class: 'spacer' }), go);
   }
   if (note) body.append(h('div', { class: 'pop-note pop-warn', text: note }));
   const reps = st.reports || [];

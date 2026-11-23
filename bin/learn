@@ -78,7 +78,7 @@ commands.help = () => {
 bin/learn serve                          web server only (http://localhost:${S.PORT})
 bin/learn demo [--real] [--port n]       try the UI on a throwaway copy of the demo data, with a fake tutor
 bin/learn test [--headed] [--keep]       acceptance tests (fixture data, fake tutor, headless Chrome)
-bin/learn away [jobs…] | away --list     background jobs while the learner is away (builder, reviewer, wiki, janitor)
+bin/learn away [jobs…] | --list | --snapshot   learner is away: a planner picks the jobs (or run these: builder, reviewer, wiki, janitor, task)
 
 Tutor commands (docs/protocol.md). [t] = optional topic, defaults to the current one:
 bin/learn resume [t]                     everything needed to pick up a topic, in one compact print

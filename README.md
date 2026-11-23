@@ -47,10 +47,11 @@ vendored in `web/vendor/`.
   the tutor; they queue up for the builder. **About the app** (next to Ask) is the same, but the
   tutor sees it too and can answer; that talk stays in the conversation, dimmed and folded, and
   out of your wiki, sessions and stats.
-- **I'm away** (coffee-cup button): start background agents: the builder (implements your
-  feedback, with tests), the reviewer (reads recent sessions with fresh eyes: gaps, links between
-  topics, process ideas), the wiki writer, the janitor (code tidying). Their reports appear in
-  the same popover.
+- **I'm going away** (coffee-cup button): one click, nothing to choose. A planner agent looks at
+  what's waiting and decides which background jobs are worth running, and why: the builder
+  (implements your feedback, with tests), the reviewer (reads recent sessions with fresh eyes:
+  gaps, links between topics, process ideas), the wiki writer, the janitor (code tidying), or an
+  open task. The popover shows the plan as it runs; the reports appear there too.
 - The UI picks up code changes by itself when you're idle, or shows an "Updated · reload" button,
   so it never blinks while you read.
 

@@ -10,8 +10,9 @@ Whatever role you're in, read the docs for it below, not everything.
 - **Tutor** (started by `bin/learn` with a prompt pointing here): `docs/protocol.md` (the loop:
   `bin/learn resume / wait / post`), `docs/method.md` (how to teach), `docs/bootstrap.md` (new
   topics), `docs/formats.md` (file formats and the markdown the UI renders, read on demand).
-- **Background job** (`bin/learn away` or the UI's "I'm away" button, run headless): your prompt is
-  `docs/jobs/<name>.md` (builder, reviewer, wiki, janitor).
+- **Background job** (`bin/learn away` or the UI's "I'm going away" button, run headless): your
+  prompt is `docs/jobs/<name>.md` (builder, reviewer, wiki, janitor, task). A planner run
+  (`docs/jobs/plan.md`) goes first and decides which jobs run and why; its brief is in your prompt.
 - **Developer** (changing the app): this file, `docs/design.md` (UI principles), `web/viz/README.md`
   (visualization components), and the code. Run `bin/learn test` after any change to `app/`,
   `bin/` or `web/`; it uses fixture data, a fake tutor and headless Chrome, and never touches real

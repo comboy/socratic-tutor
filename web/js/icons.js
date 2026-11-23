@@ -35,6 +35,7 @@ const P = {
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
   feedback: '<path d="M4 5h16v11h-8.5L7 20v-4H4z"/><path d="M12 8v3.6M12 13.8v.1"/>',
   tree: '<rect x="3" y="3.5" width="6" height="4.5" rx="1"/><rect x="15" y="9.75" width="6" height="4.5" rx="1"/><rect x="3" y="16" width="6" height="4.5" rx="1"/><path d="M9 5.75h2.5a1.5 1.5 0 0 1 1.5 1.5v3.75a1 1 0 0 0 1 1h1M9 18.25h2.5a1.5 1.5 0 0 0 1.5-1.5V13a1 1 0 0 1 1-1"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
   away: '<path d="M5 9h11v5a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5z"/><path d="M16 10.5h1.5a2.5 2.5 0 0 1 0 5H16M8 3.5c-.6.8-.6 1.7 0 2.5M11 3.5c-.6.8-.6 1.7 0 2.5M14 3.5c-.6.8-.6 1.7 0 2.5"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   hole: '<circle cx="12" cy="12" r="8.5" stroke-dasharray="3 2.5"/><path d="M12 8v5M12 16v.1"/>',

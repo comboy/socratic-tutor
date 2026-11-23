@@ -10,16 +10,21 @@
 //     automatic handoff can be tested (CLAUDE_CONFIG_DIR must point somewhere disposable)
 //   - when `wait` prints a HANDOFF block: replies if needed, then runs `bin/learn handoff`;
 //     on a TOPIC SWITCH block it hands off to the new topic without replying
-//   - `-p <prompt>` (a background job): prints a fake report and exits
+//   - `-p <prompt>` (a background job): prints a fake report and exits (the planner: a plan with one wiki run)
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-// headless job run (bin/learn away): `-p <prompt> …`. Print a report and exit; FAKE_JOB_SECONDS to linger.
+// headless job run (bin/learn away): `-p <prompt> …`. Print a report and exit.
 if (process.argv[2] === '-p') {
   const name = (process.argv[3].match(/background job \("([\w-]+)"\)/) || [])[1] || '?';
-  const secs = Number(process.env.FAKE_JOB_SECONDS || 0);
-  setTimeout(() => { console.log(`# Fake ${name} report\n\nThe fake agent ran the ${name} job and changed nothing.`); process.exit(0); }, secs * 1000);
+  // linger: FAKE_JOB_SECONDS, or state/fake-job-seconds in the data home (tests set it mid-run)
+  let secs = Number(process.env.FAKE_JOB_SECONDS || 0);
+  try { secs = Number(fs.readFileSync(path.join(process.env.LEARN_HOME, 'state', 'fake-job-seconds'), 'utf8')) || secs; } catch {}
+  if (process.env.LEARN_HOME) try { fs.writeFileSync(path.join(process.env.LEARN_HOME, 'state', `fake-job-${name}.txt`), process.argv[3]); } catch {}
+  // the planner: plans one wiki run (FAKE_PLAN: a JSON plan list instead)
+  const plan = name === 'plan' ? '\n\n```json\n' + JSON.stringify({ plan: JSON.parse(process.env.FAKE_PLAN || '[{"job":"wiki","why":"fake: terms without pages","brief":"FAKE-BRIEF write the focus terms"}]') }) + '\n```' : '';
+  setTimeout(() => { console.log(`# Fake ${name} report\n\nThe fake agent ran the ${name} job and changed nothing.${plan}`); process.exit(0); }, secs * 1000);
 } else {
 const BIN = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../bin/learn');
 const HOME = process.env.LEARN_HOME;

@@ -1049,27 +1049,38 @@ async function main() {
     await page.waitFor(`document.querySelector('#askBox')?.value === 'half-typed' && document.querySelector('#reloadBtn').hidden`, { timeout: 4000 });
     await page.eval(`document.querySelector('#askBox').value = ''; localStorage['learn:draft:ask:demo'] = '""'`);
   });
-  await test("I'm away: starts background jobs, shows the running job, then the report", async () => {
+  await test("I'm going away: one button; a planner decides the jobs and briefs them; the plan shows while it runs, then the reports", async () => {
+    await api('/api/feedback', { text: 'something for the builder', topic: 'demo', view: 'learn' });
     await page.nav(`${BASE}/#/demo/learn`, 900);
     await page.click('#awayBtn');
-    await page.waitFor(`document.querySelectorAll('.away-job').length === 4`, { timeout: 3000 });
+    await page.waitFor(`document.querySelector('#awayGo') && document.querySelector('.away-waiting')`, { timeout: 3000 });
+    assert(await page.eval(`!document.querySelector('.away-pop input[type=checkbox]')`), 'no job checkboxes');
+    assert(/open feedback item/.test(await page.eval(`document.querySelector('.away-waiting').innerText`)), 'shows what is waiting');
     await page.shot('away-popover');
-    await page.eval(`localStorage['learn:awayJobs'] = '["wiki"]'`);
-    await page.click('#awayBtn'); await page.click('#awayBtn');
-    await page.waitFor(`document.querySelectorAll('.away-job input:checked').length === 1`, { timeout: 3000 });
-    await page.eval(`[...document.querySelectorAll('.away-pop .btn-primary')].pop().click()`);
+    fs.writeFileSync(path.join(HOME, 'state/fake-job-seconds'), '2');
+    await page.click('#awayGo');
+    await page.waitFor(`document.querySelector('.away-step.now') && /Write wiki pages|Wiki/i.test(document.querySelector('.away-step.now').innerText)`, { timeout: 12000 });
+    assert(/fake: terms without pages/.test(await page.eval(`document.querySelector('.away-plan').innerText`)), 'the plan shows why');
+    await page.shot('away-running');
+    fs.rmSync(path.join(HOME, 'state/fake-job-seconds'));
     await until(() => { try { return fs.readdirSync(path.join(HOME, 'reports')).some(f => f.endsWith('-wiki.md')); } catch { return false; } }, 'report written', 20000);
-    const rep = fs.readFileSync(path.join(HOME, 'reports', fs.readdirSync(path.join(HOME, 'reports'))[0]), 'utf8');
-    assert(/# Fake wiki report/.test(rep), rep);
+    const reps = fs.readdirSync(path.join(HOME, 'reports')).sort();
+    assert(reps.some(f => f.endsWith('-plan.md')) && /# Fake wiki report/.test(fs.readFileSync(path.join(HOME, 'reports', reps.find(f => f.endsWith('-wiki.md'))), 'utf8')), reps.join());
+    const planPrompt = fs.readFileSync(path.join(HOME, 'state/fake-job-plan.txt'), 'utf8'), wikiPrompt = fs.readFileSync(path.join(HOME, 'state/fake-job-wiki.txt'), 'utf8');
+    assert(/## Snapshot[\s\S]*## Feedback queue: \d+ open[\s\S]*## Topic demo[\s\S]*## Jobs you can schedule[\s\S]*- task: /.test(planPrompt), planPrompt.slice(-1500));
+    assert(/## Why this run[\s\S]*Why: fake: terms without pages\nBrief: FAKE-BRIEF/.test(wikiPrompt) && /^# Wiki writer/m.test(wikiPrompt), wikiPrompt.slice(0, 2500));
     await page.waitFor(`document.querySelector('#awayBtn .badge-n') || document.querySelector('.away-rep.new')`, { timeout: 6000 });
     await page.eval(`document.querySelector('.away-rep.new')?.click() || (document.querySelector('#awayBtn').click(), 0)`);
     await page.waitFor(`document.querySelector('.away-rep.new')?.click() ?? true`, { timeout: 2000 }).catch(() => {});
-    await page.waitFor(`/Fake wiki report/.test(document.querySelector('#dock')?.innerText || '')`, { timeout: 4000 });
+    await page.waitFor(`/Fake (wiki|plan) report/.test(document.querySelector('#dock')?.innerText || '')`, { timeout: 4000 });
     await page.key('Escape');
     const st = await api('/api/jobs');
-    assert(!st.running && st.history[0].name === 'wiki' && st.history[0].exit === 0, JSON.stringify(st.history[0]));
-    const fake = sessions().filter(x => x.args[0] === '-p');
-    assert(!fake.length, 'headless job was logged as a tutor session');
+    assert(!st.running && st.history[0].name === 'wiki' && st.history[0].exit === 0 && st.history[1].name === 'plan', JSON.stringify(st.history.slice(0, 2)));
+    assert(!sessions().filter(x => x.args[0] === '-p').length, 'headless job was logged as a tutor session');
+    // the CLI still runs named jobs without planning; a plan the runner can't read falls back to the obvious work
+    const parse = t => execFileSync(process.execPath, ['-e', `process.stdout.write(JSON.stringify(require(${JSON.stringify(path.join(CODE, 'app/jobs.js'))}).parsePlan(${JSON.stringify(t)})))`], { env: ENV, encoding: 'utf8' });
+    assert(parse('# x\n```json\n{"plan":[{"job":"builder","why":"w"},{"job":"nope"}]}\n```') === '[{"job":"builder","why":"w","brief":""}]', 'parsePlan keeps known jobs');
+    assert(parse('no plan') === 'null' && parse('```json\n{bad\n```') === 'null', 'unreadable plan');
   });
   await test('new topic from the browser: START queued, topic-switch handoff, fresh tutor answers', async () => {
     const before = sessions().length;
