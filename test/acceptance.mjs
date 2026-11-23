@@ -275,10 +275,12 @@ async function main() {
       assert(/not empty/.test(run('export', X).stderr), 'refuses a non-empty dir');
     } finally { fs.rmSync(R, { recursive: true, force: true }); fs.rmSync(X, { recursive: true, force: true }); }
   });
-  await test('knowledge pill: what they understand per skill (level with its reason, graded checks, difficulties, not covered yet) for a reader who knows the subject: no subject summaries, third person, workspace ids stripped; --write / --all', async () => {
+  await test('knowledge pill: where they stand, short, for a reader who knows the subject: skills grouped by level, foundations, recent corrections, about them (background, how they learn; not app-specific sections); no process, no subject, no ids; --write / --all', async () => {
     const t = learn('pill', 'demo');
-    assert(/^# What I understand: How LLMs work \(demo\)/.test(t) && /## Skills/.test(t) && /\*\*4\.1 [^*]+: \d\/5\*\*/.test(t) && /## Terms they've been taught \(\d+\)\n\n[^\n]*\n\n[^\n]*KV cache/.test(t) && /## How they learn/.test(t), t.slice(0, 1500));
-    assert(/^  - [✓◐✗–] /m.test(t) && !/^  - Covered:/m.test(t) && !/\b[Yy]ou\b/.test(t.replace(/^#[^\n]*\n\n[^\n]*\n\n[^\n]*\n/, '')), 'checks listed, no subject summaries, no second person: ' + t.slice(0, 2500));
+    assert(/^# What I understand: How LLMs work \(demo\)/.test(t) && /^\*\*(Can [^*]+|Heard of it) \(\d\):\*\* \S/m.test(t) && /^\*\*Not yet:\*\* /m.test(t) && /\*\*About them:\*\*/.test(t), t.slice(0, 1500));
+    assert(/A fictional learner used by the tests/.test(t) && /Their tutors noticed: Explanation first, then one question/.test(t) && !/Dark theme/.test(t), 'about them: ' + t.slice(-800));
+    assert(t.length < 4000 && !/^\s*- [✓◐✗]|Covered:|Difficulty:|Not covered yet|^## /m.test(t) && !/\*\*\d+\.\d+ /.test(t), 'process or per-skill detail left: ' + t.slice(0, 2500));
+    assert(!/\b[Yy]ou\b/.test(t.split('\n').filter(l => !l.startsWith('>')).join('\n')), 'second person: ' + t);
     assert(!/\]\((msg|skill|term|wiki):|\b20\d\d-\d\d-\d\d\.\d+\b/.test(t), 'workspace links or message ids left: ' + (t.match(/.*(\]\((msg|skill|term|wiki):|\b20\d\d-\d\d-\d\d\.\d+\b).*/) || [])[0]);
     assert(/wrote \S*learner\/pills\/demo\.md/.test(learn('pill', 'demo', '--write')) && fs.readFileSync(path.join(HOME, 'learner/pills/demo.md'), 'utf8') === t, 'written');
     assert(/pills\/cells\.md/.test(learn('pill', '--all')), '--all');

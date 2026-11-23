@@ -40,9 +40,9 @@ model; doesn't teach.
 5. `bin/learn pill --all` refreshes the knowledge pills (`learner/pills/`: what the learner
    understands per topic, for other tutors and agents, generated from the evidence). They're only
    as true as their sources, so first bring those up to date where the sessions show they've
-   drifted: a skill's `unknown` list still naming things the lessons have since covered, a
-   misconception that was resolved but isn't marked so, a level that no longer matches the
-   checks (`bin/learn level`, with the reason). Then `bin/learn check`, and
+   drifted: a level that no longer matches the checks (`bin/learn level`, with the reason), a
+   misconception note that a later check showed is gone (`bin/learn note done`), a skill's
+   `unknown` list still naming what the lessons have since covered. Then `bin/learn check`, and
    `bin/learn commit "review: …" -- <the files you changed> learner/pills` (a tutor may be
    writing other files right now; paths keep its half-done edits out of your commit).
 

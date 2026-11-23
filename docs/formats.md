@@ -269,7 +269,9 @@ Rewrite the stale lines then; the next tutor reads this section first. `log.md` 
 ### learner/profile.md, learner/knowledge.md
 
 Short markdown files shared by every topic. `profile.md`: background and how the learner likes to
-be taught (sections In my own words / Background / Observations so far / Interface preferences).
+be taught (sections In my own words / Background / Observations so far / Working with this
+workspace / Interface preferences; the knowledge pill quotes the first three, so keep what's about
+how they learn apart from what's about this app).
 "In my own words" is written by the learner and agents never edit it; the other sections are
 derived, so write them as observations with the reason behind each, not as hard rules. `knowledge.md`:
 Solid / Shaky foundations / Connections worth making / Suggested topics, one line each with
@@ -278,18 +280,17 @@ under ~2 KB each.
 
 ### learner/pills/<slug>.md
 
-The knowledge pill: what the learner understands in one topic, as a single markdown file any other
-tutor or agent could start from. Its reader knows the subject, so it never explains the subject
-(skill summaries stay out, except their lines about the learner, from sessions before checks were
-logged); it carries the evidence of understanding: per skill, the level with the reason it was set,
-the graded checks with their notes (what was right, what was missed, unprompted or after
-narrowing), difficulties and misconceptions, and what's not covered yet (`unknown`); then
-foundations, open notes, the cross-topic lines from knowledge.md, the terms taught, and how they
-learn from profile.md. Made by `app/pill.js`, so nobody edits it by hand: improve the sources
-instead. That's why grade notes and level reasons are worth writing for a reader who wasn't there
-("✓ derived X unprompted; missed Y"), and why `unknown` and `misconceptions` should be kept current. msg: links and message/note ids
-are stripped, since they mean nothing outside this workspace. `bin/learn pill [t]` prints it,
-`--write` / `--all` saves it; the UI shows it under Wiki → You with a Copy button.
+The knowledge pill: where the learner stands in one topic, as a short markdown file to attach to any
+chat, tutor or agent so it knows at what level to talk to them. Its reader knows the subject, so it
+never explains it, and it isn't the learning process (checks, reasons, notes stay here): skills
+grouped by level, foundations, what was corrected recently and may not have stuck (open
+`misconception` notes, first clause each), and about them (profile.md: Background, "In my own
+words", the leads of the observations about how they learn; sections about this app, "Working with
+this workspace" and "Interface preferences", stay out). Many pills together are a picture of the
+person. Made by `app/pill.js`, so nobody edits it by hand: improve the sources instead (levels,
+skill names that read well on their own, closing a misconception note once it's re-checked).
+`bin/learn pill [t]` prints it, `--write` / `--all` saves it; the UI shows it under Wiki → You with
+a Copy button.
 
 ### feedback.md
 

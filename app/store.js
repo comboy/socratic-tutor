@@ -101,6 +101,8 @@ Written by the learner. Agents: never edit or paraphrase this section; propose c
 
 ## Observations so far (derived, could be wrong: use judgement)
 
+## Working with this workspace (derived)
+
 ## Interface preferences (derived)
 `;
 const KNOWLEDGE_TEMPLATE = `# Knowledge across topics
