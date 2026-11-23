@@ -22,6 +22,7 @@ never contains any. Layout:
 | `topics/<slug>/journal/YYYY-MM-DD.jsonl` | every message both ways, grades, level changes, tags (format below) | `bin/learn` only, never by hand |
 | `learner/profile.md` | who the learner is, how they like to be taught (all topics) | tutors, reviewer job, the learner |
 | `learner/knowledge.md` | knowledge across topics: islands, shaky foundations, connections, suggested topics | tutors, reviewer job |
+| `learner/pills/<slug>.md` | the knowledge pill: what the learner knows in a topic as one portable file | generated: `bin/learn pill --all` (the reviewer job) |
 | `feedback.md` | queue of remarks about the app and process, for the builder job | UI feedback box, `bin/learn feedback`, builder |
 | `reports/*.md` | reports from background jobs (`bin/learn away`) | the jobs |
 | `config.json` | optional settings (below) | the learner |
@@ -270,6 +271,16 @@ derived, so write them as observations with the reason behind each, not as hard 
 Solid / Shaky foundations / Connections worth making / Suggested topics, one line each with
 topic and skill ids, guesses marked "(hypothesis)". `bin/learn resume` prints both, so keep them
 under ~2 KB each.
+
+### learner/pills/<slug>.md
+
+The knowledge pill: what the learner knows in one topic, as a single markdown file any other tutor
+or system could start from (levels with what each skill covered, foundations, open misconceptions,
+gaps, reviews and parked questions, the cross-topic lines from knowledge.md, the vocabulary met, and
+how they learn from profile.md). Made by `app/pill.js` from the structured data, so nobody edits it
+by hand: improve the sources instead (skill summaries, notes). msg: links and message/note ids
+are stripped, since they mean nothing outside this workspace. `bin/learn pill [t]` prints it,
+`--write` / `--all` saves it; the UI shows it under Wiki → You with a Copy button.
 
 ### feedback.md
 

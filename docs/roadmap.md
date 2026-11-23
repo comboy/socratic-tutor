@@ -39,6 +39,16 @@ worth keeping, roughly in order of how soon they'd pay off.
 ## Sharing
 
 The code is shareable as is: all personal data lives in the data home (`data/`, gitignored, its
-own repo). Before publishing, start a fresh public repo from the code (this repo's early history
-contains the original `topics/`), add a LICENSE, and check `bin/learn demo --empty` gives a good
-first run: the "What do you want to learn?" screen.
+own repo). This repo's early history contains the original `topics/` and lesson commit messages,
+so publish a fresh repo instead of pushing this one:
+
+1. `bin/learn share check --history` (add `--terms` to also list textbook terms from your topics):
+   personal traces in the tracked files, commit messages and history. Example ids and the demo
+   topic's name in the docs are fine.
+2. `bin/learn share export ../learn-public`: the tracked files in a fresh repo, one commit; then
+   `bin/learn share check --dir ../learn-public`.
+3. Add a LICENSE, and check `bin/learn demo --empty` gives a good first run (the "What do you
+   want to learn?" screen). A new user needs only Node 22+ and their own agent CLI (Claude Code by
+   default, their subscription); `data/` is created on first run.
+4. Your knowledge stays yours: `data/` is its own repo, and `bin/learn pill` (see below) is the
+   portable summary of what you know, if you ever want to seed another system with it.

@@ -240,6 +240,8 @@ async function handle(req, res) {
     }
     const m = p.match(/^\/api\/topic\/([a-z0-9-]+)$/);
     if (m && req.method === 'GET') return send(res, 200, topicPayload(m[1]));
+    const pm = p.match(/^\/api\/pill\/([a-z0-9-]+)$/);
+    if (pm && req.method === 'GET') return S.listTopics().includes(pm[1]) ? send(res, 200, { topic: pm[1], text: require('./pill').pill(pm[1]) }) : send(res, 404, { error: 'no such topic' });
     const rp = p.match(/^\/api\/report\/([\w.-]+\.md)$/);
     if (rp && req.method === 'GET') { const t = J.readReport(rp[1]); return t == null ? send(res, 404, { error: 'no such report' }) : send(res, 200, { file: rp[1], text: t }); }
     const r = routes[`${req.method} ${p}`];

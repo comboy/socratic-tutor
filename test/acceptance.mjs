@@ -221,6 +221,15 @@ async function main() {
       assert(/not empty/.test(run('export', X).stderr), 'refuses a non-empty dir');
     } finally { fs.rmSync(R, { recursive: true, force: true }); fs.rmSync(X, { recursive: true, force: true }); }
   });
+  await test('knowledge pill: one portable file per topic (levels, what was covered, notes, vocabulary, how they learn), workspace ids stripped; --write / --all', async () => {
+    const t = learn('pill', 'demo');
+    assert(/^# What I know: How LLMs work \(demo\)/.test(t) && /## Skills/.test(t) && /\*\*4\.1 [^*]+: \d\*\*/.test(t) && /## Vocabulary they've met \(\d+ terms\)\n\n[^\n]*KV cache/.test(t) && /## How they learn/.test(t), t.slice(0, 1500));
+    assert(!/\]\((msg|skill|term|wiki):|\b20\d\d-\d\d-\d\d\.\d+\b/.test(t), 'workspace links or message ids left: ' + (t.match(/.*(\]\((msg|skill|term|wiki):|\b20\d\d-\d\d-\d\d\.\d+\b).*/) || [])[0]);
+    assert(/wrote \S*learner\/pills\/demo\.md/.test(learn('pill', 'demo', '--write')) && fs.readFileSync(path.join(HOME, 'learner/pills/demo.md'), 'utf8') === t, 'written');
+    assert(/pills\/cells\.md/.test(learn('pill', '--all')), '--all');
+    const P = (await api('/api/pill/demo')).text;
+    assert(P.split('\n')[0] === t.split('\n')[0], 'api');
+  });
   await test('glossary metadata: full and parts parse; entries without them are unchanged', async () => {
     const t = await api('/api/topic/demo');
     const bpe = t.glossary.find(g => g.term === 'BPE'), kv = t.glossary.find(g => g.term === 'KV cache'), tok = t.glossary.find(g => g.term === 'token');
@@ -461,6 +470,14 @@ async function main() {
       await page.shot('view-' + name.replace(/\W+/g, '-'));
     });
   }
+  await test('wiki You: the knowledge pill shows and copies', async () => {
+    await page.nav(`${BASE}/#/demo/wiki/you`, 900);
+    await page.waitFor(`document.querySelector('#pillShow')`, { timeout: 4000 });
+    await page.click('#pillShow');
+    await page.waitFor(`/^What I know: How LLMs work/.test(document.querySelector('.pill-text h1')?.textContent || '')`, { timeout: 4000 });
+    await page.eval(`document.querySelector('.pill-text').scrollIntoView()`);
+    await page.shot('wiki-you-pill');
+  });
   await test('viz residual: steps through, maths from the weights, edits recompute', async () => {
     await page.nav(`${BASE}/#/demo/wiki/page/residual-stream`, 900);
     const V = `document.querySelector('.page-md .viz-residual')`;
@@ -1173,7 +1190,8 @@ async function finish(code) {
     await Promise.race([new Promise(r => launcher.once('exit', r)), sleep(4000)]);
   }
   // belt and braces: anything still holding the port
-  try { execFileSync('sh', ['-c', `lsof -ti tcp:${PORT} | xargs kill 2>/dev/null`]); } catch {}
+  // (not this process: a keep-alive fetch to the server shows up in lsof too)
+  try { execFileSync('sh', ['-c', `lsof -ti tcp:${PORT} | grep -vx ${process.pid} | xargs kill 2>/dev/null`]); } catch {}
   if (!opt.keep) fs.rmSync(HOME, { recursive: true, force: true }); else console.log('kept ' + HOME);
   const bad = results.filter(r => !r.ok);
   console.log(`\n${results.length - bad.length}/${results.length} passed${bad.length ? `, ${bad.length} failed` : ''} · screenshots in test/out/`);

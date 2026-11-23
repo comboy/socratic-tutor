@@ -3,7 +3,7 @@ import { h, flatSkills, levelOf, lvChip, meter, fmtLevel, fmtDate, skillById, ov
 import { rich, legendEntries } from './rich.js';
 import { plain, md } from './md.js';
 import { icon } from './icons.js';
-import { app, go, learner } from './app.js';
+import { app, go, learner, getJSON } from './app.js';
 import { termPanel, skillPanel, occurrences, group, sortedGlossary, sortToggle, termText, introOf, noteRow, NOTE_KIND, dependencies, openDock, termEntry } from './panels.js';
 import { pageForTerm } from './terms.js';
 import * as learnView from './learn.js';
@@ -264,4 +264,26 @@ async function you(el) {
     L.append(sheet(group(['How you like to learn', h('span', { class: 'spacer' }), h('span', { class: 'group-note', text: 'learner/profile.md: every tutor reads this; edit it freely' })]),
       h('div', { class: 'sheet-pad' }, rich(strip(l.profile) || '*Empty.*', 'wiki-md hl-scope', { terms: false }))));
   } catch (e) { L.append(h('div', { class: 'error', text: 'Could not load the learner files: ' + e.message })); }
+  el.append(pillSheet(app.topic.slug));
+}
+
+// The knowledge pill: what you know in this topic as one portable file (app/pill.js), for seeding
+// another tutor or system. Generated on demand from the levels, summaries and notes, so it's current.
+function pillSheet(slug) {
+  const body = h('div', { class: 'sheet-pad pill-body' });
+  const note = h('span', { class: 'group-note pill-note' });
+  let text = null;
+  const load = async () => { if (text == null) text = (await getJSON('/api/pill/' + slug)).text; return text; };
+  const copy = h('button', { class: 'btn btn-small', id: 'pillCopy', onclick: async () => {
+    try { await navigator.clipboard.writeText(await load()); note.textContent = 'Copied'; } catch (e) { note.textContent = 'Could not copy: ' + e.message; }
+    setTimeout(() => { note.textContent = ''; }, 2500);
+  } }, icon('page'), 'Copy');
+  const show = h('button', { class: 'btn btn-small', id: 'pillShow', onclick: async () => {
+    if (body.childElementCount) { body.replaceChildren(); show.lastChild.textContent = 'Show'; return; }
+    try { body.append(h('div', { class: 'pill-text' }, rich(await load(), 'wiki-md', { terms: false }))); show.lastChild.textContent = 'Hide'; } catch (e) { body.append(h('div', { class: 'error', text: e.message })); }
+  } }, icon('book'), h('span', { text: 'Show' }));
+  return sheet(group(['Your knowledge pill', h('span', { class: 'spacer' }), note, copy, show]),
+    h('div', { class: 'sheet-pad pill-desc' }, h('p', { class: 'muted' }, 'What you know in this topic as one portable markdown file: levels with what each covered, foundations, open gaps and misconceptions, links to your other topics, the vocabulary you\u2019ve met and how you learn. Hand it to any other tutor or system to start from where you are. Made fresh from your data each time; ',
+      h('code', { text: 'bin/learn pill --all' }), ' saves every topic\u2019s to ', h('code', { text: 'learner/pills/' }), '.')),
+    body);
 }

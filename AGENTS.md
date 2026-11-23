@@ -33,7 +33,7 @@ Code and personal data are kept apart so the code can be shared:
 - `docs/`: protocol, method, bootstrap, formats, design, roadmap, job prompts.
 - `test/`: acceptance tests, fixture topics, a fake tutor.
 - `data/` (gitignored here; **its own git repo**): the learner's data: `topics/<slug>/`,
-  `learner/` (profile, knowledge across topics), `feedback.md` (queue for the builder), `reports/`
+  `learner/` (profile, knowledge across topics, `pills/`: a portable summary per topic), `feedback.md` (queue for the builder), `reports/`
   (job reports), `config.json`, `state/` (runtime). `LEARN_HOME=/elsewhere` moves it.
 
 ## Working here

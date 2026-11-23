@@ -961,3 +961,10 @@ body.no-topics #leftToggle, body.no-topics #dockBtn, body.no-topics #searchBtn {
 .welcome-back { display: flex; align-items: center; gap: 10px; padding: 7px 10px; margin-bottom: 8px; border: 1px solid var(--accent-line); background: var(--accent-soft); border-radius: 7px; }
 .welcome-back > .ico { color: var(--accent); flex-shrink: 0; }
 .wb-text { flex: 1; min-width: 0; }
+
+/* knowledge pill (Wiki → You) */
+.pill-desc p { margin: 0; font-size: 13px; line-height: 1.5; }
+.pill-note { margin-right: 8px; color: var(--good); }
+.group-h .btn + .btn { margin-left: 6px; }
+.pill-body:empty { display: none; }
+.pill-text { max-height: 70vh; overflow: auto; background: var(--well); border: 1px solid var(--line-soft); border-radius: 6px; padding: 4px 16px 12px; }

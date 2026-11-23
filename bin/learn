@@ -78,6 +78,7 @@ commands.help = () => {
 bin/learn serve                          web server only (http://localhost:${S.PORT})
 bin/learn demo [--real] [--port n]       try the UI on a throwaway copy of the demo data, with a fake tutor
 bin/learn test [--headed] [--keep]       acceptance tests (fixture data, fake tutor, headless Chrome)
+bin/learn pill [t] [--write] · pill --all    what you know in a topic, as one portable file (learner/pills/<t>.md)
 bin/learn share check [--history] · share export <dir>   personal traces in the code repo · a fresh repo to publish
 bin/learn away [jobs…] | --list | --snapshot   learner is away: a planner picks the jobs (or run these: builder, reviewer, wiki, janitor, task)
 
@@ -142,6 +143,13 @@ commands.test = () => {
 };
 
 commands.away = () => require('../app/jobs').cli(argv);
+commands.pill = () => {
+  const f = flags(argv, { topic: 'string', write: 'bool', all: 'bool' });
+  const P = require('../app/pill'), rel = p => path.relative(process.cwd(), p);
+  if (f.all) { for (const t of S.listTopics()) console.log(`wrote ${rel(P.write(t))}`); return; }
+  const t = topicOf(f, true);
+  if (f.write) console.log(`wrote ${rel(P.write(t))}`); else process.stdout.write(P.pill(t));
+};
 commands.share = () => { try { require('../app/share').cli(argv); } catch (e) { die(e.message); } };
 
 // `bin/learn` is the only command the learner needs, and running it again is harmless: if the
