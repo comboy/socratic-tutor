@@ -112,7 +112,8 @@ bin/learn handoff [--topic t] [--reason s]   end this tutor session; a fresh one
 bin/learn new <slug> "Title"             create an empty topic (the learner usually does this in the browser)
 bin/learn import <transcript.jsonl>... --topic t   import old terminal sessions
 
-Data lives in ${S.ROOT} (set LEARN_HOME to use another directory).`);
+Data lives in ${S.ROOT}${S.ROOT !== S.realish(S.ROOT) ? ` (→ ${S.realish(S.ROOT)})` : ''}${S.LEARNER_OUTSIDE ? `, the learner folder in ${S.LEARNER}` : ''}.
+To keep it elsewhere: make data/ a symlink to that folder, or set LEARN_HOME (README, "Your data").`);
 };
 
 commands.serve = () => { S.ensureHome(); require('../app/server').start(); };
@@ -201,8 +202,9 @@ commands.resume = () => {
   const meaty = t => t.split('\n').some(l => /^\s*[-*]|^\w/.test(l) && !/^(Who|What|Keep|Shared)/.test(l));
   // drop the title and intro paragraph, demote headings so they nest under this section
   const body = t => t.replace(/^# [^\n]*\n[\s\S]*?(?=^## )/m, '').replace(/^## /gm, '### ').replace(/^### [^\n]*\n\s*(?=### |$(?![\s\S]))/gm, '');
-  sec('Learner profile (data/learner/profile.md, all topics)', meaty(prof) ? body(prof) : '(empty: add what you learn about how they like to be taught)');
-  if (meaty(know)) sec('Knowledge across topics (data/learner/knowledge.md)', body(know));
+  const lp = f => S.shown(path.join(S.LEARNER, f));
+  sec(`Learner profile (${lp('profile.md')}, all topics)`, meaty(prof) ? body(prof) : '(empty: add what you learn about how they like to be taught)');
+  if (meaty(know)) sec(`Knowledge across topics (${lp('knowledge.md')})`, body(know));
 
   const prog = S.readText(path.join(dir, 'progress.md'), '');
   const rh = prog.match(/^## Resume here[^\n]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m);
@@ -769,7 +771,7 @@ commands.recent = () => {
 
 commands.status = async () => {
   const up = await serverUp();
-  console.log(`server: ${up ? 'up at http://localhost:' + S.PORT : 'down'} · data: ${S.ROOT}`);
+  console.log(`server: ${up ? 'up at http://localhost:' + S.PORT : 'down'} · data: ${S.shown(S.ROOT)}${S.ROOT !== S.realish(S.ROOT) ? ` (→ ${S.realish(S.ROOT)})` : ''} · learner: ${S.shown(S.LEARNER)}`);
   const inbox = fs.existsSync(S.INBOX) ? fs.readdirSync(S.INBOX).filter(f => f.endsWith('.json')) : [];
   console.log(`inbox: ${inbox.length} pending · feedback: ${S.openFeedback().length} open`);
   for (const slug of S.listTopics()) {

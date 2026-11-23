@@ -32,9 +32,12 @@ Code and personal data are kept apart so the code can be shared:
   `web/vendor/`. `web/viz/`: visualization components.
 - `docs/`: protocol, method, bootstrap, formats, design, roadmap, job prompts.
 - `test/`: acceptance tests, fixture topics, a fake tutor.
-- `data/` (gitignored here; **its own git repo**): the learner's data: `topics/<slug>/`,
+- `data/` (gitignored here; versioned on its own): the learner's data: `topics/<slug>/`,
   `learner/` (profile, knowledge across topics, `pills/`: a portable summary per topic), `feedback.md` (queue for the builder), `reports/`
-  (job reports), `config.json`, `state/` (runtime). `LEARN_HOME=/elsewhere` moves it.
+  (job reports), `config.json`, `state/` (runtime). It's its own git repo, or a symlink to a folder
+  of the learner's bigger learning repo, with `learner/` possibly shared at that repo's top
+  (config.json `learner`; `data/learner` links to it). `LEARN_HOME=/elsewhere` moves it. `bin/learn
+  status` shows where things really are; `bin/learn commit` handles either setup.
 
 ## Working here
 

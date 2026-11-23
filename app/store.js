@@ -6,15 +6,19 @@ const { execFileSync } = require('child_process');
 
 // CODE: this checkout (app/, web/, docs/): shareable, no personal data.
 // ROOT: the learner's data home (topics/, learner/, feedback.md, reports/, state/). Defaults to
-// data/ inside the checkout, which is gitignored there and is its own git repo. LEARN_HOME points
-// elsewhere (tests, demo, or data kept in some other place).
+// data/ inside the checkout, which is gitignored there and is its own git repo. data/ may also be a
+// symlink to a folder elsewhere, for example inside a bigger repo of your own (see README, "Your
+// data"); LEARN_HOME points elsewhere too (tests, demo). ROOT keeps the path as given, so agents
+// keep seeing data/…; git and the learner folder use the real one (realish).
+// LEARNER: who the learner is and what they know across topics (profile.md, knowledge.md, pills/).
+// It's not specific to this app, so config.json's "learner" can move it out of the data home, to be
+// shared with other tools (a path relative to the data home's real location, or absolute).
 const CODE = path.resolve(__dirname, '..');
 const ROOT = path.resolve(process.env.LEARN_HOME || path.join(CODE, 'data'));
 const TOPICS = path.join(ROOT, 'topics');
-const LEARNER = path.join(ROOT, 'learner');         // cross-topic: profile.md, knowledge.md
 const REPORTS = path.join(ROOT, 'reports');         // output of background jobs (bin/learn away)
 const FEEDBACK = path.join(ROOT, 'feedback.md');    // meta feedback queue for the builder
-const CONFIG = path.join(ROOT, 'config.json');      // optional: agent choice etc.
+const CONFIG = path.join(ROOT, 'config.json');      // optional: agent choice, learner folder etc.
 const STATE = path.join(ROOT, 'state');             // runtime only, gitignored
 const INBOX = path.join(STATE, 'inbox');
 const PORT = Number(process.env.LEARN_PORT || 4747);
@@ -33,6 +37,20 @@ function writeJSON(p, obj) {
 }
 function config() { try { return readJSON(CONFIG, {}) || {}; } catch { return {}; } }
 
+// The real path of p through symlinks, also when p (or its tail) doesn't exist yet.
+function realish(p) {
+  p = path.resolve(p);
+  try { return fs.realpathSync(p); } catch {}
+  const up = path.dirname(p);
+  return up === p ? p : path.join(realish(up), path.basename(p));
+}
+const inside = (p, dir) => { const r = path.relative(dir, p); return !r.startsWith('..') && !path.isAbsolute(r); };
+const LEARNER = (() => {
+  const c = config().learner;
+  return typeof c === 'string' && c.trim() ? path.resolve(realish(ROOT), c.trim()) : path.join(ROOT, 'learner');
+})();
+const LEARNER_OUTSIDE = !inside(realish(LEARNER), realish(ROOT));
+
 // Local calendar date, YYYY-MM-DD
 function localDate(d = new Date()) {
   const z = n => String(n).padStart(2, '0');
@@ -41,7 +59,8 @@ function localDate(d = new Date()) {
 
 // ---------- data home ----------
 // Create the data home on first use: folders, a .gitignore for runtime state, starter learner files,
-// and a git repo (the data is versioned separately from the code, so the code can be shared).
+// and a git repo (the data is versioned separately from the code, so the code can be shared). A data
+// home that is already inside a repo of its own (a folder of a bigger learning repo) gets no nested one.
 function ensureHome() {
   ensureDir(TOPICS); ensureDir(LEARNER); ensureDir(STATE);
   const gi = path.join(ROOT, '.gitignore');
@@ -50,9 +69,24 @@ function ensureHome() {
   if (!fs.existsSync(prof)) fs.writeFileSync(prof, PROFILE_TEMPLATE);
   const know = path.join(LEARNER, 'knowledge.md');
   if (!fs.existsSync(know)) fs.writeFileSync(know, KNOWLEDGE_TEMPLATE);
-  if (!fs.existsSync(path.join(ROOT, '.git')) && !process.env.LEARN_NO_GIT) {
-    try { execFileSync('git', ['init', '-q'], { cwd: ROOT, stdio: 'ignore' }); } catch {}
+  // a learner folder kept elsewhere: a link to it at the usual place, so learner/… means the same
+  // everywhere (docs, agents, commands); gitignored here, as the files are versioned where they live
+  if (LEARNER_OUTSIDE) {
+    const link = path.join(ROOT, 'learner');
+    try { if (!fs.lstatSync(link, { throwIfNoEntry: false })) fs.symlinkSync(path.relative(realish(ROOT), LEARNER), link); } catch {}
+    const g = readText(gi, '');
+    if (!/^\/?learner\/?$/m.test(g)) fs.appendFileSync(gi, (g && !g.endsWith('\n') ? '\n' : '') + '/learner\n');
   }
+  if (!dataRepo(ROOT) && !process.env.LEARN_NO_GIT) {
+    try { execFileSync('git', ['init', '-q'], { cwd: realish(ROOT), stdio: 'ignore' }); } catch {}
+  }
+}
+// The git repo (its top folder) that versions `dir`, or null. The code checkout doesn't count: the
+// default data/ sits inside it, gitignored, and must get a repo of its own rather than commits here.
+function dataRepo(dir) {
+  let top;
+  try { top = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: realish(dir), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return null; }
+  return top && realish(top) !== realish(CODE) ? realish(top) : null;
 }
 const PROFILE_TEMPLATE = `# Learner profile
 
@@ -84,28 +118,51 @@ Keep it short: one line per item, with the topic and skill ids.
 ## Suggested topics
 `;
 
-// Commit the data home (its own repo): everything, or only `paths` (files or directories, relative
-// to the data home), so a tutor and a background job writing at the same time don't sweep each
-// other's half-written files into their commits. Returns the git output or a reason it didn't.
+// Commit the learning data: everything (the data home and the learner folder), or only `paths` (from
+// dataPath), so a tutor and a background job writing at the same time don't sweep each other's
+// half-written files into their commits. The data home may be its own repo or a folder of a bigger
+// one, and the learner folder may sit in yet another: each repo gets its own commit, of just these
+// paths, so whatever else lives in a shared repo is left alone. Returns what happened.
 function commitData(message, paths = []) {
-  if (!fs.existsSync(path.join(ROOT, '.git'))) return 'data home is not a git repo';
-  const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  const only = paths.length ? ['--', ...paths] : [];
-  git('add', '-A', ...only);
-  if (!git('status', '--porcelain', ...only).trim()) return 'nothing to commit' + (paths.length ? ` in ${paths.join(' ')}` : '');
-  // with paths, commit just those (whatever else is staged stays staged for its owner)
-  git('commit', '-q', '-m', message || 'Update learning data', ...only);
-  const files = git('diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD').trim().split('\n').filter(Boolean);
-  return `committed ${git('rev-parse', '--short', 'HEAD').trim()}: ${files.length} file(s)${files.length <= 6 ? ' (' + files.join(', ') + ')' : ''}`;
+  const given = paths.length ? paths : [ROOT, ...(LEARNER_OUTSIDE && fs.existsSync(LEARNER) ? [LEARNER] : [])];
+  const byRepo = new Map(), skipped = [];
+  for (const p of given) {
+    const abs = realish(path.isAbsolute(p) ? p : path.join(ROOT, p));
+    const repo = dataRepo(fs.existsSync(abs) && fs.statSync(abs).isDirectory() ? abs : path.dirname(abs));
+    if (!repo) { skipped.push(p); continue; }
+    (byRepo.get(repo) || byRepo.set(repo, []).get(repo)).push(path.relative(repo, abs) || '.');
+  }
+  if (!byRepo.size) return paths.length ? `not in a git repo: ${paths.join(' ')}` : 'data home is not a git repo';
+  const label = paths.length ? ` in ${paths.map(p => path.isAbsolute(p) ? shown(p) : p).join(' ')}` : '';
+  const out = [];
+  for (const [repo, only] of byRepo) {
+    const git = (...a) => execFileSync('git', a, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    git('add', '-A', '--', ...only);
+    if (!git('status', '--porcelain', '--', ...only).trim()) continue;
+    // just these paths (whatever else is staged stays staged for its owner)
+    git('commit', '-q', '-m', message || 'Update learning data', '--', ...only);
+    const files = git('diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD').trim().split('\n').filter(Boolean);
+    out.push(`committed ${git('rev-parse', '--short', 'HEAD').trim()}${byRepo.size > 1 ? ` in ${shown(repo)}` : ''}: ${files.length} file(s)${files.length <= 6 ? ' (' + files.join(', ') + ')' : ''}`);
+  }
+  if (skipped.length && paths.length) out.push(`not in a git repo: ${skipped.join(' ')}`);
+  return out.join('\n') || 'nothing to commit' + label;
 }
-// A path given on the command line -> relative to the data home. Accepts paths relative to the data
-// home (topics/x/terms), to the working directory (data/topics/x), or absolute; refuses ones outside.
+// A path for people and agents: relative to the working directory when that's shorter.
+function shown(p) { const r = path.relative(process.cwd(), p); return r.length < p.length ? r || '.' : p; }
+// A path given on the command line -> a path for commitData: relative to the data home when it's in
+// there, else absolute (in the learner folder, when config.json moves it out). Accepts paths relative
+// to the data home (topics/x/terms, learner/profile.md), to the working directory (data/topics/x), or
+// absolute; refuses ones outside both.
 function dataPath(p) {
-  const fromCwd = path.resolve(p);
-  const abs = path.isAbsolute(p) ? p : fromCwd.startsWith(ROOT + path.sep) || fromCwd === ROOT ? fromCwd : path.join(ROOT, p);
-  const rel = path.relative(ROOT, abs);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) throw new Error(`${p} is outside the data home (${ROOT})`);
-  return rel || '.';
+  const R = realish(ROOT), L = realish(LEARNER);
+  const fromCwd = realish(p);
+  let abs;
+  if (path.isAbsolute(p) || inside(fromCwd, R) || inside(fromCwd, L)) abs = fromCwd;
+  else if (LEARNER_OUTSIDE && /^learner(\/|$)/.test(p)) abs = path.join(L, p.slice('learner'.length));
+  else abs = realish(path.join(ROOT, p));
+  if (inside(abs, R)) return path.relative(R, abs) || '.';
+  if (inside(abs, L)) return abs;
+  throw new Error(`${p} is outside the data home (${ROOT})${LEARNER_OUTSIDE ? ` and the learner folder (${shown(LEARNER)})` : ''}`);
 }
 
 // ---------- topics ----------
@@ -458,7 +515,7 @@ function setLevel(slug, skillId, level, reason) {
 }
 
 module.exports = {
-  CODE, ROOT, TOPICS, LEARNER, REPORTS, FEEDBACK, CONFIG, STATE, INBOX, PORT,
+  CODE, ROOT, TOPICS, LEARNER, LEARNER_OUTSIDE, REPORTS, FEEDBACK, CONFIG, STATE, INBOX, PORT, realish, dataRepo, shown,
   ensureDir, readText, readJSON, writeJSON, localDate, config, ensureHome, commitData, dataPath,
   listTopics, topicDir, slugify, createTopic, readPages, PAGE_NAME, readTermPages, termPagePath, termPagesDir, termSlug, TERM_PAGE, pageForTerm, MEDIA_NAME, mediaDir, readMedia, loadTopicMeta, saveTopicMeta,
   walkSkills, findSkill, leafSkills, parseGlossary, readGlossary, addTerm, META_KEYS,

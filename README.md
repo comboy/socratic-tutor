@@ -1,4 +1,4 @@
-# learn
+# Socratic tutor
 
 A Socratic tutor for anything, up to research level, running on your own machine. An AI coding
 agent (Claude Code by default) is the tutor, and a small local web UI is where you read, answer,
@@ -15,14 +15,18 @@ needs them. And while you're away, background agents work through your feedback 
 your sessions for gaps, and write wiki pages from what you covered.
 
 ```
+git clone https://github.com/comboy/socratic-tutor.git && cd socratic-tutor
 bin/learn                    # the only command you need: web server + tutor + browser.
                              # Leave it running; running it again just opens the browser.
 ```
 
+To look around first without an agent: `bin/learn demo` (sample topics, a fake tutor that
+echoes) or `bin/learn demo --empty` (the first-run screen).
+
 Everything else happens in the browser: pick or create a topic, and the tutor loads it when you
 write. After a break, a "welcome back" bar offers a recap (or you just carry on). For developers:
-`bin/learn demo [--empty]` (the UI on sample data with a fake tutor), `bin/learn test` (acceptance
-tests, needs Chrome), `bin/learn help` (all commands, including the tutor's).
+`bin/learn test` (acceptance tests, needs Chrome), `bin/learn help` (all commands, including the
+tutor's); `AGENTS.md` is where an agent working on the code starts.
 
 Requirements: Node 22+, [Claude Code](https://claude.com/claude-code) (or another CLI agent, see
 "Agents" below), and Chrome or Chromium for the tests. No npm install: d3, marked and KaTeX are
@@ -79,8 +83,27 @@ data/reports/           what the background jobs did
 data/config.json        optional settings (agent, thresholds)
 ```
 
-Set `LEARN_HOME=/some/dir` to keep it elsewhere. The code in this repo contains no personal data,
-so it can be shared as is.
+The code in this repo contains no personal data, so it can be shared as is, and your data is
+versioned on its own: push `data/` to a private repo of yours to back it up or to use it on another
+machine.
+
+**Keeping it in a repo of your own.** If you'd rather have one repo for everything you learn (this
+app's data next to other tools' or your own notes), make `data/` a symlink to a folder in it. What
+you know and how you learn (`learner/`) isn't specific to this app, so it can sit at the top of that
+repo for other tools and agents to read, with `"learner": "../learner"` in the app's `config.json`:
+
+```
+my-learning/               your repo
+├── learner/               profile.md, knowledge.md, pills/: about you, for any tool or agent
+└── tutor/                 this app's data home: topics/, feedback.md, reports/, config.json
+```
+
+```
+ln -s ../my-learning/tutor data     # in this checkout; or set LEARN_HOME=/path/to/my-learning/tutor
+```
+
+The app then commits only its own folders in that repo and leaves the rest alone (`bin/learn
+status` shows where everything is).
 
 ## Agents
 

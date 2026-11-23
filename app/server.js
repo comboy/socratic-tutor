@@ -288,6 +288,8 @@ function watch() {
       else if (rel.startsWith('learner') || rel === 'feedback.md' || rel.startsWith('reports')) debounce('learner', () => broadcast({ type: 'learner' }), 200);
     });
   } catch {}
+  // the learner folder, when config.json keeps it outside the data home
+  if (S.LEARNER_OUTSIDE) try { S.ensureDir(S.LEARNER); fs.watch(S.LEARNER, { recursive: true }, () => debounce('learner', () => broadcast({ type: 'learner' }), 200)); } catch {}
   // UI files: tell browsers the UI changed (they reload when idle, or offer a button)
   try {
     fs.watch(WEB, { recursive: true }, (_ev, rel) => { if (rel && !rel.startsWith('vendor')) debounce('web', () => broadcast({ type: 'reload-ui', file: rel }), 400); });

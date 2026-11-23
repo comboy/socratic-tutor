@@ -166,6 +166,44 @@ async function main() {
       assert(all.status === 0 && /background job "wiki" is running/.test(all.stderr) && !git('status', '--porcelain').replace(/^\?\? state\/\n?/m, '').trim(), all.stderr + git('status', '--porcelain'));
     } finally { fs.rmSync(G, { recursive: true, force: true }); }
   });
+  await test('data home as a folder of a bigger repo, through a data/ symlink, learner folder kept outside it (config.json "learner"): no nested repo, a learner/ link, commits only ours, real paths shown', async () => {
+    const B = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-repo-')), L = path.join(os.tmpdir(), 'learn-link-' + process.pid), F = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-fresh-'));
+    const id = { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.com', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.com' };
+    const genv = { ...ENV, ...id, LEARN_HOME: L }; delete genv.LEARN_NO_GIT;
+    const git = (...a) => execFileSync('git', a, { cwd: B, env: genv, encoding: 'utf8' });
+    const run = (...a) => spawnSync(process.execPath, [BIN, ...a], { env: genv, encoding: 'utf8', cwd: CODE });
+    const ensureHome = env => execFileSync(process.execPath, ['-e', `require(${JSON.stringify(path.join(CODE, 'app', 'store.js'))}).ensureHome()`], { env });
+    try {
+      git('init', '-q');
+      fs.cpSync(path.join(CODE, 'test', 'fixture', 'topics'), path.join(B, 'tutor', 'topics'), { recursive: true });
+      fs.cpSync(path.join(CODE, 'test', 'fixture', 'learner'), path.join(B, 'learner'), { recursive: true });
+      fs.writeFileSync(path.join(B, 'tutor', 'config.json'), JSON.stringify({ learner: '../learner' }));
+      fs.writeFileSync(path.join(B, 'other-tool.md'), 'not ours\n');
+      fs.symlinkSync(path.join(B, 'tutor'), L);
+      ensureHome(genv);
+      assert(!fs.existsSync(path.join(B, 'tutor', '.git')), 'a nested repo was created');
+      assert(fs.lstatSync(path.join(B, 'tutor', 'learner')).isSymbolicLink() && fs.readFileSync(path.join(L, 'learner', 'profile.md'), 'utf8') === fs.readFileSync(path.join(B, 'learner', 'profile.md'), 'utf8'), 'learner/ link');
+      assert(/^\/learner$/m.test(fs.readFileSync(path.join(B, 'tutor', '.gitignore'), 'utf8')), 'link gitignored');
+      const c1 = run('commit', 'first');
+      assert(c1.status === 0 && /^committed \w+: /.test(c1.stdout), c1.stdout + c1.stderr);
+      const tracked = git('ls-files');
+      assert(/^tutor\/topics\/demo\/topic\.json$/m.test(tracked) && /^learner\/profile\.md$/m.test(tracked) && !/^tutor\/(learner|state)\b/m.test(tracked), tracked);
+      assert(git('status', '--porcelain').trim() === '?? other-tool.md', 'committed what isn\'t ours: ' + git('status', '--porcelain'));
+      // the reviewer edits the profile by its usual path and commits just that
+      fs.appendFileSync(path.join(L, 'learner', 'profile.md'), '\n- a new observation\n');
+      fs.appendFileSync(path.join(L, 'topics', 'demo', 'progress.md'), '\ntutor edit\n');
+      const c2 = run('commit', 'review: profile', '--', 'learner/profile.md');
+      assert(c2.status === 0 && /1 file\(s\) \(learner\/profile\.md\)/.test(c2.stdout), c2.stdout + c2.stderr);
+      assert(/^ M tutor\/topics\/demo\/progress\.md$/m.test(git('status', '--porcelain')), 'the tutor\'s file was committed');
+      assert(/1 file\(s\) \(tutor\/topics\/demo\/progress\.md\)/.test(run('commit', 'tutor', '--', path.join(L, 'topics/demo/progress.md')).stdout), 'path through the data/ symlink');
+      assert(/outside the data home/.test(run('commit', 'x', '--', path.join(B, 'other-tool.md')).stderr), 'refuses a file of another tool');
+      assert(/Learner profile \([^)]*learner\/profile\.md, all topics\)/.test(run('resume', 'demo').stdout), 'resume names the profile');
+      assert(new RegExp(`learner: \\S*${path.basename(B)}/learner`).test(run('status').stdout), 'status shows the real learner folder');
+      // a fresh data home outside any repo still gets a repo of its own
+      ensureHome({ ...genv, LEARN_HOME: F });
+      assert(fs.existsSync(path.join(F, '.git')) && fs.existsSync(path.join(F, 'learner', 'profile.md')) && !fs.existsSync(path.join(F, 'config.json')), 'fresh home');
+    } finally { for (const d of [B, F]) fs.rmSync(d, { recursive: true, force: true }); fs.rmSync(L, { force: true }); }
+  });
   await test('note / focus / summary / term / tree / log commands', async () => {
     assert(/added n5 \(hole, 4\.1\)/.test(learn('note', 'hole', '--topic', 'demo', '--skill', '4.1', 'test hole')), 'note add');
     assert(/closed n5/.test(learn('note', 'done', 'n5', 'fixed', '--topic', 'demo')), 'note done');

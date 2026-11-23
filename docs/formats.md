@@ -28,7 +28,11 @@ never contains any. Layout:
 | `config.json` | optional settings (below) | the learner |
 | `state/` | runtime only (inbox, session, jobs), gitignored | the app |
 
-The data home is its own git repo: commit it with `bin/learn commit "message"`.
+The data home is versioned apart from the code: its own git repo, or a folder of a bigger repo of
+the learner's (then `data/` is a symlink to it). `learner/` can live outside the data home
+(config.json's `learner`); a `learner` link keeps the paths above working either way. Commit with
+`bin/learn commit "message" [-- paths]`: it commits the data home and the learner folder in
+whichever repo holds each, and nothing else in a shared repo. `bin/learn status` shows where both are.
 
 ## Markdown extensions (what the UI renders)
 
@@ -296,9 +300,15 @@ A checklist: `- [ ] 2026-11-21 (learner, llms · learn): text`. The builder job 
   "handoffMessages": 80,
   "agentMcp": false,
   "tutorPermissionMode": "auto",
-  "jobPermissionMode": "auto"
+  "jobPermissionMode": "auto",
+  "learner": "../learner"
 }
 ```
+
+- `learner`: where `learner/` (profile, knowledge, pills) lives, relative to the data home's real
+  location or absolute. Default: `learner/` inside the data home. Set it when the learner folder is
+  shared with other tools, e.g. a learning repo with `learner/` at its top and this app's data in
+  `tutor/`. The app links `<data home>/learner` to it (gitignored).
 
 - `agent`: `"claude"` (default) or `{ "cmd": "codex", "interactive": ["{prompt}"], "headless":
   ["exec", "{prompt}"] }` for any other CLI agent (see `app/agent.js`).
