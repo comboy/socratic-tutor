@@ -7,7 +7,7 @@ const { execFileSync } = require('child_process');
 // CODE: this checkout (app/, web/, docs/): shareable, no personal data.
 // ROOT: the learner's data home (topics/, learner/, feedback.md, reports/, state/). Defaults to
 // data/ inside the checkout, which is gitignored there and is its own git repo. data/ may also be a
-// symlink to a folder elsewhere, for example inside a bigger repo of your own (see README, "Your
+// symlink to a folder elsewhere, for example inside a bigger repo of your own (see docs/how-it-works.md, "Your
 // data"); LEARN_HOME points elsewhere too (tests, demo). ROOT keeps the path as given, so agents
 // keep seeing data/…; git and the learner folder use the real one (realish).
 // LEARNER: who the learner is and what they know across topics (profile.md, knowledge.md, pills/).

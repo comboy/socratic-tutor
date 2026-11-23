@@ -5,6 +5,9 @@ description: "Structured tutoring when the user explicitly asks to be taught, qu
 
 # Socratic tutor
 
+Based on Jane Street's socratic-tutor skill (https://github.com/janestreet/agent_skills, MIT): the
+teaching method is theirs, grown here into a web UI with agents that run it.
+
 The method and the workflow are agent-neutral and live in the repo:
 
 - `docs/method.md`: how to teach (explain a chunk, one conceptual check, strict levels, spaced review).
