@@ -227,9 +227,27 @@ const routes = {
   },
 };
 
+// Only this machine's own pages and tools may talk to the server. Any website the learner visits can
+// send requests to localhost, and the tutor and the jobs are agents that run commands, so: the Host
+// must be localhost (a DNS-rebinding page would carry its own name), and a request that changes
+// something must come from the app's own origin (browsers always send Origin on a cross-site POST;
+// the CLI sends none) and carry JSON (a cross-site form or no-cors fetch can't set that type).
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'].map(h => `${h}:${S.PORT}`));
+function refused(req) {
+  if (!LOCAL_HOSTS.has(String(req.headers.host || '').toLowerCase())) return 'unexpected Host';
+  if (req.method === 'GET' || req.method === 'HEAD') return null;
+  const origin = req.headers.origin;
+  if (origin && !LOCAL_HOSTS.has(origin.replace(/^http:\/\//, '').toLowerCase())) return 'cross-origin request';
+  const type = req.headers['content-type'];
+  if ((type || Number(req.headers['content-length']) > 0 || req.headers['transfer-encoding']) && !/^application\/json\b/i.test(type || '')) return 'expected application/json';
+  return null;
+}
+
 async function handle(req, res) {
   const url = new URL(req.url, 'http://x');
   const p = decodeURIComponent(url.pathname);
+  const no = refused(req);
+  if (no) return send(res, 403, { error: `refused: ${no}` });
   try {
     if (p === '/api/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });

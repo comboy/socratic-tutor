@@ -9,6 +9,7 @@
 //   --real   also smoke-test rendering of every message in your real topics (read-only copy)
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { launch, chromePath } from './lib/chrome.mjs';
@@ -120,6 +121,21 @@ async function main() {
     assert(/compacted/.test(yes) && no === '', 'hook output wrong');
   });
 
+  await test('the server only answers this machine: a foreign Host, a cross-origin POST and a non-JSON POST are refused; the app\'s own requests work', async () => {
+    const req = (method, p, headers, body) => new Promise((resolve, reject) => {
+      const r = http.request({ host: '127.0.0.1', port: PORT, path: p, method, headers }, res => { let b = ''; res.on('data', c => b += c); res.on('end', () => resolve({ status: res.statusCode, body: b })); });
+      r.on('error', reject); if (body) r.write(body); r.end();
+    });
+    const fb = () => { try { return fs.readFileSync(path.join(HOME, 'feedback.md'), 'utf8'); } catch { return ''; } };
+    const before = fb(), host = `localhost:${PORT}`, body = JSON.stringify({ text: 'from another site' });
+    assert((await req('GET', '/api/topics', { host: 'rebound.example:' + PORT })).status === 403, 'foreign Host read');
+    assert((await req('POST', '/api/feedback', { host, origin: 'https://evil.example', 'content-type': 'application/json' }, body)).status === 403, 'cross-origin POST');
+    assert((await req('POST', '/api/feedback', { host, 'content-type': 'text/plain' }, body)).status === 403, 'text/plain POST');
+    assert((await req('POST', '/api/feedback', { host }, body)).status === 403, 'POST body without a type');
+    assert(fb() === before, 'feedback.md changed');
+    assert((await req('GET', '/api/topics', { host: `127.0.0.1:${PORT}` })).status === 200, 'own GET');
+    assert((await req('POST', '/api/ping', { host, origin: `http://localhost:${PORT}`, 'content-type': 'application/json' }, '{}')).status !== 403, 'own POST');
+  });
   await test('feedback endpoint appends to feedback.md (data home) and never reaches the tutor', async () => {
     const real = realFeedback();
     const jl = journal().length;
