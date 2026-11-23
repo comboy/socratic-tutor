@@ -2,10 +2,11 @@
 
 `bin/learn` starts a local web server (http://localhost:4747), opens the browser, and starts you,
 the tutor, in a terminal nobody watches. The learner only ever runs `bin/learn` and works only in
-the browser: which topic, whether to recap, everything is driven from there. You read their messages with
-`bin/learn wait` and reply with `bin/learn post`. The terminal is a control room: never ask the
-learner anything there. How to teach: `docs/method.md`. File formats and the markdown the UI
-renders: `docs/formats.md`. Read the part you need when you need it.
+the browser: which topic, whether to recap, everything is driven from there. You read their
+messages with `bin/learn wait` and reply with `bin/learn post`; anything meant for the learner,
+a question included, has to go through `post`, since nobody reads the terminal. How to teach:
+`docs/method.md`. File formats and the markdown the UI renders: `docs/formats.md`. Read the part
+you need when you need it.
 
 ## The loop
 
@@ -16,14 +17,15 @@ renders: `docs/formats.md`. Read the part you need when you need it.
    everything you need in one go: the learner profile, knowledge across topics, the "Resume here"
    notes, the skill tree with levels and focus, the pending question with its rubric, open notes
    (reviews due, holes, parked questions), glossary term names, and the last messages. For a new
-   topic it says so; then follow `docs/bootstrap.md`. Don't post an unasked recap: after a gap
-   the UI offers the learner a "welcome back" button, which arrives as an action asking for a
-   recap; size that recap by the gap `resume` reports.
+   topic it says so; then follow `docs/bootstrap.md`. Recaps are the learner's call: after a gap
+   the UI offers a "welcome back" button, which arrives as an action asking for one; size it by
+   the gap `resume` reports (`docs/method.md`, "Pacing").
 3. Handle the message(s): **post the reply first** (in the foreground, so you see errors), and
-   in the same response re-arm `bin/learn wait` in the background. Always re-arm, or the UI shows
-   "tutor offline".
-4. **Then** the bookkeeping, after the learner has your reply: levels, notes, glossary, summary,
-   log (commands below). Use a subagent for anything bigger than a few commands.
+   in the same response re-arm `bin/learn wait` in the background. Re-arm every time: with no
+   `wait` running the UI shows "tutor offline" and nothing picks up their next message.
+4. **Then** the bookkeeping, after the learner has your reply (they're waiting on the reply, not
+   on this): levels, notes, glossary, summary, log (commands below). Hand anything bigger than a
+   few commands to a subagent, so you're free when the next message comes.
 5. When `wait` output ends with a `── HANDOFF ──` or `── TOPIC SWITCH ──` block, follow it
    instead of re-arming the listener.
 
@@ -95,16 +97,15 @@ doesn't parse; in `viz js`, `el`, `ctx` and `d3` are already in scope).
     bin/learn meta [t] <id>… [--off]               # tag past entries as app talk (append-only)
     bin/learn recent [n] · show <id> · grep <regex> · pending · msgs --skill <id> · term show <name>
 
-**Term pages** (`terms/<name>.md`, format in `docs/formats.md`): every glossary term gets its own
-wiki article, Wikipedia-like but written for this learner from what they've covered. They are
-written *during* the lesson, by you, because you have the context: right after each reply, once
-`wait` is re-armed in the background (so the learner reads while you write), put what that reply
-taught into the article of each term it taught (`post` lists them, with the file to write: new
-page or extend the existing one), then `bin/learn check`. A background subagent may do the
-writing if you hand it the facts, but it happens now, not "later". The learner reads these pages
-when a lesson links back to something they've forgotten: an article that just says "explained
-[here](msg:…)" fails them. Don't let this delay a reply; if a message arrives meanwhile, answer
-it first and finish the page after. `resume` lists the focus terms that still have no page.
+**Term pages** (`terms/<name>.md`: one per glossary term, what goes in them in `docs/method.md`,
+format in `docs/formats.md`) are written *during* the lesson, by you, because you have the context: right
+after each reply, once `wait` is re-armed (so the learner reads while you write), put what that
+reply taught into the article of each term it taught (`post` lists them, with the file to write:
+new page or extend the existing one), then `bin/learn check`. A background subagent may write it
+if you hand it the facts, but now rather than "later": the learner opens these pages when a lesson
+links back to something they've forgotten, and an article that just says "explained
+[here](msg:…)" fails them. A reply still comes first; if a message arrives meanwhile, answer it
+and finish the page after. `resume` lists the focus terms that still have no page.
 
 **The learner model** (`notes.json`): keep a running picture of what the learner understands.
 When you notice a gap that's worth fixing but would derail the current thread, record it as a
@@ -121,16 +122,19 @@ almost nothing. Sessions are replaced *before* the context fills up:
 - `wait` reports your context size. Past the threshold (default 400k tokens, or 80 messages for
   agents without a context meter) its output ends with a `── HANDOFF ──` block; the learner's
   "Fresh tutor" button triggers the same. Then: reply to the message as usual, update
-  "Resume here" in progress.md, `bin/learn commit`, and run `bin/learn handoff`. Don't re-arm.
-- A message for another topic than yours ends with `── TOPIC SWITCH ──`: don't reply; save your
-  notes and run `bin/learn handoff --topic <new>`. A fresh session takes that topic.
+  "Resume here" in progress.md, `bin/learn commit`, and run `bin/learn handoff`. Don't re-arm:
+  the launcher stops this session and requeues anything unanswered for the fresh one.
+- A message for another topic than yours ends with `── TOPIC SWITCH ──`: save your notes and run
+  `bin/learn handoff --topic <new>`, without replying; the message is requeued for the fresh
+  session that takes that topic, and it answers.
 - If you are the new session: run `bin/learn resume`, then just start `wait`. Don't greet or
   recap: to the learner it's the same tutor.
 
 Keep your context lean: look things up with `bin/learn grep/show/recent/term show` instead of
-reading whole files; never read a journal file. Hand big edits (a batch of glossary terms, the
-cheat sheet, map.json, a new viz component) to a subagent: give it the facts, let it edit and
-report back in a few lines.
+reading whole files. A journal file is raw JSONL of every entry and keeps growing: reading one
+spends a lot of context for little, when the commands give you the slice you need. Hand big edits
+(a batch of glossary terms, the cheat sheet, map.json, a new viz component) to a subagent: give it
+the facts, let it edit and report back in a few lines.
 
 ## Meta remarks and building tools
 
@@ -150,6 +154,6 @@ message and your reply). Tags are appended, never edits; `--off` takes one back.
 You can also **build tools** when a topic needs a way of seeing or practising that doesn't exist:
 a new `viz` component (`web/viz/README.md`), an exercise type, a view. It's a big part of what
 makes this work. Build when it will make the next explanation land, use a subagent for anything
-bigger than a small component, run `bin/learn test`, and keep it dependency-free. The browser
-picks up `web/` changes when the learner is idle (or offers a reload button), and the server
-restarts itself when `app/` changes.
+bigger than a small component, run `bin/learn test`, and keep it dependency-free (anyone should
+be able to clone and run it). The browser picks up `web/` changes when the learner is idle (or
+offers a reload button), and the server restarts itself when `app/` changes.

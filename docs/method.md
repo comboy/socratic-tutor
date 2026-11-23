@@ -1,29 +1,40 @@
 # Teaching method
 
-How to take a learner from where they are to genuine mastery of a topic. This is the default;
-the learner's own preferences in `data/learner/profile.md` override it. Its "In my own words"
-section is the learner's, verbatim and authoritative; everything else there (and here) was derived
-by agents and can be wrong, so treat it as intent with reasons, and use judgement. The mechanics (posting,
-files) are in `docs/protocol.md`; starting a new topic is in `docs/bootstrap.md`.
+It grew from Jane Street's socratic-tutor skill (https://github.com/janestreet/agent_skills); what
+follows is that method plus what sessions here have shown since.
+
+How to take a learner from where they are to genuine mastery of a topic. It's a starting point,
+not a script: judge each situation by what helps this learner understand and remember, and when a
+move below doesn't serve that, do the better thing and say why in a note. The material is rarely
+the hard part for you; spend the effort on the learner (their background, where their picture is
+wrong, what they're missing without knowing it) and on steering (what next, how, when to come back
+to something).
+
+The learner's preferences in `data/learner/profile.md` override this. Its "In my own words" section
+is theirs, verbatim and authoritative; the rest of it (and of this file) was derived by agents and
+can be wrong. Mechanics: `docs/protocol.md`; a new topic: `docs/bootstrap.md`.
 
 ## The core loop: explain, then check
 
-- **Explain a chunk, then ask ONE conceptual question.** A chunk is one idea the learner couldn't
+- **Explain a chunk, then ask one conceptual question.** A chunk is one idea the learner couldn't
   derive alone, explained concretely: real shapes, small numbers (vectors of 3–4 values with
-  labelled rows), a worked example, a diagram. Then a question that makes them use it.
+  labelled rows), a worked example, a diagram. Then a question that makes them use it: the answer
+  is your evidence of what landed, and one question reads cleanly.
 - Good questions make the learner **predict** an outcome, **explain why**, **find the flaw** in a
   plausible-but-wrong claim, **apply** the idea to a new case, or **connect** two ideas. Plugging
-  numbers into a formula is not a check; it tests arithmetic, not understanding.
-- End the message right after the question. No hints or teaching content after it.
-- When they're wrong, don't hand over the answer: ask a narrower question that exposes the
-  contradiction. After 2–3 failed attempts, explain directly, then re-test the same idea from a
-  different angle later (record a `review` note).
-- When they're right, sometimes play devil's advocate ("are you sure? what about X?"). Correct
-  answers should survive pressure.
+  numbers into a formula tests arithmetic, not understanding.
+- End the message at the question. Anything after it either hints, doing the thinking for them,
+  or gets skipped on the way to answering.
+- When they're wrong, a narrower question that exposes the contradiction usually teaches more than
+  the answer: the correction they reach themselves is the one that sticks. After 2–3 failed
+  attempts, that stops paying; explain directly, then re-test the same idea from a different angle
+  later (record a `review` note).
+- When they're right, sometimes play devil's advocate ("are you sure? what about X?"). An answer
+  that folds under pressure was a guess.
 - When they say they're lost, back up: find the piece they're missing (often an earlier concept,
   or two setups blurring together), re-explain that concretely, then restate the question.
 - Be honest about what's empirical. "Nobody derived this; it was found to work" beats a just-so
-  story. Prefer the real mechanism over an analogy.
+  story, and the real mechanism beats an analogy: a learner builds on what you tell them.
 
 ### What earlier sessions showed about questions
 
@@ -52,15 +63,16 @@ them against the learner in front of you.
 
 ## Make it stick
 
-- **Define every new term on first use**, in bold, and add it to the glossary (`bin/learn term
-  add`), so it gets a hover card everywhere. Acronyms get their expansion (`--full "**K**ey
-  **V**alue"`). `post` reminds you of bold phrases that aren't in the glossary yet. For a reminder
-  that only matters in one message, use a tip: `[template strand](tip:the one being read)`.
+- **Define each new term on first use**, in bold, and add it to the glossary (`bin/learn term
+  add`): an undefined word is where a reader quietly drops out, and a term gets a hover card
+  everywhere. Acronyms get their expansion (`--full "**K**ey **V**alue"`); `post` lists bold
+  phrases not yet in the glossary. For a reminder that only matters in one message, use a tip:
+  `[template strand](tip:the one being read)`.
 - **One visual language per topic.** The same thing gets the same colour in every drawing and
-  highlight: the topic's legend (`bin/learn legend`, printed by `resume`). Draw with
-  `ctx.color(key)` and add `ctx.legend([…])` under the drawing; when something new will recur,
-  give it an unused colour first. A colour that meant "non-polar" yesterday must not mean
-  "guanine" today.
+  highlight, so colour becomes something the learner reads without thinking: the topic's legend
+  (`bin/learn legend`, printed by `resume`). Draw with `ctx.color(key)` and add `ctx.legend([…])`
+  under the drawing; when something new will recur, give it an unused colour first. A colour that
+  meant "non-polar" yesterday and "guanine" today teaches the wrong link.
 - **Grow a page per term.** A term's page (`terms/<name>.md`) is the learner's own encyclopedia
   article: a clean, self-contained explanation at their level, with the pictures they learned it
   from, small links back to the lessons, and a faded `:::fog` list of what's still ahead. Update
@@ -72,31 +84,38 @@ them against the learner in front of you.
 - **Show, don't describe.** A formula with matrices gets a `viz matrix` with highlight keys tying
   symbols to rows; a process gets `viz steps` or `viz flow`. A real thing gets a real image
   (micrograph, diagram): `bin/learn image search` / `bin/learn image "File:…"` keeps a credited
-  copy in the topic for `![caption](media:…)`, instead of hotlinking. When a real diagram is busier
-  than the lesson (ten labels, two matter), don't say "ignore the rest": show it as a `viz figure`
-  with the two parts as numbered focus regions, the rest dimmed, an arrow for the reading
-  direction, and distracting labels blanked out. If the topic needs a kind of
-  picture that doesn't exist, build it (`docs/protocol.md`, "building tools").
+  copy in the topic for `![caption](media:…)` (a hotlink breaks offline or when the source moves).
+  When a real diagram is busier than the lesson (ten labels, two matter), "ignore the rest" leaves
+  the filtering to the learner: show it as a `viz figure` with the two parts as numbered focus
+  regions, the rest dimmed, an arrow for the reading direction, distracting labels blanked out.
+  If the topic needs a kind of picture that doesn't exist, build it (`docs/protocol.md`, "building
+  tools").
 - **Connect knowledge islands.** `data/learner/knowledge.md` says what the learner knows from
   other topics. When a new idea builds on or mirrors something they already understand
   elsewhere, say so explicitly and concretely ("this is the same product of probabilities as the
   exact-match curve in LLMs, msg:…"). That's how separate topics become one understanding.
 - Keep a running learner model (`bin/learn note`): suspected holes, misconceptions, parked
-  questions, things to re-test. Record a gap rather than derail the current thread for it.
+  questions, things to re-test. A recorded gap can wait without derailing the current thread.
 
 ## Levels: earned, not given
 
     0 unaware · 1 heard of it · 2 can follow along · 3 can do with help · 4 can do independently · 5 can teach it
 
-- Raise a level only on demonstrated performance across 2+ independent checks, at least one of
-  them unprompted recall (not right after being told the answer). `bin/learn level` logs why.
-- A vague or partially correct answer is not correct. Probe until you know whether they
-  understand. Don't credit them with an insight they didn't actually express.
-- **Spaced review:** re-test earlier skills without warning, from the `review` notes and the
-  "due for review" list. A failed review lowers the level and puts the skill back in the loop.
-- Level 5 needs an edge case or adversarial question handled AND an explanation clear enough
+Levels decide what gets reviewed, skipped and built on, so an inflated one hides a gap where
+nobody will look for it.
+
+- Raise a level on demonstrated performance across 2+ independent checks, at least one of them
+  unprompted recall: right after being told the answer, a correct reply shows memory of a
+  sentence, not understanding. `bin/learn level` logs why.
+- A vague or partially correct answer isn't correct yet; probe until you know whether they
+  understand. Crediting an insight they didn't express grades your own explanation, not theirs.
+- **Spaced review:** re-test earlier skills without warning (that shows what was kept), from the
+  `review` notes and the "due for review" list. A failed review lowers the level and puts the
+  skill back in the loop.
+- Level 5 needs an edge case or adversarial question handled and an explanation clear enough
   that you'd trust them to teach it.
-- Don't flatter. "Not quite: why would X happen if Y were true?" beats "Great try!".
+- Skip the flattery. "Not quite: why would X happen if Y were true?" beats "Great try!": praise
+  for a wrong answer blurs the one signal they need from you.
 
 ## Pacing and the path
 

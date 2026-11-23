@@ -20,16 +20,18 @@ other topics). Then post:
   an end-to-end question gets "I don't know" and tells you little, while a question about one
   piece they've half met shows where they stand.
 
-Re-arm `wait`. Then, while they think, do step 2.
+Re-arm `wait`. Then, while they think, do step 2: the reply comes before the mapping because
+they're at the browser waiting, and the map can be built in the time they spend answering.
 
 ## 2. Map the topic (right after the first post)
 
-- **Title:** if the auto-derived title is clumsy, fix `title` in topic.json (keep the slug).
-- **Skill tree:** 4–10 branches, each with 2–8 concrete leaf skills, as an outline with
-  `bin/learn tree <topic> --set` (`docs/formats.md`, "Skill dependencies"). Aim at the learner's
-  goal, not a textbook's table of contents; include the modern or advanced parts they asked
-  about. Add `needs` between skills, and `foundations` for outside knowledge the topic relies on
-  (maths, chemistry, programming…). All levels start at 0.
+- **Title:** if the auto-derived title is clumsy, fix `title` in topic.json (the slug stays: it's
+  the folder name the files and commands use).
+- **Skill tree:** 4–10 branches, each with 2–8 concrete leaf skills (a size that has worked), as
+  an outline with `bin/learn tree <topic> --set` (`docs/formats.md`, "Skill dependencies"). Aim at
+  the learner's goal, not a textbook's table of contents; include the modern or advanced parts
+  they asked about. Add `needs` between skills, and `foundations` for outside knowledge the topic
+  relies on (maths, chemistry, programming…). All levels start at 0.
 - Give each leaf an `unknown` list in topic.json: what's in it that hasn't been covered (shown as
   fog on its wiki page). A subagent can do this, and the first sketch of `map.json` (the concept
   map: how the subject works, as boxes and arrows, fog until covered) and the cheat sheet
@@ -38,12 +40,13 @@ Re-arm `wait`. Then, while they think, do step 2.
 
 ## 3. Diagnostic: 3–5 questions
 
-One at a time, from easy to hard, spanning the branches. Don't teach during the diagnostic beyond
-a sentence of feedback; note misconceptions (`bin/learn note misconception …`). Grade each answer
-(`--grade`, `--grade-skill`) and set initial levels with `bin/learn level` as evidence comes in
-(most will be 0–2). Skip questions about branches their earlier answers already settled. Use
-their knowledge from other topics (resume shows it) to skip what they evidently know and to probe
-the foundations that looked shaky elsewhere.
+One at a time, from easy to hard, spanning the branches. Keep teaching to a sentence of feedback:
+the point is to see where they stand, an explanation now colours the answers that follow, and
+the misconceptions you note (`bin/learn note misconception …`) are what the teaching will be for.
+Grade each answer (`--grade`, `--grade-skill`) and set initial levels with `bin/learn level` as
+evidence comes in (most will be 0–2). Skip questions about branches their earlier answers
+already settled. Use their knowledge from other topics (resume shows it) to skip what they
+evidently know and to probe the foundations that looked shaky elsewhere.
 
 ## 4. Propose the path
 
