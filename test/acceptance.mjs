@@ -201,6 +201,26 @@ async function main() {
     } finally { fs.writeFileSync(f, orig); }
     assert(!/Possibly stale/.test(learn('resume', 'demo')), 'clean progress.md: no warning');
   });
+  await test('share check finds personal traces in a code repo (topic titles, home path, data files in history); share export makes a fresh one-commit repo', async () => {
+    const R = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-share-')), X = path.join(os.tmpdir(), 'learn-share-x-' + process.pid);
+    const g = (...a) => execFileSync('git', a, { cwd: R, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const run = (...a) => spawnSync(process.execPath, [BIN, 'share', ...a], { env: ENV, encoding: 'utf8' });
+    try {
+      g('init', '-q'); g('config', 'user.email', 't@example.invalid'); g('config', 'user.name', 'Test Person');
+      fs.writeFileSync(path.join(R, 'clean.md'), 'Nothing here.\n'); g('add', '-A'); g('commit', '-qm', 'init');
+      const ok = run('check', '--dir', R);
+      assert(ok.status === 0 && /nothing personal found/.test(ok.stdout), ok.stdout + ok.stderr);
+      fs.mkdirSync(path.join(R, 'topics')); fs.writeFileSync(path.join(R, 'topics/x.md'), 'x'); g('add', '-A'); g('commit', '-qm', 'Session 2: lesson'); g('rm', '-rq', 'topics'); g('commit', '-qm', 'move data out');
+      fs.writeFileSync(path.join(R, 'leak.md'), `My topic: How LLMs work (demo), notes in ${os.homedir()}/x\n`); g('add', '-A'); g('commit', '-qm', 'leak');
+      const bad = run('check', '--history', '--dir', R);
+      assert(bad.status === 1 && /your topic[\s\S]*leak\.md:1  \[How LLMs work \(demo\)\]/.test(bad.stdout) && /home path[\s\S]*leak\.md:1/.test(bad.stdout)
+        && /lesson commit[\s\S]*Session 2/.test(bad.stdout) && /data files in history[\s\S]*topics\/x\.md/.test(bad.stdout) && /share export/.test(bad.stdout), bad.stdout);
+      const ex = run('export', X);
+      assert(ex.status === 0 && fs.existsSync(path.join(X, 'bin/learn')) && fs.existsSync(path.join(X, 'AGENTS.md')) && !fs.existsSync(path.join(X, 'data')), ex.stdout + ex.stderr);
+      assert(execFileSync('git', ['rev-list', '--count', 'HEAD'], { cwd: X, encoding: 'utf8' }).trim() === '1', 'one commit');
+      assert(/not empty/.test(run('export', X).stderr), 'refuses a non-empty dir');
+    } finally { fs.rmSync(R, { recursive: true, force: true }); fs.rmSync(X, { recursive: true, force: true }); }
+  });
   await test('glossary metadata: full and parts parse; entries without them are unchanged', async () => {
     const t = await api('/api/topic/demo');
     const bpe = t.glossary.find(g => g.term === 'BPE'), kv = t.glossary.find(g => g.term === 'KV cache'), tok = t.glossary.find(g => g.term === 'token');

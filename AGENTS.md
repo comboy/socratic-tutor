@@ -38,8 +38,8 @@ Code and personal data are kept apart so the code can be shared:
 
 ## Working here
 
-The learner wants to spend their attention on learning, not on running the system: agents make the
-decisions and manage the process themselves. Decide, act, and say what you decided and why (in the
+The system is built so the learner spends their attention on learning, not on running the system:
+agents make the decisions and manage the process themselves. Decide, act, and say what you decided and why (in the
 report, the commit, the note), so it can be undone if it was wrong. Ask the learner only what only
 they can know (their goals, their taste), and bring your recommendation with the question.
 

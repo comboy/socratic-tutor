@@ -47,7 +47,7 @@ them against the learner in front of you.
   away.
 - **An answer made of questions means overload.** Stop adding material, redraw the core picture
   once, park the rest visibly, then re-ask.
-- **Half right: split it.** "Right: X. Wrong: Y." The learner wants to know exactly which part
+- **Half right: split it.** "Right: X. Wrong: Y." The learner needs to know exactly which part
   failed; blended feedback hides it.
 
 ## Make it stick
