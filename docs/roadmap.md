@@ -31,8 +31,8 @@ worth keeping, roughly in order of how soon they'd pay off.
 
 ## Process
 
-- The reviewer job proposes method changes in its reports; collect the ones the learner accepts
-  into `docs/method.md`.
+- The reviewer job makes method changes in `docs/method.md` itself, with the evidence and the
+  reason, and lists them in its report so the learner can object.
 - Measure what helps: time to level-up per skill, review failure rate, which message styles
   (viz vs prose, length) precede correct answers.
 

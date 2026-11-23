@@ -3,27 +3,38 @@
 Works through the open items in the feedback queue (remarks about the app and the learning process,
 from the learner's feedback box and from tutors) and implements them, with tests.
 
-## Steps
+## Context
 
-1. Read `data/feedback.md` (or `$LEARN_HOME/feedback.md`; `bin/learn status` prints the data dir).
-   Open items are `- [ ]` bullets. Also skim `docs/roadmap.md` for context; it is not a queue.
-   Items from the "About the app" button name their message (`about the app · msg <id>`): the
-   tutor may have answered or promised something there (`bin/learn recent --topic <t>` around it).
-2. For each open item, oldest first, decide:
-   - **Do it** when it's a clear improvement you can make well in this run: a UI fix, a new view
-     or viz, a CLI command, a doc fix, a protocol tweak. Read `AGENTS.md`, `docs/design.md` (the
-     learner's UI taste) and the code around it first. Keep the app dependency-free.
-   - **Ask** when it needs a decision only the learner can make (two reasonable designs, a
-     trade-off they care about). Don't build it; write the question in your report.
-   - **Skip** when it's out of scope or a bad idea; say why in the report.
-3. After each change: run `bin/learn test` (all must pass; add or adjust a test for what you
-   built), and for visual changes look at the screenshots in `test/out/` (Read shows PNGs). Then
-   commit to the code repo with a clear message. One item per commit where possible.
-4. Mark the item done in `data/feedback.md`: change `- [ ]` to `- [x]` and append
-   ` → done: <one line on what changed> (<commit>)`. For "ask" items append ` → question in
-   report <date>` and leave them open. Commit the data repo: `bin/learn commit "feedback: …" -- feedback.md`.
-5. Never break the running app: the server restarts itself when `app/` changes and browsers
-   reload `web/` when the learner is idle, so a half-done edit is visible. Make each commit
-   complete and tested.
+The learner writes feedback in passing, often mid-lesson and among distractions, and then trusts
+the agents to make it real. They've asked agents to make the decisions themselves and manage the
+process, so they can focus on learning. So read each item for the intent behind it, decide how to
+serve it, build it, and say in the report what you decided and why. A choice you're unsure of is
+usually better built (in a way that's easy to change) and explained than left open, because an
+open question waits days for an answer. Ask only what only the learner can know (their goals,
+their taste between two good designs), with your recommendation, and build the parts that don't
+depend on the answer.
 
-If the queue is empty, say so in one line and stop. Don't invent work.
+An item can hold several requests in one breath. Split it, do what you can well in this run, and
+record what's left so the next run picks it up (a new `- [ ]` item in `data/feedback.md` keeps it
+visible).
+
+## Working through the queue
+
+1. Read `data/feedback.md` (`bin/learn status` prints the data dir): open items are `- [ ]`
+   bullets, oldest first. `docs/roadmap.md` has context and ideas; it's not a queue. Items from
+   the "About the app" button name their message (`about the app · msg <id>`): the tutor may have
+   answered or promised something there (`bin/learn recent --topic <t>` around it).
+2. Before changing an area, read the code around it and the docs for it: `AGENTS.md`,
+   `docs/design.md` for anything visual (the learner's UI taste, with reasons), `docs/formats.md`
+   for data files. The app stays dependency-free so anyone can run it.
+3. After each change, `bin/learn test` (add or adjust a test for what you built) and, for visual
+   changes, look at the screenshots in `test/out/` (Read shows PNGs). Then commit to the code
+   repo, one item (or one part of an item) per commit.
+   Why this matters more than usual: the server restarts itself when `app/` changes and browsers
+   reload `web/` when the learner is idle, so whatever you commit is what they see next, and
+   they'll come back to it mid-lesson.
+4. Mark the item in `data/feedback.md`: `- [ ]` → `- [x]` with ` → done: <one line on what
+   changed> (<commit>)`. For something waiting on the learner, leave it open with
+   ` → question in report <date>`. Commit: `bin/learn commit "feedback: …" -- feedback.md`.
+
+If the queue is empty, say so in one line and stop: the planner runs other jobs for other work.

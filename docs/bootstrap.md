@@ -16,7 +16,9 @@ other topics). Then post:
 - **diagnostic question 1**, in a `:::question` block, posted with `--expect`. Make it broad and
   open: "walk me through what you think happens when …" reveals their mental model, vocabulary
   and gaps in one answer. (For LLMs, "walk me through how a model produces its first token"
-  worked very well.)
+  worked very well.) Pitch it so they can answer part of it from what they said they know: for a
+  topic they start near zero, the end-to-end question went 0 for 3 and told little, while a
+  question about one piece they'd half met would have shown where they stand.
 
 Re-arm `wait`. Then, while they think, do step 2.
 

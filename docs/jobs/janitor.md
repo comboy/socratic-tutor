@@ -14,8 +14,9 @@ ones.
    anything that would embarrass the code if it were shared publicly (personal data, hard-coded
    paths, leftover debugging).
 3. Fix what's small and clearly better (behaviour unchanged), in separate commits, each with
-   `bin/learn test` passing. Don't reformat files wholesale, don't rename public commands or file
-   formats (tutors and data depend on them), don't touch `data/`.
+   `bin/learn test` passing. Keep diffs about one thing (a wholesale reformat hides the real
+   change), keep public commands and file formats as they are (tutors and existing data depend on
+   them), and leave `data/` to the other jobs: it's the learner's record, not code.
 4. Bigger refactors: describe them in the report (what, why, rough plan) instead of doing them.
 
 Report: commits made (one line each), then proposed refactors.

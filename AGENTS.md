@@ -36,15 +36,34 @@ Code and personal data are kept apart so the code can be shared:
   `learner/` (profile, knowledge across topics), `feedback.md` (queue for the builder), `reports/`
   (job reports), `config.json`, `state/` (runtime). `LEARN_HOME=/elsewhere` moves it.
 
-## Rules
+## Working here
 
-- **Never put personal learning data in the code repo** (no topic content, names or learner notes
-  in code, docs, tests or commit messages). Fixtures in `test/fixture/` are synthetic.
-- Commit code changes to this repo; commit data with `bin/learn commit "…"` (the data repo). Small
-  commits.
+The learner wants to spend their attention on learning, not on running the system: agents make the
+decisions and manage the process themselves. Decide, act, and say what you decided and why (in the
+report, the commit, the note), so it can be undone if it was wrong. Ask the learner only what only
+they can know (their goals, their taste), and bring your recommendation with the question.
+
+When you write for the next agent (a doc, a job prompt, a note, a hand-over), write for a peer: it
+has the same abilities as you and more context about its own situation than you have now. Give it
+the intent, what you saw (cite ids) and why it matters, and your suggestion; leave the decision to
+it. A rule without its reason can't be adapted when the situation is different, and rules pile up;
+a reason travels.
+
+What the setup depends on, and why:
+
+- **The code repo is meant to be shared**: other people run it with their own agent and learn their
+  own topics. So no personal learning data in it (topic content, names, learner notes), not in
+  code, docs, tests or commit messages; fixtures in `test/fixture/` are synthetic. Everything
+  personal lives in `data/`.
+- Commit code changes to this repo and data with `bin/learn commit "…" -- <paths>` (the data
+  repo; the paths keep another agent's half-written files out of your commit). Small commits are
+  easy to read and to revert.
 - Everything durable goes in files in these repos, not in an agent's private memory, so any agent
-  (or a fresh session) can pick up. Learner preferences: `data/learner/profile.md`. Process ideas:
-  `docs/roadmap.md` or `data/feedback.md`.
-- Never edit a journal file by hand, never touch `data/state/` while a session may be running,
-  and never stop a tutor session you didn't start.
-- Keep the app dependency-free, and keep the UI in line with `docs/design.md`.
+  (or a fresh session) can pick it up. Learner preferences: `data/learner/profile.md` (its "In my
+  own words" section is the learner's own voice, the only part that isn't derived). Process
+  ideas: `docs/roadmap.md` or `data/feedback.md`.
+- The journal is the append-only record that the UI, stats and wiki are built from, so it's
+  changed only through `bin/learn` commands. `data/state/` is a live tutor's queue and session
+  files, and a tutor session you didn't start is someone's lesson: leave both alone.
+- No dependencies and no build step, so anyone can clone and run it; the UI follows
+  `docs/design.md` (the learner's taste, with the reasons).

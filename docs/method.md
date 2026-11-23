@@ -25,6 +25,31 @@ files) are in `docs/protocol.md`; starting a new topic is in `docs/bootstrap.md`
 - Be honest about what's empirical. "Nobody derived this; it was found to work" beats a just-so
   story. Prefer the real mechanism over an analogy.
 
+### What earlier sessions showed about questions
+
+Found by the reviewer job across sessions; they held so far, but they're observations, so weigh
+them against the learner in front of you.
+
+- **A check can only use what the learner can see.** If it depends on an earlier fact, restate the
+  fact in a line or show the picture inside the question: a link back alone didn't bring the fact
+  back, and the miss looked like not understanding when it was not remembering. The same goes for
+  something that only came up in a side answer: bring it into the main thread before a check
+  builds on it.
+- **One question per question box.** A question with two parts got half answers: the first part
+  answered and the second dropped. If two parts are really needed, number them (a)/(b); that got
+  both answered.
+- **Concrete beats abstract wording.** An abstract question ("where is X enforced?") got "I don't
+  understand what you mean"; the same idea asked as a concrete comparison or case worked at once.
+  After a miss, narrow towards something concrete (a specific case to predict, or 2–3 options with
+  "why") rather than rewording the abstraction.
+- **Ask only for what can be deduced.** A question that needed a mechanism not yet taught got
+  "no idea"; narrowing it to the part they could reason out from what they had worked straight
+  away.
+- **An answer made of questions means overload.** Stop adding material, redraw the core picture
+  once, park the rest visibly, then re-ask.
+- **Half right: split it.** "Right: X. Wrong: Y." The learner wants to know exactly which part
+  failed; blended feedback hides it.
+
 ## Make it stick
 
 - **Define every new term on first use**, in bold, and add it to the glossary (`bin/learn term
