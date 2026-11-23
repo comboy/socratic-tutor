@@ -9,12 +9,12 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { spawn, execFileSync } = require('child_process');
+const { spawn } = require('child_process');
 const { randomUUID } = require('crypto');
 const S = require('./store');
 const T = require('./session');
 const { agent, agentEnv } = require('./agent');
-const { api, serverUp } = require('./client');
+const { api, serverUp, openBrowser } = require('./client');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const BIN = path.join(S.CODE, 'bin', 'learn');
@@ -80,7 +80,7 @@ async function start({ topic: openTopic, resume, open = true, claudeArgs = [] })
   const url = `http://localhost:${S.PORT}/${openTopic ? '#/' + openTopic : ''}`;
   // the tutor starts idle and adopts a topic when a message arrives (`-c` keeps the old session's)
   let topic = resume ? (T.readSession()?.topic || null) : null;
-  if (open) { try { execFileSync('open', [url]); } catch { console.log('Open ' + url); } }
+  console.log(`learn: ${url}${open && !openBrowser(url) ? '  (open it in your browser)' : ''}`);
   process.on('SIGINT', () => {});            // Ctrl+C belongs to the agent
   let current = null;
   const shutdown = async (code, signal) => {
@@ -93,6 +93,9 @@ async function start({ topic: openTopic, resume, open = true, claudeArgs = [] })
   };
   process.on('SIGTERM', () => shutdown(143, true));
   process.on('SIGHUP', () => shutdown(129, true));
+  // started by another process that must outlive us (bin/learn demo): stop when it's gone
+  const parent = Number(process.env.LEARN_PARENT_PID) || 0;
+  if (parent) setInterval(() => { try { process.kill(parent, 0); } catch { shutdown(129, true); } }, 2000).unref();
 
   const A = agent();
   T.clearHandoff();
@@ -108,7 +111,11 @@ async function start({ topic: openTopic, resume, open = true, claudeArgs = [] })
     current = run.child;
     T.writeSession({ id, launcherPid: process.pid, claudePid: run.child.pid, agent: A.name, topic, kind, startedAt: new Date().toISOString(), prevTokens });
     const r = await run.done;
-    if (r.error) { console.error(`learn: could not start ${A.cmd()}: ${r.error.message}`); return shutdown(1); }
+    if (r.error) {
+      console.error(`learn: could not start ${A.cmd()}: ${r.error.message}` + (r.error.code === 'ENOENT'
+        ? `\n${A.cmd()} isn't on your PATH. Install it (Claude Code: https://claude.com/claude-code), or set "agent" in ${path.join(S.ROOT, 'config.json')} to another CLI agent (docs/formats.md, "config.json").` : ''));
+      return shutdown(1);
+    }
     if (!r.handoff) return shutdown(r.exit);
 
     // ---- handoff: let the tutor's last tool call return, stop it, start a fresh one

@@ -21,4 +21,10 @@ function api(method, p, body, timeout = 1500) {
 }
 async function serverUp() { try { await api('GET', '/api/ping'); return true; } catch { return false; } }
 
-module.exports = { api, serverUp };
+// Open a URL in the default browser (macOS open, Windows start, else xdg-open). -> whether it worked.
+function openBrowser(url) {
+  const [cmd, args] = process.platform === 'darwin' ? ['open', [url]] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]] : ['xdg-open', [url]];
+  try { require('child_process').execFileSync(cmd, args, { stdio: 'ignore', timeout: 10000 }); return true; } catch { return false; }
+}
+
+module.exports = { api, serverUp, openBrowser };

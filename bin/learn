@@ -73,13 +73,16 @@ const firstLine = (text, n = 110) => {
 const commands = {};
 
 commands.help = () => {
-  console.log(`bin/learn                                web UI + idle tutor + browser; the only command the learner needs
-                                         (already running? it just opens the browser)
+  console.log(`bin/learn [topic] [-c] [--no-open] [-- agent args]   web UI + idle tutor + browser; the only command
+                                         the learner needs (already running? it just opens the browser).
+                                         -c continues the last agent session instead of a fresh one
 bin/learn serve                          web server only (http://localhost:${S.PORT})
-bin/learn demo [--real] [--port n]       try the UI on a throwaway copy of the demo data, with a fake tutor
-bin/learn test [--headed] [--keep]       acceptance tests (fixture data, fake tutor, headless Chrome)
+bin/learn demo [--empty|--real] [--port n] [--no-open] [--keep]   the UI on a throwaway copy of the demo data
+                                         (--empty: the first-run screen; --real: your topics), with a fake tutor
+bin/learn test [--only text] [--headed] [--keep] [--real]   acceptance tests (fixture data, fake tutor,
+                                         headless Chrome; --real also renders your topics, read-only)
 bin/learn pill [t] [--write] · pill --all    what you know in a topic, as one portable file (learner/pills/<t>.md)
-bin/learn share check [--history] · share export <dir>   personal traces in the code repo · a fresh repo to publish
+bin/learn share check [--history] [--terms] · share export <dir>   personal traces in the code repo · a fresh repo to publish
 bin/learn away [jobs…] | --list | --snapshot   learner is away: a planner picks the jobs (or run these: builder, reviewer, wiki, janitor, task)
 
 Tutor commands (docs/protocol.md). [t] = optional topic, defaults to the current one:
@@ -106,8 +109,9 @@ bin/learn show [--topic t] <id> · show <topic>/<id>   ids repeat across topics 
 bin/learn image [t] <Commons file/URL | file --author a --license l> · image search "words" · image list [t]
                                          keep a real image in the topic (offline, credited): ![caption](media:<file>)
 bin/learn check [t]                      validate topic files (JSON, skill ids, links, map) after editing
-bin/learn commit "message" [-- path…]    commit the learning data (data/ is its own git repo); with paths, only
-                                         those (relative to it), so a job and a tutor don't commit each other's files
+bin/learn commit "message" [-- path…]    commit the learning data (the data home and learner/, in whichever repo holds
+                                         them); with paths, only those (relative to the data home), so a job and a
+                                         tutor don't commit each other's files
 bin/learn handoff [--topic t] [--reason s]   end this tutor session; a fresh one takes over
 bin/learn new <slug> "Title"             create an empty topic (the learner usually does this in the browser)
 bin/learn import <transcript.jsonl>... --topic t   import old terminal sessions
@@ -131,10 +135,14 @@ commands.demo = () => {
   const port = f.port || '4748';
   console.log(`demo data: ${home}${f.keep ? ' (kept)' : ' (deleted on exit)'}\nfake tutor: type anything, it echoes. Ctrl+C to stop.`);
   const env = { ...process.env, LEARN_HOME: home, LEARN_PORT: port, LEARN_CLAUDE: path.join(S.CODE, 'test', 'fake-tutor.mjs'), LEARN_NO_GIT: '1',
-    CLAUDE_CONFIG_DIR: path.join(home, 'claude'), LEARN_HANDOFF_TOKENS: process.env.LEARN_HANDOFF_TOKENS || '400000' };
+    CLAUDE_CONFIG_DIR: path.join(home, 'claude'), LEARN_HANDOFF_TOKENS: process.env.LEARN_HANDOFF_TOKENS || '400000', LEARN_PARENT_PID: String(process.pid) };
   const topic = f._[0] || (f.empty ? null : f.real ? defaultTopic() : 'demo');
   const child = spawn(process.execPath, [__filename, 'start', ...(topic ? [topic] : []), ...(f['no-open'] ? ['--no-open'] : [])], { stdio: 'inherit', env });
   process.on('SIGINT', () => {});
+  // killed (not Ctrl+C): take the demo down with us, so no server, fake tutor or temp copy is left
+  // behind (with --real that copy is personal data). A SIGKILL can't be caught: the launcher then
+  // notices LEARN_PARENT_PID is gone and stops itself; the temp dir stays (kill it with SIGTERM).
+  for (const sig of ['SIGTERM', 'SIGHUP']) process.on(sig, () => child.kill(sig));
   child.on('exit', code => { if (!f.keep) fs.rmSync(home, { recursive: true, force: true }); process.exit(code ?? 0); });
 };
 
@@ -160,7 +168,7 @@ commands.start = async () => {
   if (T.launcherAlive()) {
     const url = `http://localhost:${S.PORT}/${f._[0] ? '#/' + f._[0] : ''}`;
     console.log(`learn is already running (tutor launcher pid ${T.readSession().launcherPid}): ${url}`);
-    if (!f['no-open']) { try { require('child_process').execFileSync('open', [url]); } catch {} }
+    if (!f['no-open']) require('../app/client').openBrowser(url);
     return;
   }
   await require('../app/launcher').start({
@@ -857,9 +865,10 @@ commands.import = () => {
   console.log(`imported ${n} entries into ${f.topic} (${[...byDate.keys()].join(', ')})`);
 };
 
-if (argv[0] && !argv[0].startsWith('-')) {
+if (['--help', '-h', 'help'].includes(argv[0])) { argv.shift(); cmd = 'help'; }
+else if (argv[0] && !argv[0].startsWith('-')) {
   if (commands[argv[0]]) cmd = argv.shift();
   else if (!S.listTopics().includes(argv[0])) die(`unknown command or topic "${argv[0]}"; try bin/learn help`);
-}
+} else if (argv[0] && !['-c', '--continue', '--no-open', '--'].includes(argv[0])) die(`unknown option "${argv[0]}"; try bin/learn help`);
 // sync and async commands alike: an error is a one-line message, not a stack trace
 Promise.resolve().then(() => commands[cmd]()).catch(e => die(e.message));
