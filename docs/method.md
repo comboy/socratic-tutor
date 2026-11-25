@@ -164,6 +164,12 @@ noticed (2026-11-25). When a review thread moves to a new subject, post the new 
 short message.
 When you stop feeding a thread (late, a chapter closes), say so in that thread: the UI takes the
 learner there after they answer in the other, and an empty thread read as a bug (2026-11-25).
+What one evening showed (2026-11-25, `bin/learn latency`): before the switch the learner waited a
+median 28 s per reply; with two threads all 18 replies were ready before they switched back. b as a
+review thread found recall gaps quickly (things taught once, days earlier, mostly failed). Costs:
+answers crossing threads (an answer for b sent in a, an answer sent from the ask box), so grades can
+land on the wrong message; an empty thread read as a bug. The learner wants it kept, and suggested b
+hold several review questions prepared ahead.
 Avoid making b depend on the latest step of a: they will read b while you write a, so b shouldn't
 need a's next message. Watch for signs it's costing more than it saves (they ask "where were we",
 re-read a lot, answers get worse after a switch); say so and offer to go back to one thread. Note
