@@ -49,12 +49,13 @@ function drawTrackBar(note) {
       h('span', { class: 'track-letter', text: t.toUpperCase() }), h('span', { class: 'track-title', text: tr.titles[t] || (t === 'a' ? 'Main thread' : 'Second thread') }),
       h('span', { class: 'track-st' }, st.key === 'writing' ? h('span', { class: 'dots' }, h('i'), h('i'), h('i')) : null, st.text));
   };
-  trackBar.replaceChildren(
+  // replaceChildren turns a null into the text "null" (unlike h), so drop the empty note
+  trackBar.replaceChildren(...[
     h('span', { class: 'track-label', title: 'An experiment against waiting: while you read and answer one thread, the tutor writes the reply in the other. Sending in one takes you to the other when its reply is ready.' },
       icon('threads'), h('span', { class: 'track-label-t', text: 'Two threads' }), h('span', { class: 'exp-tag', text: 'experiment' })),
     h('div', { class: 'track-tabs' }, tab('a'), tab('b')),
     note ? h('span', { class: 'track-note', role: 'status', text: note }) : null,
-    h('button', { class: 'btn btn-tiny', title: 'Ask the tutor to fold the second thread back into the main one', onclick: () => quickAction('two threads: off (fold the second thread back into the main one)') }, 'One thread'));
+    h('button', { class: 'btn btn-tiny', title: 'Ask the tutor to fold the second thread back into the main one', onclick: () => quickAction('two threads: off (fold the second thread back into the main one)') }, 'One thread')].filter(Boolean));
 }
 let noteTimer = 0;
 // opts.toReply: show the reply waiting there (the first tutor message after the learner's last
