@@ -90,8 +90,24 @@ async function main() {
       }
       if (m.kind === 'meta') { post(`Echo (meta): ${m.text.slice(0, 300)}`, ['--topic', m.topic, '--meta']); log({ event: 'replied', id: m.id, meta: true, head: m.extra }); continue; }
       const grade = m.kind === 'answer' ? ['--grade', 'correct', '--note', 'fake tutor grades everything correct'] : [];
-      post(`Echo (${m.kind}): ${m.text.slice(0, 300)}\n\n:::question\nFake follow-up question after ${m.id}?\n:::`, ['--topic', m.topic, ...grade]);
-      log({ event: 'replied', id: m.id });
+      // two threads: reply in the message's thread (`wait` prints track=…); FAKE-OPEN-TRACKS opens them
+      const tr = (m.extra.match(/track=(a|b)/) || [])[1];
+      if (/two threads: on/.test(m.text)) {
+        run(['track', '--topic', m.topic, 'open', 'Main thread', 'Side thread']);
+        post(`Echo (${m.kind}): ${m.text.slice(0, 300)}`, ['--topic', m.topic, '--track', 'a', '--force']);
+        post(`Second thread opens here.\n\n:::question\nFake thread-b question?\n:::`, ['--topic', m.topic, '--track', 'b']);
+        log({ event: 'replied', id: m.id, head: m.extra }); continue;
+      }
+      if (/two threads: off/.test(m.text)) {
+        run(['track', '--topic', m.topic, 'close']);
+        post(`Echo (${m.kind}): back to one thread`, ['--topic', m.topic, '--force']);
+        log({ event: 'replied', id: m.id, head: m.extra }); continue;
+      }
+      // FAKE-DELAY-<ms>: wait before replying (a slow tutor, for the two-thread switch)
+      const delay = Number((m.text.match(/FAKE-DELAY-(\d+)/) || [])[1] || 0);
+      if (delay) await new Promise(r => setTimeout(r, delay));
+      post(`Echo (${m.kind}): ${m.text.slice(0, 300)}\n\n:::question\nFake follow-up question after ${m.id}?\n:::`, ['--topic', m.topic, ...grade, ...(tr ? ['--track', tr] : [])]);
+      log({ event: 'replied', id: m.id, head: m.extra });
     }
     if (handoff) { log({ event: 'handoff' }); run(['handoff', '--reason', 'fake tutor handoff']); await hang(); }
   }

@@ -20,10 +20,13 @@ humans.
   **Tree** (the skills as a tech tree: what builds on what, what you're ready for, and
   foundations from outside the topic), **Wiki** (overview, cheat sheet, pages, glossary, skills,
   "You": what the tutor has noticed about your understanding, sessions), **Stats**.
-- **Feedback** (speech-bubble button): remarks about the app or the process. They never reach
-  the tutor; they queue up for the builder. **About the app** (next to Ask) is the same, but the
-  tutor sees it too and can answer; that talk stays in the conversation, dimmed and folded, and
-  out of your wiki, sessions and stats.
+- **The input box**: Answer (closes the open question; the tutor grades it) or Ask (a side
+  question), one box with a switch. Esc hides it in the corner while you read; `a` / `q` bring it
+  back. **Two threads** (experiment): the tutor runs a second, related thread, and sending in one
+  takes you to the other, where the reply is usually ready, so you don't wait while it writes.
+- **Feedback** (speech-bubble button): remarks about the app or the process. They queue up for
+  the builder; tick **Tell the tutor now** and the tutor also sees it and can answer. That talk
+  stays in the conversation, dimmed and folded, and out of your wiki, sessions and stats.
 - **I'm going away** (coffee-cup button): one click, nothing to choose. A planner agent looks at
   what's waiting and decides which background jobs are worth running, and why: the builder
   (implements your feedback, with tests), the reviewer (reads recent sessions with fresh eyes:

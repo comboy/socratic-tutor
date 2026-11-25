@@ -41,9 +41,14 @@ followed by the text. Kinds:
   tutor": do the handoff steps that `wait` prints, and don't reply.
 - **start**: a new topic the learner created in the browser (their goal, what for, what they
   know). `docs/bootstrap.md`.
-- **meta**: the "About the app" button: a remark about the app or the process, not the lesson
-  (`── META  id=…  (about the app …) ──`). It is already an open item in `feedback.md` for the
-  builder. Answer briefly with `post --meta` (see "Meta remarks" below); the pending question stays.
+- **meta**: a remark about the app or the process, not the lesson, sent from the feedback box with
+  "Tell the tutor now" (`── META  id=…  (about the app …) ──`). It is already an open item in
+  `feedback.md` for the builder. Answer briefly with `post --meta` (see "Meta remarks" below); the
+  pending question stays.
+
+With **two threads** open (`docs/method.md`, "Two threads"), every lesson message carries
+`track=a` or `track=b`: reply in that thread with `post --track a|b` (post refuses a lesson message
+without it then). Each thread has its own pending question, and `resume` / `pending` show both.
 
 ## Posting
 
@@ -59,6 +64,8 @@ followed by the text. Kinds:
 - A message with a `:::question` block becomes the pending question, shown above the answer box.
   **One question per message, always inside `:::question`**: a question written as plain prose
   isn't tracked. Add `--expect` with the rubric, so any later session can grade the answer.
+- `--track a|b`: with two threads open, the thread this message belongs to (required then). The
+  reply link, the grade and the pending question are that thread's.
 - `--meta`: a reply about the app (to a META message), not the lesson: shown dimmed and foldable,
   kept out of the wiki, session pages, stats, `msgs` and `resume`. No `--grade`/`--skill`/`--expect`
   and no `:::question` (it would become the pending question); ask in prose instead.
@@ -95,6 +102,8 @@ doesn't parse; in `viz js`, `el`, `ctx` and `d3` are already in scope).
     bin/learn commit "message" [-- paths…]          # the data home is its own git repo; paths: only those
                                                     # (pass them while a background job runs: it warns)
     bin/learn meta [t] <id>… [--off]               # tag past entries as app talk (append-only)
+    bin/learn track [t] open "a title" "b title" · track [t] close   # two threads (docs/method.md)
+    bin/learn latency [t] [--days n]               # how long the learner waited for replies
     bin/learn recent [n] · show <id> · grep <regex> · pending · msgs --skill <id> · term show <name>
 
 **Term pages** (`terms/<name>.md`: one per glossary term, what goes in them in `docs/method.md`,
@@ -153,7 +162,7 @@ feedback box for the same queue. Write your own remarks there too, when the tool
 "would have been easier to show with an interactive X", "a papers library would help here". The
 builder job works through the queue while the learner is away.
 
-The learner's "About the app" button (next to Ask) reaches you as META and goes to the queue too.
+The learner's feedback box with "Tell the tutor now" ticked reaches you as META and goes to the queue too.
 Keep app talk out of the learning record: reply with `post --meta`, and when such an exchange
 came as an ordinary ask or answer, tag it afterwards with `bin/learn meta <id>…` (both sides: their
 message and your reply). Tags are appended, never edits; `--off` takes one back. `recent` and

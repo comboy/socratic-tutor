@@ -26,14 +26,24 @@ a minimalist "modern web" page.
   conversation; anything else (grades, level changes, tags, redraws, images loading, above or
   below) leaves the text at the top edge where it is (`learn.js`, "keeping the reader's place").
   Bookkeeping updates the thread in place instead of redrawing it.
+- **Reading gets the screen.** On a laptop the input competed with the conversation for height
+  (two boxes side by side plus a row of buttons took a third of it). So there is one input box
+  with an Answer / Ask switch (its colour says which; each mode keeps its own draft), the quick
+  buttons sit in its footer (icons only when narrow), and Esc or the chevron hides it to two
+  buttons in the corner; `a` / `q` or those buttons bring it back.
 - **The learner thinks about the topic, not the tool.** Anything about the tool goes into the
-  feedback box and gets built while they're away (`bin/learn away`). Don't make them configure
-  things; pick good defaults. Talk about the app in the conversation ("About the app" next to
-  Ask, the tutor's `--meta` replies, tagged entries) is shown dimmed and folded to one line, and
+  feedback box (toolbar): saved for the builder, who works through it while they're away, or with
+  "Tell the tutor now" also sent to the tutor, who answers in the conversation. One place for app
+  remarks: an "About the app" button next to Ask was confusing next to a separate feedback box.
+  Don't make them configure things; pick good defaults. App talk in the conversation (those
+  remarks, the tutor's `--meta` replies, tagged entries) is shown dimmed and folded to one line, and
   kept out of the learning record (wiki, sessions, stats).
 - **No dependencies, no build step,** so anyone can clone it and run it. Plain ES modules; d3,
   marked and KaTeX are vendored in `web/vendor/`. A small vendored library is fine when it's
   really needed; each one is more to keep up to date.
+
+- **Experiments say so.** Two threads (`docs/method.md`) is marked "experiment" in the UI: the
+  learner should know it may be changed or dropped, and that their impression is the evidence.
 
 Check visual changes with screenshots: `bin/learn test` writes them to `test/out/` (both themes,
 a narrow window), and `bin/learn demo` runs the UI on sample data with a fake tutor.

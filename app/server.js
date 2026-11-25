@@ -159,11 +159,12 @@ const routes = {
     if (b.kind === 'meta') e.meta = true;
     if (b.replyTo) e.replyTo = b.replyTo;
     if (b.quote) e.quote = b.quote;
+    if (b.track === 'a' || b.track === 'b') e.track = b.track;   // two threads (journal.js)
     primeSeen(b.topic);
     const [saved] = S.appendJournal(b.topic, [e]);
     S.enqueue(saved);
     announce(b.topic, [saved]);
-    // "About the app": the tutor gets it (labelled META), and it is also an open item in
+    // app remarks for the tutor ("Tell the tutor now"): the tutor gets it (labelled META), and it is also an open item in
     // feedback.md, so later interface work can mine what the learner wanted
     if (saved.meta) {
       try { S.appendFeedback(text.length > 3900 ? text.slice(0, 3900) + '…' : text, `${b.topic} · about the app · msg ${saved.id}`); broadcast({ type: 'learner' }); }
@@ -172,7 +173,7 @@ const routes = {
     return saved;
   },
   // Feedback box (UI / process): appended to <data>/feedback.md for the builder job; not journaled,
-  // not queued for the tutor. ("About the app" in the composer is both: kind "meta" above.)
+  // not queued for the tutor. (With "Tell the tutor now" ticked the UI sends kind "meta" above instead: both.)
   'POST /api/feedback': async (req) => {
     const b = await readBody(req);
     const r = S.appendFeedback(b.text, [b.topic, b.view].filter(Boolean).join(' · '));

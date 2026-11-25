@@ -95,6 +95,9 @@ bin/learn resume [t]                     everything needed to pick up a topic, i
 bin/learn wait                           block until the learner sends something
 bin/learn post [--topic t] [--skill ids] [--grade v] [--grade-skill id] [--note s] [--expect rubric] [--force]  < markdown
 bin/learn post --meta [--topic t]  < markdown   a reply about the app (to a META message), kept out of the lesson
+bin/learn post --track a|b …             with two threads open: the thread this message belongs to (required then)
+bin/learn track [t] [open "title a" "title b" | close]   two threads (experiment against latency; docs/method.md)
+bin/learn latency [t] [--days n]         how long the learner waited for replies (and how often two threads hid it)
 bin/learn meta [t] <id>… [--off]         tag past entries as app talk (append-only; --off takes the tag back)
 bin/learn level [t] <skill> <0-5> "reason"
 bin/learn focus [t] <skill>              set the current focus
@@ -241,14 +244,18 @@ commands.resume = () => {
   });
   sec(`Skill tree (target ${meta.target}; focus ${meta.focus || '-'}; levels via \`bin/learn level\`)`, tree.join('\n'));
 
-  const pend = S.pendingQuestion(J);
-  if (pend) {
+  const tracks = S.tracksState(J);
+  if (tracks.open) sec('Two threads are open (experiment against latency: docs/method.md "Two threads")',
+    `a: ${tracks.titles.a || '(main)'}\nb: ${tracks.titles.b || '?'}\nEvery lesson post needs --track a|b (the thread of the message you answer; \`wait\` prints track=…). Close with \`bin/learn track close\`.`);
+  for (const t of tracks.open ? ['a', 'b'] : [null]) {
+    const pend = S.pendingQuestion(J, t), label = t ? ` (thread ${t})` : '';
+    if (!pend) { sec(`Pending question${label}`, 'none'); continue; }
     const q = (pend.text.match(/^:::question[^\n]*\n([\s\S]*?)^:::\s*$/m) || [])[1] || pend.text.slice(-500);
-    const answered = J.filter(e => e.role === 'user' && e.ts > pend.ts && !e.imported && !appTalk.has(e.id));
-    sec(`Pending question ${pend.id}${pend.skills?.length ? ` (skill ${pend.skills.join(',')})` : ''}`, q.trim() +
+    const answered = J.filter(e => e.role === 'user' && e.ts > pend.ts && !e.imported && !appTalk.has(e.id) && (!t || S.trackOf(e) === t));
+    sec(`Pending question${label} ${pend.id}${pend.skills?.length ? ` (skill ${pend.skills.join(',')})` : ''}`, q.trim() +
       (pend.expect ? `\nGood answer needs: ${pend.expect}` : '\n(no rubric stored: post questions with --expect "…")') +
       (answered.length ? `\nLearner messages since: ${answered.map(e => `${e.id} [${e.kind}]`).join(', ')}` : ''));
-  } else sec('Pending question', 'none');
+  }
 
   const today = S.localDate();
   const open = notes.items.filter(n => n.status === 'open');
@@ -285,7 +292,7 @@ commands.resume = () => {
   sec(`Last ${vis.length} journal entries (more: \`bin/learn recent 20\`, \`bin/learn show <id>\`)`, vis.map(e => {
     if (e.kind === 'grade') return `${e.id} [grade] ${e.verdict} on ${e.target} (${e.skill || '-'}) ${e.note || ''}`;
     const text = e.role === 'tutor' && e.text.length > 900 ? e.text.slice(0, 450) + ' … ' + e.text.slice(-400) : e.text;
-    return `${e.id} [${e.role === 'tutor' ? 'tutor' : e.kind}]\n${text.replace(/^/gm, '  ')}`;
+    return `${e.id} [${e.role === 'tutor' ? 'tutor' : e.kind}]${tracks.open || e.track ? ` (thread ${S.trackOf(e)})` : ''}\n${text.replace(/^/gm, '  ')}`;
   }).join('\n') + (skipped ? `\n(+ ${skipped} app-talk entr${skipped > 1 ? 'ies' : 'y'} since ${vis[0].id}, not shown: \`bin/learn recent\` has them)` : ''));
   const q = S.inboxIds().length;
   if (q) out.push(`\n(${q} learner message(s) queued: \`bin/learn wait\` returns them right away)`);
@@ -329,6 +336,7 @@ commands.wait = async () => {
     const bits = [`id=${m.id}`, `topic=${m.topic}`];
     if (m.replyTo) bits.push(`replying-to=${m.replyTo}`);
     if (m.quote) bits.push(`quote=${m.quote}`);
+    if (m.kind !== 'meta' && m.topic && S.tracksState(S.readJournal(m.topic)).open) bits.push(`track=${S.trackOf(m)}`);
     if (m.kind === 'meta') bits.push('(about the app, not the lesson: reply with `post --meta`; already in feedback.md for the builder)');
     console.log(`── ${String(m.kind).toUpperCase()}  ${bits.join('  ')} ──`);
     console.log(m.text);
@@ -358,7 +366,10 @@ commands.wait = async () => {
     console.log(HANDOFF_STEPS(`Your context is at ~${Math.round(ctx.tokens / 1000)}k tokens (handoff threshold ${Math.round(T.HANDOFF_TOKENS / 1000)}k). Reply to the message above first.`));
   else if (!ctx && turns >= T.HANDOFF_MESSAGES)
     console.log(HANDOFF_STEPS(`This session has posted ${turns} messages (handoff after ${T.HANDOFF_MESSAGES} when the context size is unknown). Reply to the message above first.`));
-  else console.log(`(reply: bin/learn post … ; then re-run \`bin/learn wait\` in the background${ctx ? `; context ~${Math.round(ctx.tokens / 1000)}k tokens` : ''})`);
+  else {
+    const two = msgs.some(m => m.topic && S.tracksState(S.readJournal(m.topic)).open);
+    console.log(`(reply: bin/learn post …${two ? ' --track <the message\'s track>' : ''} ; then re-run \`bin/learn wait\` in the background${ctx ? `; context ~${Math.round(ctx.tokens / 1000)}k tokens` : ''})`);
+  }
 };
 const HANDOFF_STEPS = why => `── HANDOFF ── ${why} Then, instead of re-arming wait:
   1. Update progress.md "Resume here": where we are, what you planned next, the learner's current state of mind. (The pending question and its rubric come from the journal if you posted it with --expect; reviews/holes/parked from notes.json.) Update skill summaries if you taught something new.
@@ -385,7 +396,7 @@ Then consider \`bin/learn handoff\` after your next reply: a fresh session is cl
 };
 
 commands.post = async () => {
-  const f = flags(argv, { topic: 'string', skill: 'string', grade: 'string', 'grade-skill': 'string', note: 'string', file: 'string', expect: 'string', force: 'bool', meta: 'bool' });
+  const f = flags(argv, { topic: 'string', skill: 'string', grade: 'string', 'grade-skill': 'string', note: 'string', file: 'string', expect: 'string', force: 'bool', meta: 'bool', track: 'string' });
   if (f.meta && (f.grade || f.skill || f['grade-skill'] || f.expect)) die('--meta is a reply about the app, not the lesson: no --grade, --skill or --expect');
   const text = (f.file ? fs.readFileSync(f.file, 'utf8') : readStdin()).replace(/\s+$/, '');
   if (f.meta && !text) die('nothing to post (markdown on stdin)');
@@ -399,7 +410,15 @@ commands.post = async () => {
   const meta = S.loadTopicMeta(topic);
   for (const id of [...skills, f['grade-skill']].filter(Boolean)) if (!S.findSkill(meta, id)) die(`no skill ${id} in ${topic}`);
   const question = !f.meta && S.hasQuestion(text);
-  if (f.meta && S.hasQuestion(text)) die('not posted: a --meta reply can\'t carry a :::question (it would become the lesson\'s pending question). Ask in prose; the learner answers with "About the app".');
+  // two threads: every lesson message names its thread, so the UI shows it there and the pending
+  // question, the reply link and the grade are that thread's
+  const tracks = S.tracksState(S.readJournal(topic));
+  if (f.track && !['a', 'b'].includes(f.track)) die('--track is a or b');
+  if (f.track === 'b' && !tracks.open) die('no second thread is open (`bin/learn track open "title a" "title b"` opens one)');
+  if (tracks.open && !f.meta && !f.track) die(`not posted: two threads are open (a: ${tracks.titles.a || '?'} · b: ${tracks.titles.b || '?'}); pass --track a or --track b, the thread of the message you answer (\`wait\` prints track=…)`);
+  const track = tracks.open && f.track ? f.track : null;
+  const inTrack = e => !track || S.trackOf(e) === track;
+  if (f.meta && S.hasQuestion(text)) die('not posted: a --meta reply can\'t carry a :::question (it would become the lesson\'s pending question). Ask in prose; the learner answers through the feedback box ("Tell the tutor now").');
   if (text) {
     const probs = require('../app/check').linkChecker(topic)(text);
     const errs = probs.filter(p => p.error);
@@ -418,20 +437,20 @@ commands.post = async () => {
 
   const entries = [];
   // a lesson message replies to the learner's last lesson message; a --meta one to their last message
-  const lastUser = S.lastEntry(e => e.topic === topic && e.role === 'user' && !e.imported && (f.meta || e.kind !== 'meta'), [topic]);
+  const lastUser = S.lastEntry(e => e.topic === topic && e.role === 'user' && !e.imported && (f.meta || e.kind !== 'meta') && (f.meta || inTrack(e)), [topic]);
   if (f.grade) {
-    const target = S.lastEntry(e => e.topic === topic && e.role === 'user' && e.kind === 'answer', [topic]);
+    const target = S.lastEntry(e => e.topic === topic && e.role === 'user' && e.kind === 'answer' && inTrack(e), [topic]);
     if (!target) die('no answer to grade');
     entries.push({ role: 'tutor', kind: 'grade', target: target.id, questionId: target.replyTo || null,
-      verdict: f.grade, skill: f['grade-skill'] || skills[0] || null, note: f.note || '' });
+      verdict: f.grade, skill: f['grade-skill'] || skills[0] || null, note: f.note || '', ...(track ? { track } : {}) });
   }
   if (text) entries.push({ role: 'tutor', kind: 'message', text, skills, question,
-    replyTo: lastUser ? lastUser.id : null, ...(f.expect && question ? { expect: f.expect } : {}), ...(f.meta ? { meta: true } : {}) });
+    replyTo: lastUser ? lastUser.id : null, ...(f.expect && question ? { expect: f.expect } : {}), ...(f.meta ? { meta: true } : {}), ...(track ? { track } : {}) });
 
   let saved;
   if (await serverUp()) saved = await api('POST', '/api/append', { topic, entries });
   else saved = S.appendJournal(topic, entries);
-  for (const e of saved) console.log(`posted ${e.meta ? 'meta ' : ''}${e.kind} ${e.id}${e.kind === 'grade' ? ` (${e.verdict} → ${e.target})` : ''}${e.question ? ` [question${e.expect ? ' + rubric' : ', no --expect rubric'}]` : ''}`);
+  for (const e of saved) console.log(`posted ${e.meta ? 'meta ' : ''}${e.kind} ${e.id}${e.track ? ` [thread ${e.track}]` : ''}${e.kind === 'grade' ? ` (${e.verdict} → ${e.target})` : ''}${e.question ? ` [question${e.expect ? ' + rubric' : ', no --expect rubric'}]` : ''}`);
   // a reminder for the bookkeeping step: bold phrases (new terms, usually) not in the glossary yet
   if (text && !f.meta) {
     const miss = require('../app/check').missingTerms(topic, { texts: [{ text }] }).missing.map(g => `"${g.phrase}"`);
@@ -724,12 +743,72 @@ commands.commit = () => {
   console.log(S.commitData(msg || `Update learning data ${S.localDate()}`, paths));
 };
 
+// Two threads (docs/method.md "Two threads"): open a second thread next to the main one, or close it.
+commands.track = async () => {
+  const f = flags(argv, { topic: 'string' });
+  const topic = topicOf(f);
+  const [op, a, b] = f._;
+  const J = S.readJournal(topic), st = S.tracksState(J);
+  if (!op) {
+    if (!st.open) { console.log('one thread (open a second with `bin/learn track open "title a" "title b"`)'); return; }
+    for (const t of ['a', 'b']) { const p = S.pendingQuestion(J, t); console.log(`${t}: ${st.titles[t] || '-'}${p ? `  · pending ${p.id}` : ''}`); }
+    return;
+  }
+  let entry;
+  if (op === 'open') {
+    if (!b && !st.titles.b) die('usage: track [t] open "title of the main thread (a)" "title of the second (b)"');
+    entry = { role: 'tutor', kind: 'tracks', open: true, titles: { a: a || st.titles.a, b: b || st.titles.b } };
+  } else if (op === 'close') {
+    if (!st.open) die('only one thread is open');
+    entry = { role: 'tutor', kind: 'tracks', open: false };
+  } else die('usage: track [t] [open "title a" "title b" | close]');
+  const [saved] = (await serverUp()) ? await api('POST', '/api/append', { topic, entries: [entry] }) : S.appendJournal(topic, [entry]);
+  console.log(entry.open ? `two threads open in ${topic} (${saved.id}): a = ${entry.titles.a}, b = ${entry.titles.b}. Post the first thread-b message with --track b; every lesson post now needs --track.`
+    : `back to one thread in ${topic} (${saved.id}). Pending questions now: ${S.pendingQuestion(S.readJournal(topic))?.id || 'none'}.`);
+};
+
+// How long the learner waited: for each lesson message, the time until the tutor's next lesson
+// message in the same thread; with two threads, whether the other thread had a reply ready to read
+// at that moment (the wait was hidden) or not (felt).
+commands.latency = () => {
+  const f = flags(argv, { topic: 'string', days: 'string' });
+  const topic = topicOf(f);
+  const since = Date.now() - (Number(f.days) || 7) * 86400e3;
+  const J = S.readJournal(topic), meta = S.metaIds(J);
+  const lesson = J.filter(e => !meta.has(e.id) && !e.imported && (e.role === 'user' ? ['answer', 'ask', 'action'].includes(e.kind) : e.kind === 'message'));
+  const rows = [];
+  lesson.forEach((u, i) => {
+    if (u.role !== 'user' || Date.parse(u.ts) < since) return;
+    const t = S.trackOf(u), reply = lesson.slice(i + 1).find(e => e.role === 'tutor' && S.trackOf(e) === t);
+    if (!reply) return;
+    // two threads: did the other one have a tutor message waiting (its last entry before u)?
+    const other = lesson.slice(0, i).filter(e => S.trackOf(e) !== t && e.track).pop();
+    rows.push({ s: (Date.parse(reply.ts) - Date.parse(u.ts)) / 1000, two: !!u.track, hidden: !!(u.track && other?.role === 'tutor') });
+  });
+  if (!rows.length) { console.log('no replies in that period'); return; }
+  const med = a => { const s = [...a].sort((x, y) => x - y); return s.length ? Math.round(s[s.length >> 1]) : '-'; };
+  const p75 = a => { const s = [...a].sort((x, y) => x - y); return s.length ? Math.round(s[Math.floor(s.length * 0.75)]) : '-'; };
+  const one = rows.filter(r => !r.two), two = rows.filter(r => r.two);
+  console.log(`${topic}, last ${Number(f.days) || 7} days: ${rows.length} replies`);
+  if (one.length) console.log(`  one thread : ${one.length} replies, waited median ${med(one.map(r => r.s))}s, p75 ${p75(one.map(r => r.s))}s`);
+  if (two.length) {
+    const felt = two.filter(r => !r.hidden);
+    console.log(`  two threads: ${two.length} replies, written in median ${med(two.map(r => r.s))}s; ${two.length - felt.length} hidden (the other thread had a reply ready), ${felt.length} felt (median ${med(felt.map(r => r.s))}s)`);
+  }
+};
+
 commands.pending = () => {
   const f = flags(argv, { topic: 'string' });
   const topic = topicOf(f, true);
-  const p = S.pendingQuestion(S.readJournal(topic));
+  const J = S.readJournal(topic), tr = S.tracksState(J);
+  const one = p => `${p.id}${p.skills?.length ? ' skill ' + p.skills.join(',') : ''}\n${p.text}${p.expect ? `\n\nGood answer needs: ${p.expect}` : ''}`;
+  if (tr.open) {
+    for (const t of ['a', 'b']) { const p = S.pendingQuestion(J, t); console.log(`── thread ${t}${tr.titles[t] ? ': ' + tr.titles[t] : ''} ──\n${p ? one(p) : '(no pending question)'}\n`); }
+    return;
+  }
+  const p = S.pendingQuestion(J);
   if (!p) { console.log('(no pending question)'); return; }
-  console.log(`${p.id}${p.skills?.length ? ' skill ' + p.skills.join(',') : ''}\n${p.text}${p.expect ? `\n\nGood answer needs: ${p.expect}` : ''}`);
+  console.log(one(p));
 };
 
 commands.msgs = () => {
@@ -776,7 +855,9 @@ commands.recent = () => {
     if (e.kind === 'level') { console.log(`${e.id} [level] ${e.skill}: ${e.from} → ${e.to} ${e.reason || ''}`); continue; }
     if (e.kind === 'grade') { console.log(`${e.id} [grade] ${e.verdict} on ${e.target} (${e.skill || '-'}) ${e.note || ''}`); continue; }
     if (e.kind === 'tag') { console.log(`${e.id} [tag ${e.tag}${e.off ? ' off' : ''}] ${(e.ids || []).join(', ')}`); continue; }
-    const tag = (e.role === 'tutor' ? `tutor${e.question ? ' ?' : ''}` : `${e.kind}${e.replyTo ? ' → ' + e.replyTo : ''}`) + (meta.has(e.id) && e.kind !== 'meta' ? ', app talk' : '');
+    if (e.kind === 'tracks') { console.log(`${e.id} [threads] ${e.open ? `two open: a = ${e.titles?.a || '-'}, b = ${e.titles?.b || '-'}` : 'back to one'}`); continue; }
+    if (typeof e.text !== 'string') { console.log(`${e.id} [${e.kind}]`); continue; }
+    const tag = (e.role === 'tutor' ? `tutor${e.question ? ' ?' : ''}` : `${e.kind}${e.replyTo ? ' → ' + e.replyTo : ''}`) + (e.track ? `, thread ${e.track}` : '') + (meta.has(e.id) && e.kind !== 'meta' ? ', app talk' : '');
     const text = e.role === 'tutor' && e.text.length > 700 ? e.text.slice(0, 350) + ' … ' + e.text.slice(-300) : e.text;
     console.log(`${e.id} [${tag}]${e.skills?.length ? ' skills=' + e.skills.join(',') : ''}\n${text.replace(/^/gm, '  ')}`);
   }

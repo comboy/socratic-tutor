@@ -15,3 +15,31 @@ export function metaIds(J) {
   }
   return out;
 }
+
+// Two threads (an experiment against reply latency, docs/method.md "Two threads"): next to the
+// main thread "a" the tutor can open a second, closely related thread "b". When the learner answers
+// in one, the UI takes them to the other, where the tutor's reply is usually already waiting, so
+// the tutor writes while they read instead of them waiting while it writes. Entries carry
+// "track": "a" | "b" (none = "a"). Whether two threads are open is replayed from
+// { kind: "tracks", open: true | false, titles: { a, b } } entries (`bin/learn track`).
+export const trackOf = e => (e && e.track === 'b' ? 'b' : 'a');
+export function tracksState(J) {
+  let st = { open: false, titles: { a: '', b: '' }, since: null };
+  for (const e of J) {
+    if (e.kind !== 'tracks') continue;
+    st = e.open ? { open: true, titles: { ...st.titles, ...(e.titles || {}) }, since: st.open ? st.since : e.ts }
+      : { ...st, open: false };
+  }
+  return st;
+}
+// The open question: the last tutor question not followed by an answer to it (app talk never is
+// one). With a track: that thread's open question.
+export function pendingQuestion(J, track = null, meta = metaIds(J)) {
+  let pending = null;
+  for (const e of J) {
+    if (meta.has(e.id) || (track && trackOf(e) !== track)) continue;
+    if (e.role === 'tutor' && e.kind === 'message' && e.question) pending = e;
+    else if (e.role === 'user' && e.kind === 'answer' && pending && (!e.replyTo || e.replyTo === pending.id)) pending = null;
+  }
+  return pending;
+}

@@ -238,7 +238,7 @@ function readPages(slug) {
 // line is dropped: the term is the title.
 const { termSlug, TERM_PAGE, pageForTerm } = require('../web/js/terms.js');
 // ids of app-talk ("meta") entries, see web/js/journal.js
-const { metaIds } = require('../web/js/journal.js');
+const { metaIds, pendingQuestion, tracksState, trackOf } = require('../web/js/journal.js');
 function termPagesDir(slug) { return path.join(topicDir(slug), 'terms'); }
 function readTermPages(slug) {
   const d = termPagesDir(slug);
@@ -423,18 +423,6 @@ function lastEntry(pred, slugs = listTopics()) {
   }
   return best;
 }
-// The open question: the last tutor question not followed by an answer to it (app talk never is one).
-function pendingQuestion(J) {
-  let pending = null;
-  const meta = metaIds(J);
-  for (const e of J) {
-    if (meta.has(e.id)) continue;
-    if (e.role === 'tutor' && e.kind === 'message' && e.question) pending = e;
-    else if (e.role === 'user' && e.kind === 'answer' && pending && (!e.replyTo || e.replyTo === pending.id)) pending = null;
-  }
-  return pending;
-}
-
 // ---------- inbox (learner -> tutor) ----------
 // One file per message; `bin/learn wait` claims them by atomic rename.
 function enqueue(entry) {
@@ -522,6 +510,6 @@ module.exports = {
   listTopics, topicDir, slugify, createTopic, readPages, PAGE_NAME, readTermPages, termPagePath, termPagesDir, termSlug, TERM_PAGE, pageForTerm, MEDIA_NAME, mediaDir, readMedia, loadTopicMeta, saveTopicMeta,
   walkSkills, findSkill, leafSkills, parseGlossary, readGlossary, addTerm, META_KEYS,
   NOTE_KINDS, readNotes, addNote, closeNote, parseDue, appendLog,
-  journalDir, journalFiles, readJournal, readJournalFile, appendJournal, findEntry, lastEntry, pendingQuestion, metaIds,
+  journalDir, journalFiles, readJournal, readJournalFile, appendJournal, findEntry, lastEntry, pendingQuestion, metaIds, tracksState, trackOf,
   hasQuestion, setLevel, COLOR, LEGEND_KEY, setLegend, removeLegend, enqueue, inboxIds, appendFeedback, openFeedback,
 };

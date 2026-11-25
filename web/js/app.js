@@ -212,8 +212,9 @@ document.addEventListener('keydown', e => {
   if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
   if (!app.topic) return;
   if (VIEW_KEYS[e.key]) go(VIEW_KEYS[e.key]);
-  else if (e.key === 'a') { go('learn'); setTimeout(() => $('#answerBox')?.focus(), 30); e.preventDefault(); }
-  else if (e.key === 'q') { go('learn'); setTimeout(() => $('#askBox')?.focus(), 30); e.preventDefault(); }
+  else if (e.key === 'a') { learn.openComposer('answer'); e.preventDefault(); }
+  else if (e.key === 'q') { learn.openComposer('ask'); e.preventDefault(); }
+  else if (e.key === 't' && app.d?.tracks?.open && app.view === 'learn') learn.switchTrack(store.get('track:' + app.topic.slug, 'a') === 'b' ? 'a' : 'b', { toReply: true });
   else if (e.key === ']' || e.key === 'g') { setDock(!document.body.classList.contains('dock-open')); renderDock(); }
   else if (e.key === '[') setLeft(document.body.classList.contains('left-closed'));
 });

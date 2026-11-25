@@ -382,12 +382,16 @@ listing it), "Pictures from your lessons" (images in messages whose caption name
 
 One JSON object per line, appended by `bin/learn` and the server, never edited (ids are
 `<date>.<n>`). Common fields: `id`, `ts`, `topic`, `role` (`user`/`tutor`/`system`), `kind`:
-- `answer`, `ask`, `action`, `start`, `meta` (the learner; `text`, optional `replyTo`, `quote`)
-- `message` (the tutor; `text`, `skills`, `question`, `expect`, `replyTo`)
+- `answer`, `ask`, `action`, `start`, `meta` (the learner; `text`, optional `replyTo`, `quote`, `track`)
+- `message` (the tutor; `text`, `skills`, `question`, `expect`, `replyTo`, `track`)
 - `grade` (`target`, `verdict`, `skill`, `note`), `level` (`skill`, `from`, `to`, `reason`),
   `session` (a divider; `handoff`)
 - `tag`: `{"kind": "tag", "tag": "meta", "ids": ["2026-11-22.33", …]}` marks earlier entries
   (`bin/learn meta`); `"off": true` takes the tag back.
+- `tracks`: `{"kind": "tracks", "open": true, "titles": {"a": "…", "b": "…"}}` opens two threads,
+  `{"kind": "tracks", "open": false}` goes back to one (`bin/learn track`). While open, lesson
+  entries carry `"track": "a"` or `"b"` (none means `a`); each thread has its own pending
+  question (`web/js/journal.js`).
 
 **App talk** (`web/js/journal.js`): an entry with `"meta": true` (the learner's "About the app"
 message, kind `meta`; a tutor reply posted with `--meta`), a tag entry, or an entry a tag names. It

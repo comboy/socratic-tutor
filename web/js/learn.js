@@ -1,22 +1,93 @@
-// Learn view: the conversation thread + the two input boxes.
+// Learn view: the conversation thread + the input box (answer / ask), which can hide in a corner.
+// With two threads open (an experiment against reply latency, journal.js), a bar on top switches
+// between them and sending in one takes the learner to the other when its reply is waiting.
 import { h, $, $$, store, skillById, levelOf, lvClass, fmtDate, fmtTime, shortId } from './util.js';
 import { renderInto, rich, linkTerms } from './rich.js';
 import { questionText, plain } from './md.js';
 import { icon } from './icons.js';
 import { app, send } from './app.js';
 import { openDock, togglePin, isPinned, renderDock } from './panels.js';
+import { trackOf } from './journal.js';
 
 const PAGE = 60;
-let thread, composer, shownFrom = 0, quote = null, sizes = null, drawnLegend = '';
+let thread, composer, trackBar, shownFrom = 0, quote = null, sizes = null, drawnLegend = '';
+
+// ---------------------------------------------------------------- two threads
+// null when only one thread is open; else 'a' or 'b', the one on screen (remembered per topic)
+function curTrack() {
+  if (!app.d?.tracks?.open) return null;
+  const t = store.get('track:' + app.topic.slug, 'a');
+  return t === 'b' ? 'b' : 'a';
+}
+const otherTrack = t => (t === 'b' ? 'a' : 'b');
+function curPending() { const t = curTrack(); return t ? app.d.pendingBy[t] : app.d.pending; }
+// the lesson exchange of a thread: the learner's messages and the tutor's replies, no app talk
+const lessonEntry = e => !e._meta && !e.imported && (e.role === 'user' ? ['answer', 'ask', 'action', 'start'].includes(e.kind) : e.role === 'tutor' && e.kind === 'message');
+function lastLesson(t) {
+  const J = app.topic.journal;
+  for (let i = J.length - 1; i >= 0; i--) if (lessonEntry(J[i]) && (!t || trackOf(J[i]) === t)) return J[i];
+  return null;
+}
+// the tutor message the learner hasn't seen in a thread they're not looking at (stored per topic)
+const seenKey = t => `seen:${app.topic.slug}:${t}`;
+function markSeen() { const t = curTrack(), l = t && lastLesson(t); if (l && l.role === 'tutor') store.set(seenKey(t), l.id); }
+function trackState(t) {
+  const l = lastLesson(t);
+  if (!l) return { key: 'empty', text: 'nothing yet' };
+  if (l.role === 'user') return { key: 'writing', text: 'writing…' };
+  if (t !== curTrack() && store.get(seenKey(t), '') !== l.id) return { key: 'ready', text: 'ready' };
+  return app.d.pendingBy?.[t] ? { key: 'turn', text: 'your turn' } : { key: 'idle', text: 'read' };
+}
+function drawTrackBar(note) {
+  if (!trackBar) return;
+  const tr = app.d.tracks, cur = curTrack();
+  trackBar.hidden = !tr.open;
+  if (!tr.open) { trackBar.replaceChildren(); return; }
+  const tab = t => {
+    const st = trackState(t);
+    return h('button', { class: `track-tab st-${st.key}` + (t === cur ? ' on' : ''), title: (tr.titles[t] || '') + ` · ${st.text}  (t switches)`, onclick: () => switchTrack(t) },
+      h('span', { class: 'track-letter', text: t.toUpperCase() }), h('span', { class: 'track-title', text: tr.titles[t] || (t === 'a' ? 'Main thread' : 'Second thread') }),
+      h('span', { class: 'track-st' }, st.key === 'writing' ? h('span', { class: 'dots' }, h('i'), h('i'), h('i')) : null, st.text));
+  };
+  trackBar.replaceChildren(
+    h('span', { class: 'track-label', title: 'An experiment against waiting: while you read and answer one thread, the tutor writes the reply in the other. Sending in one takes you to the other when its reply is ready.' },
+      icon('threads'), h('span', { class: 'track-label-t', text: 'Two threads' }), h('span', { class: 'exp-tag', text: 'experiment' })),
+    h('div', { class: 'track-tabs' }, tab('a'), tab('b')),
+    note ? h('span', { class: 'track-note', role: 'status', text: note }) : null,
+    h('button', { class: 'btn btn-tiny', title: 'Ask the tutor to fold the second thread back into the main one', onclick: () => quickAction('two threads: off (fold the second thread back into the main one)') }, 'One thread'));
+}
+let noteTimer = 0;
+// opts.toReply: show the reply waiting there (the first tutor message after the learner's last
+// message in that thread), otherwise its open question, otherwise the end
+export function switchTrack(t, { toReply = false, note = '' } = {}) {
+  if (!app.d.tracks.open || !thread) return;
+  store.set('track:' + app.topic.slug, t);
+  drawThread();
+  drawComposer();
+  clearTimeout(noteTimer);
+  if (note) noteTimer = setTimeout(() => drawTrackBar(), 6000);
+  const J = app.topic.journal.filter(e => lessonEntry(e) && trackOf(e) === t);
+  let i = J.length; while (i > 0 && J[i - 1].role === 'tutor') i--;
+  const target = (toReply && J[i]) || curPending() || null;
+  requestAnimationFrame(() => (target ? scrollToStart(target.id, false) : scrollBottom()));
+  markSeen();
+  drawTrackBar(note);
+}
 
 export function render(center) {
   thread = h('div', { class: 'thread', id: 'thread' });
   composer = h('div', { class: 'composer', id: 'composer' });
-  if (store.get('composerH', 0)) requestAnimationFrame(() => setComposerH(store.get('composerH', 0)));
-  center.replaceChildren(h('div', { class: 'learn' }, h('div', { class: 'thread-scroll', id: 'threadScroll' }, thread), composer));
+  trackBar = h('div', { class: 'tracks-bar', id: 'tracksBar' });
+  if (store.get('composerH', 0) && !store.get('composerHidden', false)) requestAnimationFrame(() => setComposerH(store.get('composerH', 0)));
+  center.replaceChildren(h('div', { class: 'learn' }, trackBar, h('div', { class: 'thread-scroll', id: 'threadScroll' }, thread), composer));
   anchor = null;
+  // a link to a message in the other thread opens that thread
+  const target0 = app.args[0] === 'm' && app.d.byId.get(app.args[1]);
+  if (target0 && curTrack() && trackOf(target0) !== curTrack()) store.set('track:' + app.topic.slug, trackOf(target0));
+  drawTrackBar();
   drawThread();
   drawComposer();
+  markSeen();
   const target = app.args[0] === 'm' && app.args[1];
   requestAnimationFrame(() => (target ? reveal(target) : scrollBottom()));
   $('#threadScroll').addEventListener('scroll', onScroll);
@@ -28,7 +99,14 @@ export function render(center) {
 }
 export function update(args) { if (args[0] === 'm' && args[1]) reveal(args[1]); }
 
-const visible = e => ['message', 'answer', 'ask', 'action', 'start', 'meta', 'level', 'session'].includes(e.kind);
+const shown = e => ['message', 'answer', 'ask', 'action', 'start', 'meta', 'level', 'session'].includes(e.kind);
+// with two threads open, the conversation shows the current one (app talk and dividers in both)
+const visible = e => {
+  if (!shown(e)) return false;
+  const t = curTrack();
+  if (!t || e.kind === 'meta' || e._meta || trackOf(e) === t) return true;
+  return e.kind === 'session' && (t === 'a' || e.ts >= app.d.tracks.since);   // b began when the threads opened
+};
 // keep: redraw the same stretch of the conversation (earlier messages the learner opened stay), in place
 function drawThread(keep = false) {
   const J = app.topic.journal.filter(visible);
@@ -99,6 +177,7 @@ export function messageNode(e, { compact = false, pinnable = false } = {}) {
   if (e.kind === 'action') head.append(h('span', { class: 'action-text', text: e.text, title: e.text }));
   else if (folded) head.append(h('button', { class: 'meta-preview', title: 'Show the whole message', text: plain(e.text || '', 240), onclick: fold }));
   if (e.imported) head.append(h('span', { class: 'imported-tag', title: 'Imported from a terminal session', text: 'terminal' }));
+  if (e.track === 'b' && (compact || !curTrack())) head.append(h('span', { class: 'track-chip', title: 'From the second thread', text: 'thread B' }));
   const g = app.d.grades.get(e.id);
   if (g) head.append(h('span', { class: `badge verdict-${g.verdict}`, title: g.note || '', text: VERDICT[g.verdict] || g.verdict }));
   for (const sid of e._meta ? [] : e._skills || []) {   // app talk belongs to no skill
@@ -114,7 +193,7 @@ export function messageNode(e, { compact = false, pinnable = false } = {}) {
     head.append(h('span', { class: 'head-actions' },
       h('button', { class: 'icon-btn' + (pinned ? ' on' : ''), title: pinned ? 'Unpin from the side panel' : 'Pin to the side panel (keep it visible while answering)',
         onclick: ev => { togglePin(e.id); ev.currentTarget.classList.toggle('on'); renderDock(); } }, icon('pin')),
-      h('button', { class: 'icon-btn', title: 'Ask about this message', onclick: () => { quote = { id: e.id, text: plain(e.text, 300) }; prefillAsk(store.get('draft:ask:' + app.topic.slug, '')); } }, icon('ask'))));
+      h('button', { class: 'icon-btn', title: 'Ask about this message', onclick: () => { quote = { id: e.id, text: plain(e.text, 300) }; prefillAsk(store.get(draftKey('ask'), '')); } }, icon('ask'))));
   }
   art.append(head);
   if (folded) return art;
@@ -127,7 +206,7 @@ export function messageNode(e, { compact = false, pinnable = false } = {}) {
     art.append(body);
     renderInto(body, e.text || '', { scope: false });
   }
-  if (tutor && e.question && !compact && app.d.pending?.id === e.id) art.classList.add('pending-q');
+  if (tutor && e.question && !compact && curPending()?.id === e.id) art.classList.add('pending-q');
   return art;
 }
 function toggleMeta(e, art) {
@@ -144,7 +223,7 @@ function toggleMeta(e, art) {
 
 function drawTyping() {
   thread.querySelector('.typing')?.remove();
-  const s = app.status, J = app.topic.journal;
+  const s = app.status, t = curTrack(), J = t ? app.topic.journal.filter(e => trackOf(e) === t) : app.topic.journal;
   const lastUser = [...J].reverse().find(e => e.role === 'user' && !e.imported);
   const lastTutor = [...J].reverse().find(e => e.role === 'tutor' && e.kind === 'message');
   const waiting = lastUser && !(lastTutor && lastTutor.ts > lastUser.ts);
@@ -160,11 +239,17 @@ function drawTyping() {
   else if (s.phase === 'listening') node = h('div', { class: 'typing' }, dots(), 'Delivering…');
   else if (s.launcher) node = h('div', { class: 'typing offline' }, h('b', { text: 'Queued. ' }), 'The tutor isn’t listening right now. If this lasts more than a minute, open the tutor status (top right) and press ', h('b', { text: 'Restart now' }), '.');
   else node = h('div', { class: 'typing offline' }, h('b', { text: 'Queued. ' }), 'No tutor is running. Start one in a terminal with ', h('code', { text: 'bin/learn' }), '; your message will be delivered then.');
+  // two threads: while this one is being written, the other may have its reply ready
+  if (node && t && waiting && s.phase !== 'handoff' && ['ready', 'turn'].includes(trackState(otherTrack(t)).key))
+    node.append(h('button', { class: 'btn btn-small btn-primary', onclick: () => switchTrack(otherTrack(t), { toReply: true }) },
+      `Thread ${otherTrack(t).toUpperCase()} is ready`, icon('chev')));
   if (node) thread.append(node);
 }
 
 export function onEntries(fresh) {
   if (!thread) return;
+  // two threads opened or closed: everything changes shape
+  if (fresh.some(e => e.kind === 'tracks')) { drawTrackBar(); drawThread(); drawComposer(); scrollBottom(); markSeen(); return; }
   const sc = $('#threadScroll');
   const nearBottom = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 160;
   const J = app.topic.journal.filter(visible);
@@ -177,16 +262,18 @@ export function onEntries(fresh) {
     const i = J.findIndex(x => x.id === e.id);
     appendEntry(e, i > 0 ? J[i - 1].ts.slice(0, 10) : null);
   }
-  $$('.pending-q', thread).forEach(n => { if (n.dataset.id !== app.d.pending?.id) n.classList.remove('pending-q'); });
-  if (app.d.pending) thread.querySelector(`[id="m-${CSS.escape(app.d.pending.id)}"]`)?.classList.add('pending-q');
+  const pend = curPending();
+  $$('.pending-q', thread).forEach(n => { if (n.dataset.id !== pend?.id) n.classList.remove('pending-q'); });
+  if (pend) thread.querySelector(`[id="m-${CSS.escape(pend.id)}"]`)?.classList.add('pending-q');
   drawTyping();
   drawComposer(true);
   keepAnchor();
+  if (curTrack()) { if (fresh.some(e => visible(e) && e.role === 'tutor') && nearBottom) markSeen(); drawTrackBar(); }
   // Only two things move the conversation: a new tutor reply (shown from its beginning, where
   // reading starts, not the bottom of the thread) and the learner's own message. Anything else
   // (a grade, a level change, a tag, a session divider) appears in place and the view stays put.
-  const reply = fresh.find(e => e.role === 'tutor' && e.kind === 'message');
-  const mine = fresh.some(e => e.role === 'user');
+  const reply = fresh.find(e => e.role === 'tutor' && e.kind === 'message' && visible(e));
+  const mine = fresh.some(e => e.role === 'user' && visible(e));
   if (reply && (nearBottom || mine)) scrollToStart(reply.id, true);
   else if (mine) scrollBottom(true);
   else if (reply) showNewPill(reply.id);
@@ -285,6 +372,8 @@ function hideNewPill() { $('.newpill')?.remove(); }
 
 export function reveal(id) {
   if (app.view !== 'learn') { location.hash = `#/${app.topic.slug}/learn/m/${id}`; return; }
+  const e = app.d.byId.get(id);
+  if (e && curTrack() && shown(e) && !visible(e)) { store.set('track:' + app.topic.slug, trackOf(e)); drawTrackBar(); drawThread(); drawComposer(); }
   let n = thread.querySelector(`[id="m-${CSS.escape(id)}"]`);
   while (!n && shownFrom > 0) { showEarlier(); n = thread.querySelector(`[id="m-${CSS.escape(id)}"]`); }
   if (!n) return;
@@ -301,77 +390,112 @@ const QUICK = [
   ['Skip', 'skip', 'skip', 'Skip this question for now'],
   ['Easier', 'easier', 'down', 'Make questions easier'],
   ['Harder', 'harder', 'up', 'Make questions harder'],
+  null,
   ['Progress', 'show progress', 'progress', 'Ask the tutor for a progress summary'],
   ['Pause', 'pause: wrap up the session, update progress notes', 'pause', 'End the session; the tutor saves its notes'],
 ];
+const TWO_ON = 'two threads: on (open a second, closely related thread, so I can read and answer one while you write the other; docs/method.md "Two threads")';
+
+// One box, two modes: Answer (closes the open question; the tutor grades it) and Ask (a side
+// question; the question stays open). Each mode, and each thread, keeps its own draft. The colour
+// says which mode it is (answer blue, ask violet). The box can hide in the corner (Esc, or the
+// chevron) so the conversation gets the whole height; a, q or the corner buttons bring it back.
+let mode = store.get('composerMode', 'answer'), seenPend;
+function setMode(m) { mode = m; store.set('composerMode', m); }
+const draftKey = (m, t = curTrack()) => `draft:${m}:${app.topic.slug}${t === 'b' ? ':b' : ''}`;
+export function openComposer(m, focus = true) {
+  if (m) setMode(m);
+  store.set('composerHidden', false);
+  if (app.view !== 'learn') { location.hash = `#/${app.topic.slug}/learn`; }
+  else drawComposer();
+  if (store.get('composerH', 0)) setComposerH(store.get('composerH', 0));
+  if (focus) setTimeout(() => $('#composer textarea')?.focus(), 30);
+}
+function hideComposer() {
+  store.set('composerHidden', true);
+  setComposerH(0, false);
+  drawComposer();
+  document.activeElement?.blur?.();
+}
 function drawComposer(keepFocus) {
   if (!composer) return;
   const act = document.activeElement, active = act?.id;
   const caret = act && composer.contains(act) && 'selectionStart' in act ? [act.selectionStart, act.selectionEnd, act.scrollTop] : null;
-  const slug = app.topic.slug, pend = app.d.pending;
+  const pend = curPending(), t = curTrack();
+  // a new question arrived: back to answering, unless a side question is half-written
+  if (pend?.id !== seenPend) {
+    if (seenPend !== undefined && pend && mode === 'ask' && !quote && !store.get(draftKey('ask'), '').trim()) setMode('answer');
+    seenPend = pend?.id;
+  }
+  if (quote) setMode('ask');
+  const hidden = store.get('composerHidden', false);
+  composer.classList.toggle('collapsed', hidden);
+  if (hidden) { composer.replaceChildren(h('div', { class: 'composer-corner' }, welcomeBack(), cornerButtons(pend))); return; }
+
   const qtext = pend ? questionText(pend.text) : null;
-  const ta = (id, ph, key) => {
-    const t = h('textarea', { id, class: 'input', placeholder: ph, rows: 3 });
-    t.value = store.get(key, '');
-    const fit = () => {
-      if (composer.classList.contains('sized')) { t.style.height = ''; return; }
-      t.style.height = 'auto'; t.style.height = Math.min(300, Math.max(64, t.scrollHeight + 2)) + 'px';
-    };
-    t.addEventListener('input', () => { store.set(key, t.value); fit(); });
-    requestAnimationFrame(fit);
-    return t;
+  const key = draftKey(mode);
+  const ta = h('textarea', { id: mode === 'ask' ? 'askBox' : 'answerBox', class: 'input', rows: 3,
+    placeholder: mode === 'ask' ? 'Ask anything: why…, what was…, show me… (or select text in a message to ask about it)'
+      : pend ? 'Type your answer. Thinking out loud is fine.' : 'No open question right now. You can still reply to the tutor here.' });
+  ta.value = store.get(key, '');
+  const fit = () => {
+    if (composer.classList.contains('sized')) { ta.style.height = ''; return; }
+    ta.style.height = 'auto'; ta.style.height = Math.min(300, Math.max(64, ta.scrollHeight + 2)) + 'px';
   };
-  const aBox = ta('answerBox', pend ? 'Type your answer. Thinking out loud is fine.' : 'No open question right now. You can still reply to the tutor here.', 'draft:answer:' + slug);
-  const qBox = ta('askBox', 'Ask anything: why…, what was…, show me…', 'draft:ask:' + slug);
-  const sendA = async () => { const text = aBox.value.trim(); if (text) await doSend('answer', text, pend ? { replyTo: pend.id } : {}, aBox, 'draft:answer:'); };
-  const sendQ = async () => {
-    let text = qBox.value.trim(); if (!text && !quote) return;
+  ta.addEventListener('input', () => { store.set(key, ta.value); fit(); });
+  requestAnimationFrame(fit);
+  const sendIt = async () => {
+    let text = ta.value.trim();
+    if (mode === 'answer') { if (text) await doSend('answer', text, pend ? { replyTo: pend.id } : {}, ta, key); return; }
+    if (!text && !quote) return;
     const extra = {};
     if (quote) { text = quote.text.split('\n').map(l => '> ' + l).join('\n') + '\n\n' + (text || 'Can you explain this part?'); extra.quote = quote.id; }
-    await doSend('ask', text, extra, qBox, 'draft:ask:');
-    quote = null; drawComposer();
+    const ok = await doSend('ask', text, extra, ta, key);
+    if (ok) { quote = null; drawComposer(); }
   };
-  // "About the app": a remark about the interface or the process, not the lesson. Journaled as META
-  // (the tutor sees it labelled so, and can answer), added to feedback.md, kept out of the wiki and stats.
-  const sendM = async () => {
-    let text = qBox.value.trim(); if (!text) { qBox.focus(); return; }
-    const extra = {};
-    if (quote) { text = quote.text.split('\n').map(l => '> ' + l).join('\n') + '\n\n' + text; extra.quote = quote.id; }
-    await doSend('meta', text, extra, qBox, 'draft:ask:');
-    quote = null; drawComposer();
-  };
-  const keys = fn => ev => { if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); fn(); } };
-  aBox.addEventListener('keydown', keys(sendA));
-  qBox.addEventListener('keydown', keys(sendQ));
+  ta.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); sendIt(); }
+    else if (ev.key === 'Escape') { ev.preventDefault(); hideComposer(); }
+  });
   const qCollapsed = store.get('qcollapsed', false);
-
-  const answer = h('div', { class: 'box box-answer' },
-    h('div', { class: 'box-h' }, icon('send'), pend ? 'Answer the question' : 'Reply', h('span', { class: 'spacer' }),
-      pend ? h('button', { class: 'btn btn-tiny', title: 'Jump to the question in the conversation', onclick: () => reveal(pend.id) }, 'Go to question') : null,
-      pend ? h('button', { class: 'btn btn-tiny', text: qCollapsed ? 'Show' : 'Hide', title: 'Show/hide the question text here', onclick: () => { store.set('qcollapsed', !qCollapsed); drawComposer(); } }) : null),
+  const modeBtn = (m, label, ic, title) => h('button', { class: `mode-${m}` + (mode === m ? ' on' : ''), title, onclick: () => { if (mode !== m) { setMode(m); drawComposer(); $('#composer textarea')?.focus(); } } }, icon(ic), label);
+  const box = h('div', { class: `box box-${mode}` },
+    h('div', { class: 'box-h' },
+      h('div', { class: 'seg mode-seg' },
+        modeBtn('answer', pend ? 'Answer' : 'Reply', 'send', 'Answer the open question: it closes it and the tutor grades it  (a)'),
+        modeBtn('ask', 'Ask', 'ask', 'A side question or "tell me more": the open question stays open  (q)')),
+      t ? h('span', { class: 'track-chip', title: app.d.tracks.titles[t] || '', text: 'thread ' + t.toUpperCase() }) : null,
+      h('span', { class: 'sub', text: mode === 'ask' ? (pend ? 'the question stays open' : '') : pend ? 'closes the question; the tutor grades it' : '' }),
+      h('span', { class: 'spacer' }),
+      pend ? h('button', { class: 'btn btn-tiny goq', title: 'Jump to the question in the conversation', onclick: () => reveal(pend.id) }, 'Go to question') : null,
+      pend ? h('button', { class: 'btn btn-tiny hideq', text: qCollapsed ? 'Show question' : 'Hide question', title: 'Show/hide the question text here', onclick: () => { store.set('qcollapsed', !qCollapsed); drawComposer(); } }) : null,
+      h('button', { class: 'icon-btn hide-composer', id: 'hideComposer', title: 'Hide the input in the corner, for reading  (Esc · a / q bring it back)', onclick: hideComposer }, icon('chevd'))),
     pend && !qCollapsed ? h('div', { class: 'box-q' }, rich(qtext || plain(pend.text, 400), 'hl-scope')) : null,
-    aBox,
-    h('div', { class: 'box-f' }, h('span', { class: 'hint', text: 'Closes the question. The tutor grades it.' }),
-      h('button', { class: 'btn btn-primary', onclick: sendA }, 'Send answer ', h('kbd', { text: '⌘↵' }))));
-  const ask = h('div', { class: 'box box-ask' },
-    h('div', { class: 'box-h' }, icon('ask'), 'Ask / learn more', h('span', { class: 'sub', text: 'the question stays open' })),
-    quote ? h('div', { class: 'quote-chip' }, h('span', { class: 'muted small', text: `About ${shortId(quote.id)}:` }), h('span', { class: 'quote-text', text: '“' + plain(quote.text, 140) + '”' }),
+    mode === 'ask' && quote ? h('div', { class: 'quote-chip' }, h('span', { class: 'muted small', text: `About ${shortId(quote.id)}:` }), h('span', { class: 'quote-text', text: '“' + plain(quote.text, 140) + '”' }),
       h('button', { class: 'icon-btn', title: 'Remove quote', onclick: () => { quote = null; drawComposer(); } }, icon('close'))) : null,
-    qBox,
-    h('div', { class: 'box-f' }, h('span', { class: 'hint', text: 'Tip: select text in any message to ask about it.' }),
-      h('button', { class: 'btn btn-meta', id: 'metaBtn', onclick: sendM,
-        title: 'Send it as a remark about the app (the interface, a bug, a wish), not the lesson. The tutor sees it marked as such and can answer; it also goes to feedback.md for the builder, and stays out of your wiki, sessions and stats.' }, icon('feedback'), 'About the app'),
-      h('button', { class: 'btn btn-ask', onclick: sendQ }, 'Ask ', h('kbd', { text: '⌘↵' }))));
-  composer.replaceChildren(grip(), h('div', { class: 'composer-inner' },
-    welcomeBack(),
-    h('div', { class: 'boxes' }, answer, ask),
-    h('div', { class: 'quick' }, ...QUICK.flatMap(([label, text, ic, title], i) => [i === 6 ? h('span', { class: 'sep' }) : null,
-      h('button', { class: 'btn btn-small', title, onclick: () => quickAction(text) }, icon(ic), label)]))));
+    ta,
+    h('div', { class: 'box-f' },
+      h('div', { class: 'quick' }, ...QUICK.map(q => q ? h('button', { class: 'btn btn-small', title: q[3], onclick: () => quickAction(q[1]) }, icon(q[2]), h('span', { class: 'lbl', text: q[0] })) : h('span', { class: 'sep' })),
+        t ? null : h('button', { class: 'btn btn-small btn-exp', id: 'twoThreadsBtn', onclick: () => quickAction(TWO_ON),
+          title: 'Experiment: the tutor opens a second, closely related thread. When you answer in one, you are taken to the other, where its reply is usually ready, so you don’t wait while the tutor writes.' }, icon('threads'), h('span', { class: 'lbl', text: 'Two threads' }))),
+      mode === 'ask'
+        ? h('button', { class: 'btn btn-ask send-btn', onclick: sendIt, title: 'Send the side question  ⌘↵' }, 'Ask ', h('kbd', { text: '⌘↵' }))
+        : h('button', { class: 'btn btn-primary send-btn', onclick: sendIt, title: pend ? 'Closes the question; the tutor grades it  ⌘↵' : 'Send  ⌘↵' }, pend ? 'Send answer ' : 'Send ', h('kbd', { text: '⌘↵' }))));
+  composer.replaceChildren(grip(), h('div', { class: 'composer-inner' }, welcomeBack(), box));
   if (keepFocus && active) {
     const n = document.getElementById(active);
     n?.focus();
     if (n && caret && 'setSelectionRange' in n) { n.setSelectionRange(caret[0], caret[1]); n.scrollTop = caret[2]; }
   }
+}
+// the hidden input: two buttons in the corner, saying whether a question waits or a draft is kept
+function cornerButtons(pend) {
+  const hasDraft = m => !!store.get(draftKey(m), '').trim();
+  const b = (m, label, ic, title, extra) => h('button', { class: `btn corner-btn corner-${m}`, title, onclick: () => openComposer(m) }, icon(ic), label, extra);
+  return h('div', { class: 'corner-btns' },
+    b('answer', pend ? 'Answer' : 'Reply', 'compose', (pend ? 'A question is waiting. ' : '') + 'Show the input  (a)',
+      pend ? h('span', { class: 'corner-dot', title: 'A question is waiting' }) : hasDraft('answer') ? h('span', { class: 'corner-draft', text: 'draft' }) : null),
+    b('ask', 'Ask', 'ask', 'Ask a side question  (q)', hasDraft('ask') ? h('span', { class: 'corner-draft', text: 'draft' }) : null));
 }
 // "Welcome back": after a gap, the learner decides whether they want a recap (the tutor doesn't post
 // one unasked). Hidden after a short gap, once used or dismissed, or while a reply is pending.
@@ -396,11 +520,11 @@ function welcomeBack() {
     h('button', { class: 'btn btn-small', title: 'No recap: carry on where you left off', onclick: dismiss }, 'Just continue'));
 }
 // Drag the composer's top edge to make it taller; double-click returns to automatic size.
-function setComposerH(px) {
+function setComposerH(px, fit = true) {
   const max = Math.max(200, ($('.learn')?.clientHeight || innerHeight) - 140);
   if (!px) { composer.classList.remove('sized'); composer.style.height = ''; }
   else { composer.classList.add('sized'); composer.style.height = Math.min(max, Math.max(190, px)) + 'px'; }
-  refit();
+  if (fit) refit();
 }
 function grip() {
   const g = h('div', { class: 'composer-grip', title: 'Drag to resize · double-click for automatic size' });
@@ -420,27 +544,38 @@ function grip() {
   return g;
 }
 function refit() { for (const t of composer.querySelectorAll('textarea')) t.dispatchEvent(new Event('input')); }
-async function doSend(kind, text, extra, box, draftPrefix) {
+async function doSend(kind, text, extra, box, key) {
   // Clear first: the server echoes the entry over SSE before send() resolves, and that
   // redraws the composer from the saved draft. Restore the draft only if sending fails.
-  const key = draftPrefix + app.topic.slug, draft = box.value;
+  const draft = box.value, t = curTrack();
   store.set(key, ''); box.value = '';
-  try { await send(kind, text, extra); }
+  try { await send(kind, text, { ...extra, ...(t ? { track: t } : {}) }); }
   catch (e) {
     store.set(key, draft);
     const cur = document.getElementById(box.id); if (cur) cur.value = draft;
     alert('Could not send: ' + e.message);
+    return false;
   }
+  afterSend(t);
+  return true;
+}
+// Two threads: the tutor now writes this thread's reply. If the other thread has something to
+// read (a reply that came while the learner was here, or its open question), go there.
+function afterSend(t) {
+  if (!t || !app.d.tracks.open) return;
+  const o = otherTrack(t), st = trackState(o);
+  if (st.key === 'ready' || st.key === 'turn')
+    switchTrack(o, { toReply: true, note: `Sent in ${t.toUpperCase()}: the tutor writes that reply while you read ${o.toUpperCase()}.` });
 }
 export async function quickAction(text) {
-  try { await send('action', text, app.d.pending ? { replyTo: app.d.pending.id } : {}); }
+  const t = curTrack(), pend = curPending();
+  try { await send('action', text, { ...(pend ? { replyTo: pend.id } : {}), ...(t ? { track: t } : {}) }); }
   catch (e) { alert('Could not send: ' + e.message); }
   if (app.view !== 'learn') location.hash = `#/${app.topic.slug}/learn`;
 }
 export function prefillAsk(text) {
-  store.set('draft:ask:' + app.topic.slug, text);
-  if (app.view !== 'learn') location.hash = `#/${app.topic.slug}/learn`;
-  else drawComposer();
+  store.set(draftKey('ask'), text);
+  openComposer('ask');
   setTimeout(() => { const q = $('#askBox'); if (q) { q.value = text; q.focus(); } }, 50);
 }
 
@@ -455,7 +590,7 @@ document.addEventListener('mouseup', () => setTimeout(() => {
   if (!msg) return;
   const r = sel.getRangeAt(0).getBoundingClientRect();
   selBtn = h('button', { class: 'btn btn-ask btn-small selask', onmousedown: ev => ev.preventDefault(),
-    onclick: () => { quote = { id: msg.dataset.id, text: txt }; selBtn.remove(); selBtn = null; sel.removeAllRanges(); prefillAsk(store.get('draft:ask:' + app.topic.slug, '')); } }, icon('ask'), 'Ask about this');
+    onclick: () => { quote = { id: msg.dataset.id, text: txt }; selBtn.remove(); selBtn = null; sel.removeAllRanges(); prefillAsk(store.get(draftKey('ask'), '')); } }, icon('ask'), 'Ask about this');
   selBtn.style.left = Math.min(window.innerWidth - 150, r.left + r.width / 2 - 60) + 'px';
   selBtn.style.top = Math.max(8, r.top - 36) + 'px';
   document.body.append(selBtn);

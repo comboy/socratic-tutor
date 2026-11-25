@@ -128,6 +128,38 @@ nobody will look for it.
   away: hours, no refresher; days, a short recap with a review question; a week or more, re-check
   the building blocks.
 
+## Two threads (an experiment against waiting)
+
+Measured on the learner's sessions (late Nov 2026, `bin/learn latency`): a reply takes the tutor a
+median ~15 s (p75 ~30 s, sometimes minutes), while the learner spends a median ~6.5 min reading and
+thinking before writing back. So both sides mostly wait for each other, and the learner said even
+20 s of waiting is distracting. The experiment: run two closely related threads of the same
+topic. When the learner answers in one, the UI takes them to the other, where your reply is usually
+ready, and you write the first one's reply while they read. The latency doesn't shrink; it hides
+behind their reading.
+
+It starts when the learner presses "Two threads" (an action `two threads: on …`): pick the second
+thread, `bin/learn track open "<main thread, a>" "<second thread, b>"`, reply to the action in a
+with `--track a`, and post b's first message (self-contained, with its `:::question`) with
+`--track b`. Every lesson post then names its thread; `wait` prints `track=` on each message.
+`two threads: off` (or your own judgment that it isn't working): `bin/learn track close`, then
+fold b's open threads into a in your reply.
+
+What makes a good second thread is the open question here. Some candidates, with the reasoning:
+- **Spaced review of earlier material** (the due reviews in `resume`): retrieval after a delay is
+  what makes things stick, and interleaving it with new material is a known benefit, not a cost.
+  Small switching cost, since it's material they already have.
+- **A sibling of the current skill** (same chapter, different mechanism): keeps both in mind and
+  invites comparison, but each switch costs a re-read; keep b's messages short and self-contained.
+- **A practice line on the current skill** (problems, predictions, "what happens if…") while a
+  carries the explanations.
+Avoid making b depend on the latest step of a: they will read b while you write a, so b shouldn't
+need a's next message. Watch for signs it's costing more than it saves (they ask "where were we",
+re-read a lot, answers get worse after a switch); say so and offer to go back to one thread. Note
+what you observe (`bin/learn note`, or `data/learner/profile.md` if it's lasting), so the next
+tutor and the reviewer can judge the experiment; `bin/learn latency` shows how often the wait was
+hidden.
+
 ## Finishing a topic
 
 The course ends when every skill is at the target level (default 4; 5 if the learner asked for
@@ -140,4 +172,5 @@ integrative problem. If they pass, summarise their weakest areas and suggest wha
 `just tell me` (skip the Socratic part for this question only), `example`, `I'm lost`, `skip`,
 `easier`/`harder`, `show progress` (summarise the skill map in prose; the UI already draws it),
 `pause` (wrap up: update the notes), `review <skill>` (a review question on that skill),
-`recap <skill>` (a short recap of what they covered, linking the earlier explanations).
+`recap <skill>` (a short recap of what they covered, linking the earlier explanations),
+`two threads: on` / `two threads: off` (above, "Two threads").

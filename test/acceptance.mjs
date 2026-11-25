@@ -405,20 +405,54 @@ async function main() {
     const started = journal().filter(e => e.kind === 'session' && e.text === 'Session started' && e.ts > sess.startedAt);
     assert(started.length === 1, 'one "Session started" entry: ' + started.length);
   });
-  await test('ask box with ⌘↵ keeps working after a redraw', async () => {
+  await test('ask mode with ⌘↵ keeps working after a redraw; a new question brings the box back to answering', async () => {
+    await page.click('#composer .mode-ask');
+    await page.waitFor(`document.querySelector('#askBox') && document.querySelector('.box.box-ask') && !document.querySelector('#answerBox')`, { timeout: 2000 });
     await page.click('#askBox');
     await page.type('side question');
     await page.key('Enter', { meta: true });
     await sleep(200);
-    assert(await page.eval(`document.querySelector('#askBox').value === ''`), 'ask box not cleared');
+    assert(await page.eval(`localStorage['learn:draft:ask:demo'] === '""' && ![...document.querySelectorAll('#composer textarea')].some(t => t.value)`), 'ask box not cleared');
     await page.waitFor(`[...document.querySelectorAll('.thread .msg')].some(m => m.innerText.includes('Echo (ask): side question'))`);
+    // the reply carried a new question and the ask draft is empty: the box is back on Answer
+    await page.waitFor(`document.querySelector('#answerBox') && document.querySelector('.box.box-answer')`, { timeout: 3000 });
   });
-  await test('"About the app": journaled as meta, delivered as META, added to feedback.md; the --meta reply is dimmed; kept out of msgs, grep, resume', async () => {
+  await test('the input hides in the corner for reading: Esc or the chevron; a, q or the corner buttons bring it back; drafts kept', async () => {
+    const h0 = await page.eval(`document.querySelector('#threadScroll').clientHeight`);
+    await page.click('#answerBox'); await page.type('kept draft');
+    await page.key('Escape');
+    await page.waitFor(`document.querySelector('.composer.collapsed .corner-answer') && !document.querySelector('#answerBox')`, { timeout: 2000 });
+    const h1 = await page.eval(`document.querySelector('#threadScroll').clientHeight`);
+    assert(h1 > h0 + 120, `the conversation did not get the space: ${h0} → ${h1}`);
+    const corner = await page.eval(`(() => { const r = document.querySelector('.corner-btns').getBoundingClientRect(), c = document.querySelector('#center').getBoundingClientRect(); return { right: c.right - r.right, bottom: c.bottom - r.bottom, w: r.width }; })()`);
+    assert(corner.right < 40 && corner.bottom < 40 && corner.w < 320, 'corner buttons not in the corner: ' + JSON.stringify(corner));
+    assert(await page.eval(`!!document.querySelector('.corner-answer .corner-dot')`), 'the corner button does not say a question is waiting');
+    await page.shot('composer-hidden');
+    await page.nav(`${BASE}/#/demo/learn`, 900);
+    assert(await page.eval(`!!document.querySelector('.composer.collapsed')`), 'hidden state not remembered');
+    await page.key('q');
+    await page.waitFor(`document.activeElement?.id === 'askBox'`, { timeout: 2000 });
+    await page.click('#hideComposer');
+    await page.waitFor(`document.querySelector('.composer.collapsed')`, { timeout: 2000 });
+    await page.click('.corner-answer');
+    await page.waitFor(`document.activeElement?.id === 'answerBox' && document.querySelector('#answerBox').value === 'kept draft'`, { timeout: 2000 });
+    await page.eval(`document.querySelector('#answerBox').value = ''; localStorage['learn:draft:answer:demo'] = '""'`);
+    await page.nav(`${BASE}/#/demo/learn`, 900);
+  });
+  await test('"Tell the tutor now" in the feedback box: journaled as meta, delivered as META, added to feedback.md; the --meta reply is dimmed; kept out of msgs, grep, resume', async () => {
     const pendBefore = learn('pending', 'demo').split('\n')[0];
-    await page.click('#askBox');
+    assert(await page.eval(`!document.querySelector('#metaBtn')`), 'the input box should no longer have its own "About the app" button');
+    await page.click('#feedbackBtn');
+    await page.waitFor(`document.activeElement?.id === 'feedbackBox'`, { timeout: 2000 });
+    await page.click('#feedbackLive');
+    await page.waitFor(`/Send to the tutor/.test(document.querySelector('.fb-pop .btn-primary').textContent)`, { timeout: 2000 });
+    await page.click('#feedbackBox');
     await page.type('The hover cards could open faster (meta test)');
-    await page.click('#metaBtn', 300);
-    assert(await page.eval(`document.querySelector('#askBox').value === ''`), 'ask box not cleared');
+    await page.key('Enter', { meta: true });
+    await page.waitFor(`document.querySelector('.fb-pop .pop-note.ok') && /Sent/.test(document.querySelector('.fb-pop .pop-note').textContent)`, { timeout: 3000 });
+    assert(await page.eval(`document.querySelector('#feedbackBox').value === ''`), 'feedback box not cleared');
+    await page.eval(`localStorage['learn:feedbackLive'] = 'false'`);
+    await page.key('Escape');
     const sent = await until(() => journal().find(e => e.kind === 'meta' && /meta test/.test(e.text)), 'meta entry');
     assert(sent.role === 'user' && sent.meta === true, JSON.stringify(sent));
     const fb = fs.readFileSync(path.join(HOME, 'feedback.md'), 'utf8');
@@ -437,6 +471,48 @@ async function main() {
     assert(!/meta test|Echo \(meta\)/.test(r) && /\(\+ 2 app-talk entries since /.test(r), r.slice(r.indexOf('## Last')));
     const bad = (() => { try { execFileSync(process.execPath, [BIN, 'post', '--topic', 'demo', '--meta', '--skill', '4.1'], { env: ENV, input: 'x', encoding: 'utf8' }); return ''; } catch (e) { return String(e.stderr); } })();
     assert(/--meta is a reply about the app/.test(bad), 'post --meta --skill accepted: ' + bad);
+  });
+  await test('two threads (experiment): the tutor opens a second thread; sending in one takes you to the other, where the reply waits; post needs --track; latency; back to one thread', async () => {
+    await page.nav(`${BASE}/#/demo/learn`, 900);
+    assert(await page.eval(`document.querySelector('#tracksBar').hidden`), 'thread bar shown with one thread');
+    await page.click('#twoThreadsBtn');
+    await page.waitFor(`!document.querySelector('#tracksBar').hidden && document.querySelectorAll('.track-tab').length === 2`, { timeout: 8000 });
+    await page.waitFor(`document.querySelector('.track-tab.st-ready:not(.on)')`, { timeout: 8000 });   // B's question waits
+    const j0 = journal();
+    const bq = j0.filter(e => e.track === 'b' && e.question).pop();
+    assert(bq && j0.some(e => e.kind === 'tracks' && e.open), 'thread b opened: ' + JSON.stringify(j0.slice(-3)));
+    // a lesson post must name its thread now
+    const bad = spawnSync(process.execPath, [BIN, 'post', '--topic', 'demo'], { env: ENV, input: 'x', encoding: 'utf8' });
+    assert(bad.status === 1 && /two threads are open/.test(bad.stderr), 'post without --track: ' + bad.stderr);
+    assert(/thread a/.test(learn('pending', 'demo')) && /Fake thread-b question/.test(learn('pending', 'demo')), learn('pending', 'demo'));
+    assert(/Two threads are open/.test(learn('resume', 'demo')), 'resume');
+    // answer in A (the tutor is slow); the UI moves to B, where the question waits
+    await page.click('#answerBox'); await page.type('answer in A FAKE-DELAY-2500');
+    await page.key('Enter', { meta: true });
+    await page.waitFor(`document.querySelector('.track-tab.on .track-letter')?.textContent === 'B'`, { timeout: 3000 });
+    await page.waitFor(`/Fake thread-b question/.test(document.querySelector('.box-q')?.innerText || '') && !/answer in A/.test(document.querySelector('#thread').innerText)`, { timeout: 3000 });
+    assert(/the tutor writes that reply/.test(await page.eval(`document.querySelector('.track-note')?.textContent || ''`)), 'no note about the switch');
+    await page.shot('two-threads');
+    const sentA = journal().find(e => e.role === 'user' && /answer in A/.test(e.text));
+    assert(sentA.track === 'a' && sentA.replyTo, JSON.stringify(sentA));
+    // A's reply arrives while the learner reads B: A's tab says so, B stays on screen
+    await page.waitFor(`document.querySelector('.track-tab.st-ready:not(.on) .track-letter')?.textContent === 'A'`, { timeout: 8000 });
+    const replyA = journal().find(e => e.role === 'tutor' && /Echo \(answer\): answer in A/.test(e.text));
+    assert(replyA.track === 'a' && replyA.replyTo === sentA.id, JSON.stringify(replyA));
+    assert(fakeLog().find(l => l.event === 'replied' && l.id === sentA.id)?.head.includes('track=a'), 'wait did not print track=a');
+    assert(journal().find(e => e.kind === 'grade' && e.target === sentA.id)?.track === 'a', 'grade not in thread a');
+    // answer in B: back to A, at its reply
+    await page.click('#answerBox'); await page.type('answer in B');
+    await page.key('Enter', { meta: true });
+    await page.waitFor(`document.querySelector('.track-tab.on .track-letter')?.textContent === 'A' && document.querySelector('#thread').innerText.includes('Echo (answer): answer in A')`, { timeout: 3000 });
+    const sentB = await until(() => journal().find(e => e.role === 'user' && e.text === 'answer in B'), 'B answer');
+    assert(sentB.track === 'b' && sentB.replyTo === bq.id, JSON.stringify(sentB));
+    await until(() => journal().find(e => e.role === 'tutor' && e.track === 'b' && /answer in B/.test(e.text)), 'B reply');
+    assert(/two threads: \d+ replies/.test(learn('latency', 'demo')), learn('latency', 'demo'));
+    // back to one thread: the bar goes, B's messages stay, marked
+    await page.eval(`[...document.querySelectorAll('#tracksBar button')].find(b => /One thread/.test(b.textContent)).click()`);
+    await page.waitFor(`document.querySelector('#tracksBar').hidden && document.querySelector('.track-chip') && /Fake thread-b question/.test(document.querySelector('#thread').innerText)`, { timeout: 8000 });
+    assert(!journal().filter(e => e.kind === 'tracks').pop().open, 'closed');
   });
   await test('composer resize handle drags and remembers', async () => {
     const g = await page.eval(`(() => { const b = document.querySelector('.composer-grip').getBoundingClientRect(); return [b.left + b.width / 2, b.top + 4, document.querySelector('.composer').offsetHeight]; })()`);
@@ -636,7 +712,10 @@ async function main() {
     const marked = await page.waitFor(`[...document.querySelectorAll('.gl-row')].filter(r => r.querySelector('.gl-has-page')).map(r => [...r.querySelector('.gl-name').childNodes].find(n => n.nodeType === 3).textContent)`);
     assert(marked.join() === 'temperature', 'page markers: ' + marked);
     await page.nav(`${BASE}/#/demo/learn`, 1200);
-    await page.waitFor(`document.querySelector('.thread .term[data-term="temperature"], .thread .ref-term[data-id="temperature"]')`, { timeout: 3000 });
+    // the message may be further back than the first page of the conversation (earlier tests add messages)
+    const T = `document.querySelector('.thread .term[data-term="temperature"], .thread .ref-term[data-id="temperature"]')`;
+    await page.eval(`(() => { for (let i = 0; i < 5 && !${T}; i++) document.querySelector('.earlier button')?.click(); })()`);
+    await page.waitFor(T, { timeout: 3000 });
     await page.eval(`document.querySelector('.thread .term[data-term="temperature"], .thread .ref-term[data-id="temperature"]').id = 'zz-temp'`);
     await page.click('#zz-temp', 300);
     const dock = await page.waitFor(`(() => { const d = document.querySelector('#dock'); return d.querySelector('.term-page .callout-fog') && { title: d.querySelector('.title-block h2').textContent,
@@ -988,6 +1067,7 @@ async function main() {
     await page.eval(`localStorage.removeItem('learn:glossarySort')`);
     await page.nav(`${BASE}/#/demo/wiki/glossary`, 900);
     await page.waitFor(`document.querySelectorAll('.gl-row').length > 10`);
+    await page.mouse('mouseMoved', 2, 2); await sleep(300);   // no hover card left over from where the pointer last was
     assert(await page.eval(`document.querySelector('.sheet .gl-sort button.on')?.dataset.sort`) === 'alpha', 'default is A–Z');
     await page.click('.sheet .gl-sort [data-sort="new"]');
     const order = `(async () => { const { termEntry, introOf } = await import('/js/panels.js');
@@ -1133,6 +1213,7 @@ async function main() {
   });
   await test('UI code change: reload waits while the learner is active, keeps the draft', async () => {
     await page.nav(`${BASE}/#/demo/learn`, 1000);
+    await page.click('#composer .mode-ask');
     await page.eval(`document.querySelector('#askBox').focus()`); await page.type('half-typed');
     const css = path.join(CODE, 'web', 'tree.css');
     fs.appendFileSync(css, '\n');

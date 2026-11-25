@@ -1,7 +1,7 @@
 // Shared helpers: DOM, skills, derived journal data.
 export { h } from '../viz/core.js';
 import { h } from '../viz/core.js';
-import { metaIds } from './journal.js';
+import { metaIds, pendingQuestion, tracksState } from './journal.js';
 
 export const $ = (s, r = document) => r.querySelector(s);
 export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -79,12 +79,9 @@ export function derive(topic) {
     e._skills = [...new Set([...(e.skills || []), ...(t || [])].map(String))];
     e._meta = meta.has(e.id);
   }
-  // pending question: last tutor question not followed by an answer to it
-  let pending = null;
-  for (const e of J) {
-    if (e._meta) continue;
-    if (e.role === 'tutor' && e.kind === 'message' && e.question) pending = e;
-    else if (e.role === 'user' && e.kind === 'answer' && pending && (!e.replyTo || e.replyTo === pending.id)) pending = null;
-  }
-  return { byId, grades, pending };
+  // the open question; with two threads open, each thread's own (journal.js)
+  const pending = pendingQuestion(J, null, meta);
+  const tracks = tracksState(J);
+  const pendingBy = tracks.open ? { a: pendingQuestion(J, 'a', meta), b: pendingQuestion(J, 'b', meta) } : null;
+  return { byId, grades, pending, tracks, pendingBy };
 }
