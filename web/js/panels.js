@@ -63,7 +63,7 @@ function dockGlossary(body) {
       list.append(h('button', { class: 'gl-item', onclick: () => openDock('term', t.term) },
         lvChip(lv, sk ? `${sk.id} ${sk.name}: level ${fmtLevel(lv)}` : 'no skill'),
         h('span', { class: 'gl-term' }, t.term, t.full ? h('span', { class: 'gl-full', text: plain(t.full, 80) }) : null, termPage(t) ? h('span', { class: 'gl-has-page', title: 'Has its own page' }, icon('page')) : null),
-        h('span', { class: 'gl-short', text: plain(t.short, 160) })));
+        h('span', { class: 'gl-short', text: plain(t.short, 1000) })));
     }
     if (!items.length) list.append(h('div', { class: 'empty-row', text: 'No matching terms.' }));
   };
@@ -239,7 +239,7 @@ export function termPanel(body, name, { full = false } = {}) {
 }
 function termChip(g) {
   const sk = g.skill ? skillById(app.topic.meta, g.skill) : null;
-  return h('button', { class: 'chip chip-btn', title: plain(g.short, 160), onclick: () => openDock('term', g.term) }, lvChip(sk ? levelOf(sk.node) : 0), g.term, termPage(g) ? icon('page') : null);
+  return h('button', { class: 'chip chip-btn', title: plain(g.short, 1000), onclick: () => openDock('term', g.term) }, lvChip(sk ? levelOf(sk.node) : 0), g.term, termPage(g) ? icon('page') : null);
 }
 // a sub-term from `parts:`: level chip, name, its short definition
 function partRow(name) {
@@ -248,7 +248,7 @@ function partRow(name) {
   const sk = p.skill ? skillById(app.topic.meta, p.skill) : null;
   return h('button', { class: 'part', onclick: () => openDock('term', p.term) }, lvChip(sk ? levelOf(sk.node) : 0),
     h('span', { class: 'gl-term' }, p.term, p.full ? h('span', { class: 'gl-full', text: plain(p.full, 80) }) : null),
-    h('span', { class: 'gl-short', text: plain(p.short, 200) }));
+    h('span', { class: 'gl-short', text: plain(p.short, 1000) }));
 }
 export function msgLine(e, needle, badge) {
   return h('button', { class: 'msgline', onclick: () => openDock('msg', e.id) },
