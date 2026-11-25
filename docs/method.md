@@ -162,6 +162,8 @@ read, and the UI files them in that thread next to its open question; a message 
 review and then asked an unrelated one put their follow-up beside the wrong question box, and they
 noticed (2026-11-25). When a review thread moves to a new subject, post the new question as its own
 short message.
+When you stop feeding a thread (late, a chapter closes), say so in that thread: the UI takes the
+learner there after they answer in the other, and an empty thread read as a bug (2026-11-25).
 Avoid making b depend on the latest step of a: they will read b while you write a, so b shouldn't
 need a's next message. Watch for signs it's costing more than it saves (they ask "where were we",
 re-read a lot, answers get worse after a switch); say so and offer to go back to one thread. Note
