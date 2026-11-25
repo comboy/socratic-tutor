@@ -39,6 +39,7 @@ export function mountAll(root) {
       if (!comp) throw new Error(`unknown viz type "${spec.type}" (known: ${Object.keys(registry).join(', ')})`);
       const parsed = spec.type === 'js' ? null : new Function(`return (${spec.src}\n)`)();
       comp(box, parsed, ctx, spec.src);
+      for (const r of box.__legends || []) if (!r.parentNode) box.append(r);
       if (spec.type === 'js') scopeIds(box);
     } catch (e) {
       box.classList.add('viz-error');
@@ -86,7 +87,8 @@ function makeCtx(box) {
     color: k => keyColor(scope(), k),
     // the topic's legend as a row of swatches (all entries, or these keys); each item carries its
     // key, so hovering it lights up the parts of the drawing tagged with ctx.key(el, key)
-    legend: keys => legendRow(keys, scope()),
+    // (a legend the drawing never places is appended under it after the drawing runs)
+    legend: keys => { const r = legendRow(keys, scope()); (box.__legends ||= []).push(r); return r; },
     highlight: keys => setPinned(scope(), keys, true),
     // fixed colours for keys in this scope ({ q: 'var(--vq)' }), so a key keeps one colour
     // whatever order the keys appear in (e.g. one colour per vector type)

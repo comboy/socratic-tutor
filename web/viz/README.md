@@ -25,6 +25,7 @@ To add a reusable component:
      // ctx.color(k)      CSS colour of key k: the topic legend's colour if k is in it, else one
      //                   of the six highlight colours (per message)
      // ctx.legend([k…])  a row of swatches + labels from the topic legend (all entries if no keys);
+     //                   returns the element; if you don't place it, it goes under the drawing;
      //                   hovering an item lights up the parts tagged with that key
      // ctx.highlight([k])  pin highlight of keys in this message (used by `steps`)
      // ctx.slider(label, min, max, value, step, onChange) -> <label> element
