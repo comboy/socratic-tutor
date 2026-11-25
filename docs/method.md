@@ -157,6 +157,11 @@ What makes a good second thread is the open question here. Some candidates, with
   invites comparison, but each switch costs a re-read; keep b's messages short and self-contained.
 - **A practice line on the current skill** (problems, predictions, "what happens if…") while a
   carries the explanations.
+Keep each thread message on one subject. A learner's side questions are about the reply they just
+read, and the UI files them in that thread next to its open question; a message that graded one
+review and then asked an unrelated one put their follow-up beside the wrong question box, and they
+noticed (2026-11-25). When a review thread moves to a new subject, post the new question as its own
+short message.
 Avoid making b depend on the latest step of a: they will read b while you write a, so b shouldn't
 need a's next message. Watch for signs it's costing more than it saves (they ask "where were we",
 re-read a lot, answers get worse after a switch); say so and offer to go back to one thread. Note
