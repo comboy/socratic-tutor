@@ -138,7 +138,11 @@ topic. When the learner answers in one, the UI takes them to the other, where yo
 ready, and you write the first one's reply while they read. The latency doesn't shrink; it hides
 behind their reading.
 
-It starts when the learner presses "Two threads" (an action `two threads: on …`): pick the second
+It is **on by default** (the learner asked for that, 2026-11-25: they hadn't noticed the button): when
+threads aren't open, `resume` says so, and you open them with your first reply, unless the topic is
+too new to have a second line worth running. Only the learner's "One thread" (`two threads: off`)
+turns it off; then leave it off until they press "Two threads" again.
+To open: pick the second
 thread, `bin/learn track open "<main thread, a>" "<second thread, b>"`, reply to the action in a
 with `--track a`, and post b's first message (self-contained, with its `:::question`) with
 `--track b`. Every lesson post then names its thread; `wait` prints `track=` on each message.

@@ -247,6 +247,12 @@ commands.resume = () => {
   const tracks = S.tracksState(J);
   if (tracks.open) sec('Two threads are open (experiment against latency: docs/method.md "Two threads")',
     `a: ${tracks.titles.a || '(main)'}\nb: ${tracks.titles.b || '?'}\nEvery lesson post needs --track a|b (the thread of the message you answer; \`wait\` prints track=…). Close with \`bin/learn track close\`.`);
+  else {
+    // Two threads are the default (the learner asked, 2026-11-25); only their own "One thread" turns them off.
+    const lastSwitch = J.filter(e => e.role === 'user' && /^two threads: (on|off)/.test(e.text || '')).pop();
+    if (!lastSwitch || /^two threads: on/.test(lastSwitch.text))
+      sec('Two threads: on by default, not open yet', 'Open them with your first reply (`bin/learn track open "a" "b"`, docs/method.md "Two threads"), unless the topic has too little material for a second thread yet.');
+  }
   for (const t of tracks.open ? ['a', 'b'] : [null]) {
     const pend = S.pendingQuestion(J, t), label = t ? ` (thread ${t})` : '';
     if (!pend) { sec(`Pending question${label}`, 'none'); continue; }
