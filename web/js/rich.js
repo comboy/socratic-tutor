@@ -237,6 +237,11 @@ function showCardFor(target, level) {
   c.style.top = Math.max(8, top) + 'px';
   requestAnimationFrame(() => c.classList.add('on'));
 }
+// A card whose link was redrawn away (a view change, a re-render) never gets its mouseleave: close
+// it on the next pointer move or navigation instead of leaving it stuck over the page.
+function dropOrphans() { const i = cards.findIndex(c => !c.for.isConnected); if (i >= 0 && !cards.slice(i).some(c => c.el.matches(':hover'))) closeFrom(i); }
+addEventListener('hashchange', closeAll);
+document.addEventListener('mousemove', () => { if (cards.length) dropOrphans(); }, { passive: true });
 document.addEventListener('mouseover', e => {
   const t = e.target.closest?.('.term, .tipref, .ref-msg, .ref-term, .ref-skill');
   if (!t) return;
