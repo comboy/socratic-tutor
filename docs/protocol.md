@@ -107,6 +107,14 @@ links back to something they've forgotten, and an article that just says "explai
 [here](msg:…)" fails them. A reply still comes first; if a message arrives meanwhile, answer it
 and finish the page after. `resume` lists the focus terms that still have no page.
 
+**Chapter pages** (`pages/<name>.md`): term pages answer "what is X"; a learner looking something
+up after a few days often wants the story that ties ten terms together, and a chapter taught in
+one session has no such page until a background wiki job runs. When a chapter has taken shape
+(several lessons, a handful of new terms), start its page then, as running prose rather than chat
+excerpts, and extend it as the chapter goes; a background subagent with the message ids does this
+well while you keep teaching. Sentences needed to make the text hang together about things not
+yet covered go in `:::fog`.
+
 **The learner model** (`notes.json`): keep a running picture of what the learner understands.
 When you notice a gap that's worth fixing but would derail the current thread, record it as a
 `hole` instead of chasing it; when you defer one of their questions, `parked`; a confusion,
