@@ -486,9 +486,11 @@ function drawComposer(keepFocus) {
       h('span', { class: 'sub', text: mode === 'ask' ? (pend ? 'the question stays open' : '') : pend ? 'closes the question; the tutor grades it' : '' }),
       h('span', { class: 'spacer' }),
       pend ? h('button', { class: 'btn btn-tiny goq', title: 'Jump to the question in the conversation', onclick: () => reveal(pend.id) }, 'Go to question') : null,
-      pend ? h('button', { class: 'btn btn-tiny hideq', text: qCollapsed ? 'Show question' : 'Hide question', title: 'Show/hide the question text here', onclick: () => { store.set('qcollapsed', !qCollapsed); drawComposer(); } }) : null,
+      pend && mode === 'answer' ? h('button', { class: 'btn btn-tiny hideq', text: qCollapsed ? 'Show question' : 'Hide question', title: 'Show/hide the question text here', onclick: () => { store.set('qcollapsed', !qCollapsed); drawComposer(); } }) : null,
       h('button', { class: 'icon-btn hide-composer', id: 'hideComposer', title: 'Hide the input in the corner, for reading  (Esc · a / q bring it back)', onclick: hideComposer }, icon('chevd'))),
-    pend && !qCollapsed ? h('div', { class: 'box-q' }, rich(qtext || plain(pend.text, 400), 'hl-scope')) : null,
+    // the question is shown only while answering it: an Ask is about something else, and the
+    // question text would take the room its writer needs (it stays one click away: Go to question)
+    pend && mode === 'answer' && !qCollapsed ? h('div', { class: 'box-q' }, rich(qtext || plain(pend.text, 400), 'hl-scope')) : null,
     mode === 'ask' && quote ? h('div', { class: 'quote-chip' }, h('span', { class: 'muted small', text: `About ${shortId(quote.id)}:` }), h('span', { class: 'quote-text', text: '“' + plain(quote.text, 140) + '”' }),
       h('button', { class: 'icon-btn', title: 'Remove quote', onclick: () => { quote = null; drawComposer(); } }, icon('close'))) : null,
     sendError ? h('div', { class: 'send-error pop-warn', role: 'alert', text: sendError }) : null,

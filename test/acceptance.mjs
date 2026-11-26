@@ -410,6 +410,8 @@ async function main() {
   await test('ask mode with ⌘↵ keeps working after a redraw; a new question brings the box back to answering', async () => {
     await page.click('#composer .mode-ask');
     await page.waitFor(`document.querySelector('#askBox') && document.querySelector('.box.box-ask') && !document.querySelector('#answerBox')`, { timeout: 2000 });
+    // a question is open, but Ask mode doesn't show it above the input (only Answer does)
+    assert(await page.eval(`!!document.querySelector('#composer .goq') && !document.querySelector('#composer .box-q') && !document.querySelector('#composer .hideq')`), 'Ask mode shows the open question');
     await page.click('#askBox');
     await page.type('side question');
     await page.key('Enter', { meta: true });
@@ -417,7 +419,7 @@ async function main() {
     assert(await page.eval(`localStorage['learn:draft:ask:demo'] === '""' && ![...document.querySelectorAll('#composer textarea')].some(t => t.value)`), 'ask box not cleared');
     await page.waitFor(`[...document.querySelectorAll('.thread .msg')].some(m => m.innerText.includes('Echo (ask): side question'))`);
     // the reply carried a new question and the ask draft is empty: the box is back on Answer
-    await page.waitFor(`document.querySelector('#answerBox') && document.querySelector('.box.box-answer')`, { timeout: 3000 });
+    await page.waitFor(`document.querySelector('#answerBox') && document.querySelector('.box.box-answer') && document.querySelector('#composer .box-q')`, { timeout: 3000 });
   });
   await test('the input hides in the corner for reading: Esc or the chevron; a, q or the corner buttons bring it back; drafts kept', async () => {
     const h0 = await page.eval(`document.querySelector('#threadScroll').clientHeight`);
