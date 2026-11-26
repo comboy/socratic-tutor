@@ -34,7 +34,8 @@ const BASE = `http://localhost:${PORT}`;
 delete process.env.LEARN_HOST;
 const ENV = { ...process.env, LEARN_HOME: HOME, LEARN_NO_GIT: '1', LEARN_PORT: PORT, LEARN_CLAUDE: path.join(CODE, 'test', 'fake-tutor.mjs'),
   CLAUDE_CONFIG_DIR: path.join(HOME, 'claude'), LEARN_HANDOFF_TOKENS: '150000', FAKE_TOKENS_PER_TURN: '30000' };
-const learn = (...a) => execFileSync(process.execPath, [BIN, ...a], { env: ENV, encoding: 'utf8' });
+// stderr is captured (it is in the error when the command fails): a refusal a test expects must not read as a failure
+const learn = (...a) => execFileSync(process.execPath, [BIN, ...a], { env: ENV, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
 const api = async (p, body) => {
   const r = await fetch(BASE + p, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {});
   const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j;
@@ -121,8 +122,8 @@ async function main() {
   });
   await test('bin/learn hook reminds only the tutor session', async () => {
     const id = JSON.parse(fs.readFileSync(path.join(HOME, 'state/session.json'), 'utf8')).id;
-    const yes = execFileSync(process.execPath, [BIN, 'hook'], { env: ENV, input: JSON.stringify({ session_id: id, source: 'compact' }), encoding: 'utf8' });
-    const no = execFileSync(process.execPath, [BIN, 'hook'], { env: ENV, input: JSON.stringify({ session_id: 'other', source: 'compact' }), encoding: 'utf8' });
+    const yes = execFileSync(process.execPath, [BIN, 'hook'], { env: ENV, stdio: 'pipe', input: JSON.stringify({ session_id: id, source: 'compact' }), encoding: 'utf8' });
+    const no = execFileSync(process.execPath, [BIN, 'hook'], { env: ENV, stdio: 'pipe', input: JSON.stringify({ session_id: 'other', source: 'compact' }), encoding: 'utf8' });
     assert(/compacted/.test(yes) && no === '', 'hook output wrong');
   });
 
@@ -306,7 +307,7 @@ async function main() {
     assert(/already in the glossary/.test((() => { try { learn('term', 'add', 'demo', 'TT', '--short', 'x'); return ''; } catch (e) { return String(e.stderr); } })()), 'duplicate term refused');
     const outline = learn('tree', 'demo');
     assert(/^@linalg /m.test(outline) && /^ {2}4\.3 Causal mask <- 4\.1, 3\.2$/m.test(outline), outline);
-    const drop = (() => { try { execFileSync(process.execPath, [BIN, 'tree', 'demo', '--set'], { env: ENV, input: '1 Tokenization\n  1.1 Tokens\n', encoding: 'utf8' }); return ''; } catch (e) { return String(e.stderr); } })();
+    const drop = (() => { try { execFileSync(process.execPath, [BIN, 'tree', 'demo', '--set'], { env: ENV, stdio: 'pipe', input: '1 Tokenization\n  1.1 Tokens\n', encoding: 'utf8' }); return ''; } catch (e) { return String(e.stderr); } })();
     assert(/drops skills/.test(drop), 'tree --set refuses to drop skills: ' + drop);
     learn('log', 'demo', 'a test log line');
     assert(/a test log line/.test(fs.readFileSync(path.join(HOME, 'topics/demo/log.md'), 'utf8')), 'log');
@@ -336,7 +337,7 @@ async function main() {
       fs.writeFileSync(path.join(R, 'leak.md'), `My topic: How LLMs work (demo), notes in ${os.homedir()}/x\n`); g('add', '-A'); g('commit', '-qm', 'leak');
       const bad = run('check', '--history', '--dir', R);
       assert(bad.status === 1 && /your topic[\s\S]*leak\.md:1  \[How LLMs work \(demo\)\]/.test(bad.stdout) && /home path[\s\S]*leak\.md:1/.test(bad.stdout)
-        && /lesson commit[\s\S]*Session 2/.test(bad.stdout) && /data files in history[\s\S]*topics\/x\.md/.test(bad.stdout) && /share export/.test(bad.stdout), bad.stdout);
+        && /lesson commit[\s\S]*Session 2/.test(bad.stdout) && /author email[\s\S]*t@example\.invalid/.test(bad.stdout) && /data files in history[\s\S]*topics\/x\.md/.test(bad.stdout) && /share export/.test(bad.stdout), bad.stdout);
       const ex = run('export', X);
       assert(ex.status === 0 && fs.existsSync(path.join(X, 'bin/learn')) && fs.existsSync(path.join(X, 'AGENTS.md')) && !fs.existsSync(path.join(X, 'data')), ex.stdout + ex.stderr);
       assert(execFileSync('git', ['rev-list', '--count', 'HEAD'], { cwd: X, encoding: 'utf8' }).trim() === '1', 'one commit');
@@ -538,7 +539,7 @@ async function main() {
     assert(!learn('grep', 'open faster', '--topic', 'demo').trim() && learn('grep', 'open faster', '--topic', 'demo', '--all').trim(), 'grep');
     const r = learn('resume', 'demo');
     assert(!/meta test|Echo \(meta\)/.test(r) && /\(\+ 2 app-talk entries since /.test(r), r.slice(r.indexOf('## Last')));
-    const bad = (() => { try { execFileSync(process.execPath, [BIN, 'post', '--topic', 'demo', '--meta', '--skill', '4.1'], { env: ENV, input: 'x', encoding: 'utf8' }); return ''; } catch (e) { return String(e.stderr); } })();
+    const bad = (() => { try { execFileSync(process.execPath, [BIN, 'post', '--topic', 'demo', '--meta', '--skill', '4.1'], { env: ENV, stdio: 'pipe', input: 'x', encoding: 'utf8' }); return ''; } catch (e) { return String(e.stderr); } })();
     assert(/--meta is a reply about the app/.test(bad), 'post --meta --skill accepted: ' + bad);
   });
   await test('two threads (experiment): the tutor opens a second thread; sending in one takes you to the other, where the reply waits; post needs --track; latency; back to one thread', async () => {
@@ -706,7 +707,7 @@ async function main() {
       await page.waitFor(`document.querySelector('#answerBox').value === '' && [...document.querySelectorAll('.thread .msg')].some(m => m.innerText.includes('sent with nine tabs open'))`, { timeout: 8000 });
       assert(Date.now() - t0 < 3000, 'slow send: ' + (Date.now() - t0) + 'ms');
       // a follower still gets live updates: a reply posted from the CLI shows up here
-      execFileSync(process.execPath, [BIN, 'post', '--topic', 'demo', '--force'], { env: ENV, input: 'Relayed to every tab', encoding: 'utf8' });
+      execFileSync(process.execPath, [BIN, 'post', '--topic', 'demo', '--force'], { env: ENV, stdio: 'pipe', input: 'Relayed to every tab', encoding: 'utf8' });
       await page.waitFor(`[...document.querySelectorAll('.thread .msg')].some(m => m.innerText.includes('Relayed to every tab'))`, { timeout: 5000 });
     } finally { await page.closeTabs(tabs); }
   });
@@ -913,7 +914,7 @@ async function main() {
   });
   // a message in the (otherwise empty) cells topic exercising the auto-linker, tips and the
   // glossary coverage reminder
-  const post = (topic, text) => execFileSync(process.execPath, [BIN, 'post', '--topic', topic], { env: ENV, input: text, encoding: 'utf8' });
+  const post = (topic, text) => execFileSync(process.execPath, [BIN, 'post', '--topic', topic], { env: ENV, stdio: 'pipe', input: text, encoding: 'utf8' });
   const lastTutor = topic => fs.readdirSync(path.join(HOME, 'topics', topic, 'journal')).sort().flatMap(f => fs.readFileSync(path.join(HOME, 'topics', topic, 'journal', f), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l))).filter(e => e.role === 'tutor').at(-1);
   let termsMsg = null, postOut = '';
   await test('glossary links: every occurrence (bold, lists, tables, callouts, headings), plurals and case; never in code, links or viz', async () => {
@@ -1148,7 +1149,7 @@ async function main() {
     const n = lastTutor('cells').id;
     const err = (() => { try { post('cells', 'Here is the plan.\n\nShall I start with step 1?'); return ''; } catch (e) { return String(e.stderr); } })();
     assert(/not posted: the message ends with a question outside a :::question block/.test(err) && lastTutor('cells').id === n, err);
-    execFileSync(process.execPath, [BIN, 'post', '--topic', 'cells', '--force'], { env: ENV, input: 'Who knew?', encoding: 'utf8' });
+    execFileSync(process.execPath, [BIN, 'post', '--topic', 'cells', '--force'], { env: ENV, stdio: 'pipe', input: 'Who knew?', encoding: 'utf8' });
     post('cells', 'Plan.\n\n:::question\nShall I start with step 1?\n:::');
     assert(lastTutor('cells').question && lastTutor('cells').id !== n, 'question posts');
   });
@@ -1444,10 +1445,10 @@ async function main() {
   });
   await test('post refuses links to grade entries and unknown skills; --expect stores the rubric', async () => {
     const grade = journal().find(e => e.kind === 'grade');
-    const bad = (() => { try { execFileSync(process.execPath, [BIN, 'post', '--topic', 'demo'], { env: ENV, input: `see [this](msg:${grade.id})`, encoding: 'utf8' }); return ''; } catch (e) { return String(e.stderr); } })();
+    const bad = (() => { try { execFileSync(process.execPath, [BIN, 'post', '--topic', 'demo'], { env: ENV, stdio: 'pipe', input: `see [this](msg:${grade.id})`, encoding: 'utf8' }); return ''; } catch (e) { return String(e.stderr); } })();
     assert(/grade entry/.test(bad) && /not posted/.test(bad), bad);
     assert(!journal().some(e => e.text === `see [this](msg:${grade.id})`), 'was posted anyway');
-    execFileSync(process.execPath, [BIN, 'post', '--topic', 'demo', '--skill', '4.2', '--expect', 'heads split d_model'], { env: ENV, input: 'Rubric test.\n\n:::question\nWhy several heads?\n:::', encoding: 'utf8' });
+    execFileSync(process.execPath, [BIN, 'post', '--topic', 'demo', '--skill', '4.2', '--expect', 'heads split d_model'], { env: ENV, stdio: 'pipe', input: 'Rubric test.\n\n:::question\nWhy several heads?\n:::', encoding: 'utf8' });
     const q = journal().at(-1);
     assert(q.question && q.expect === 'heads split d_model', JSON.stringify(q));
     assert(/Good answer needs: heads split d_model/.test(learn('pending', 'demo')), 'pending shows rubric');

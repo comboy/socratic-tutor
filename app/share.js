@@ -62,6 +62,10 @@ function check({ dir = S.CODE, history = false, terms = false } = {}) {
     }
     let paths = ''; try { paths = git(dir, 'log', '--all', '--format=', '--name-only'); } catch {}
     const data = [...new Set(paths.split('\n').filter(p => /^(topics|learner|reports)\/|^feedback\.md$|^data\//.test(p)))];
+    // every commit carries its author's address; a push publishes it (a noreply address doesn't matter)
+    let mails = ''; try { mails = git(dir, 'log', '--all', '--format=%ae%n%ce'); } catch {}
+    const real = [...new Set(mails.split('\n').map(x => x.trim()).filter(x => x && !/noreply/i.test(x)))];
+    if (real.length) hist.push({ where: 'history', kind: 'author email', label: '', text: `commits are signed with ${real.slice(0, 3).join(', ')}${real.length > 3 ? ` (+${real.length - 3})` : ''}: fine if that address is public; otherwise \`share export\` after git config user.email <a noreply address>` });
     if (data.length) hist.push({ where: 'history', kind: 'data files in history', label: '', text: `${data.length} path(s), e.g. ${data.slice(0, 4).join(', ')}` });
   }
   return { files: files.length, findings, history: hist };
