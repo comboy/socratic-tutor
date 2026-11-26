@@ -365,6 +365,43 @@ async function main() {
     const P = (await api('/api/pill/demo')).text;
     assert(P.split('\n')[0] === t.split('\n')[0], 'api');
   });
+  await test('new, import, terms, doctor: a topic made in the terminal, an old terminal session imported as dated journal entries, the glossary names, the setup checks', async () => {
+    const H = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-cli-')), env = { ...ENV, LEARN_HOME: H };
+    const run = (...a) => spawnSync(process.execPath, [BIN, ...a], { env, encoding: 'utf8' });
+    try {
+      assert(run('new', 'Bad_Slug').status === 1, 'a bad slug is refused');
+      assert(/^created .*topics\/tides/.test(run('new', 'tides', 'Tides and the moon').stdout), 'new');
+      assert(JSON.parse(fs.readFileSync(path.join(H, 'topics/tides/topic.json'), 'utf8')).title === 'Tides and the moon', 'title');
+      const again = run('new', 'tides', 'Again');
+      assert(again.status === 1 && /exists/.test(again.stderr), 'an existing topic is not overwritten: ' + again.stderr);
+      // a Claude Code transcript: consecutive turns of one side join, tool calls, harness lines and torn lines are left out
+      const L = (type, ts, content, extra = {}) => JSON.stringify({ type, timestamp: ts, message: { content }, ...extra });
+      fs.writeFileSync(path.join(H, 'old.jsonl'), [
+        L('user', '2026-01-05T12:00:00.000Z', 'teach me about tides'),
+        L('assistant', '2026-01-05T12:00:05.000Z', [{ type: 'text', text: 'Two bulges.' }, { type: 'tool_use', name: 'x' }]),
+        L('assistant', '2026-01-05T12:00:06.000Z', [{ type: 'text', text: 'Why two?' }]),
+        L('user', '2026-01-05T12:00:07.000Z', 'hidden', { isMeta: true }),
+        L('user', '2026-01-05T12:00:08.000Z', '<system-reminder>x</system-reminder>'),
+        'not json',
+        L('user', '2026-01-07T12:00:00.000Z', 'inertia'),
+      ].join('\n'));
+      assert(run('import').status === 1, 'import without arguments is a usage error');
+      const imp = run('import', path.join(H, 'old.jsonl'), '--topic', 'tides');
+      assert(/^imported 4 entries into tides \(2026-01-05, 2026-01-07\)/.test(imp.stdout), imp.stdout + imp.stderr);
+      const day = d => fs.readFileSync(path.join(H, 'topics/tides/journal', d + '.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
+      const d1 = day('2026-01-05'), d2 = day('2026-01-07');
+      assert(d1.length === 3 && d1[0].kind === 'session' && /old\.jsonl/.test(d1[0].text) && d1[1].role === 'user' && d1[1].imported && d1[2].role === 'tutor' && d1[2].text === 'Two bulges.\n\nWhy two?', JSON.stringify(d1));
+      assert(d2.length === 1 && d2[0].id === '2026-01-07.1' && d2[0].text === 'inertia' && d2[0].ts === '2026-01-07T12:00:00.000Z', JSON.stringify(d2));
+      // imported turns are history: no open question, nothing waiting for a tutor
+      assert(/no pending question/.test(run('pending', 'tides').stdout), 'pending after import');
+      run('term', 'add', 'tides', 'spring tide', '--short', 'The larger tide at new and full moon.');
+      run('term', 'add', 'tides', 'neap tide', '--short', 'The smaller tide at the half moons.');
+      assert(run('terms', 'tides').stdout.trim() === 'spring tide, neap tide', 'terms: ' + run('terms', 'tides').stdout);
+      // doctor with the fake tutor: the agent checks are skipped, Node and git must pass
+      const doc = run('doctor');
+      assert(doc.status === 0 && /✓ Node 22\+/.test(doc.stdout) && /✓ git/.test(doc.stdout) && /Chrome \(tests only\)/.test(doc.stdout) && /All set/.test(doc.stdout), doc.stdout + doc.stderr);
+    } finally { fs.rmSync(H, { recursive: true, force: true }); }
+  });
   await test('glossary metadata: full and parts parse; entries without them are unchanged', async () => {
     const t = await api('/api/topic/demo');
     const bpe = t.glossary.find(g => g.term === 'BPE'), kv = t.glossary.find(g => g.term === 'KV cache'), tok = t.glossary.find(g => g.term === 'token');
