@@ -53,6 +53,34 @@ function killListeners() {
   for (const l of listeners()) { try { process.kill(l.pid, 'SIGTERM'); } catch {} }
 }
 
+// ---------- the learner's instructions: which version this session has seen ----------
+// resume shows them (in the profile); if the learner edits them in the UI during the session,
+// `wait` prints the new version once, with the next message.
+const SEEN_FILE = path.join(S.STATE, 'instructions-seen.json');
+const instrHash = () => require('crypto').createHash('sha1').update(S.readInstructions()).digest('hex').slice(0, 12);
+function markInstructionsSeen(sessionId) {
+  if (!sessionId) return;
+  S.ensureDir(S.STATE);
+  S.writeJSON(SEEN_FILE, { session: sessionId, hash: instrHash() });
+}
+// -> the new text if this session saw an older version, else null
+function instructionsChanged(sessionId) {
+  if (!sessionId) return null;
+  let seen = null; try { seen = JSON.parse(fs.readFileSync(SEEN_FILE, 'utf8')); } catch {}
+  if (seen?.session === sessionId) {
+    if (seen.hash === instrHash()) return null;
+  } else {
+    // no record for this session (it never ran resume, or it predates this): it has seen the
+    // profile as it was when it started, so it's news only if the profile changed since
+    const sess = readSession();
+    let mtime = 0; try { mtime = fs.statSync(S.profilePath()).mtimeMs; } catch {}
+    const started = sess?.id === sessionId ? Date.parse(sess.startedAt) : Infinity;
+    if (!(mtime > started)) { markInstructionsSeen(sessionId); return null; }
+  }
+  markInstructionsSeen(sessionId);
+  return S.readInstructions();
+}
+
 // ---------- context size (Claude Code only; null for other agents) ----------
 function contextTokens(id) { return require('./agent').agent().contextTokens(id); }
 
@@ -93,5 +121,5 @@ const isFreshTutorAction = e => e.kind === 'action' && String(e.text).startsWith
 module.exports = {
   SESSION_FILE, HANDOFF_FILE, HANDOFF_TOKENS, HANDOFF_MESSAGES, FRESH_TUTOR, alive,
   readSession, writeSession, launcherAlive, readHandoff, requestHandoff, clearHandoff,
-  listeners, registerListener, killListeners, contextTokens, requeueUnanswered, isFreshTutorAction,
+  listeners, registerListener, killListeners, markInstructionsSeen, instructionsChanged, contextTokens, requeueUnanswered, isFreshTutorAction,
 };

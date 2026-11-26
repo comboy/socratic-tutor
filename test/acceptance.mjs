@@ -676,6 +676,32 @@ async function main() {
     await page.eval(`document.querySelector('.pill-text').scrollIntoView()`);
     await page.shot('wiki-you-pill');
   });
+  await test('your instructions to every tutor: edited on the You page, saved into profile.md "In my own words" (rest kept), the running tutor is told once, with its next message', async () => {
+    const env = { ...ENV, LEARN_SESSION: 'instr-test-session' };
+    const node = code => execFileSync(process.execPath, ['-e', code], { env, cwd: CODE, encoding: 'utf8' });
+    node(`require('./app/session').markInstructionsSeen('instr-test-session')`);
+    await page.nav(`${BASE}/#/demo/wiki/you`, 900);
+    await page.waitFor(`document.querySelector('#instrEdit')`, { timeout: 4000 });
+    await page.click('#instrEdit');
+    await page.eval(`document.querySelector('#instrBox').value = ''`);
+    await page.click('#instrBox'); await page.type('Be direct.\n\nNo softening.');
+    await page.click('#instrSave');
+    await page.waitFor(`!document.querySelector('#instrBox') && /No softening/.test(document.querySelector('.instr').innerText)`, { timeout: 4000 });
+    await page.shot('wiki-you-instructions');
+    const prof = fs.readFileSync(path.join(HOME, 'learner/profile.md'), 'utf8');
+    assert(/## In my own words \(authoritative\)\n\nWritten by the learner\.[^\n]*\n\n> Be direct\.\n>\n> No softening\.\n/.test(prof), prof);
+    assert(prof.startsWith('# Learner profile') && /## Background[\s\S]*## How I like to learn[\s\S]*Dark theme/.test(prof), 'rest of the profile lost: ' + prof);
+    assert(!/In my own words|No softening/.test(await page.eval(`[...document.querySelectorAll('.sheet')].find(s => /How you like to learn/.test(s.innerText))?.innerText || ''`)), 'shown twice');
+    const told = node(`process.stdout.write(String(require('./app/session').instructionsChanged('instr-test-session')))`);
+    assert(/Be direct\.\n\nNo softening\./.test(told), 'not told: ' + told);
+    assert(node(`process.stdout.write(String(require('./app/session').instructionsChanged('instr-test-session')))`) === 'null', 'told twice');
+    // a draft survives a reload; cancel drops it
+    await page.click('#instrEdit'); await page.type(' DRAFT');
+    await page.nav(`${BASE}/#/demo/wiki/you`, 900);
+    await page.waitFor(`/DRAFT/.test(document.querySelector('#instrBox')?.value || '')`, { timeout: 4000 });
+    await page.eval(`[...document.querySelectorAll('.instr-actions .btn')].find(b => b.textContent === 'Cancel').click()`);
+    assert(!/DRAFT/.test(fs.readFileSync(path.join(HOME, 'learner/profile.md'), 'utf8')), 'cancelled draft saved');
+  });
   await test('viz residual: steps through, maths from the weights, edits recompute', async () => {
     await page.nav(`${BASE}/#/demo/wiki/page/residual-stream`, 900);
     const V = `document.querySelector('.page-md .viz-residual')`;

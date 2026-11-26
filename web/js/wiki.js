@@ -3,7 +3,8 @@ import { h, flatSkills, levelOf, lvChip, meter, fmtLevel, fmtDate, skillById, ov
 import { rich, legendEntries } from './rich.js';
 import { plain, md } from './md.js';
 import { icon } from './icons.js';
-import { app, go, learner, getJSON } from './app.js';
+import { app, go, learner, getJSON, postJSON } from './app.js';
+import { store } from './util.js';
 import { termPanel, skillPanel, occurrences, group, sortedGlossary, sortToggle, termText, introOf, noteRow, NOTE_KIND, dependencies, openDock, termEntry } from './panels.js';
 import { pageForTerm } from './terms.js';
 import * as learnView from './learn.js';
@@ -24,7 +25,8 @@ export function render(center, _app, args) {
   (P[page] || P.home)(body, arg);
 }
 export function onTopic() { render(document.getElementById('center'), app, app.args); }
-export function onLearner() { if (['you', 'home'].includes(app.args[0] || 'home')) onTopic(); }
+// (not while the learner is editing their instructions: a redraw would take the box away)
+export function onLearner() { if (['you', 'home'].includes(app.args[0] || 'home') && !instrEditing) onTopic(); }
 const sheet = (...kids) => h('div', { class: 'sheet' }, ...kids);
 const RESTART = 'Restart the server (bin/learn) to load this topic’s pages.';
 // skills a page links to (skill:ID), in order of first mention
@@ -241,6 +243,7 @@ function overview(el) {
 
 // ---------------------------------------------------------------- "You": the learner model
 async function you(el) {
+  const L0 = h('div');
   const notes = app.topic.notes?.items || [];
   const open = notes.filter(n => n.status === 'open'), done = notes.filter(n => n.status !== 'open').reverse();
   const s0 = sheet(group(['What the tutor has noticed', h('span', { class: 'count', text: String(open.length) }), h('span', { class: 'spacer' }),
@@ -255,16 +258,58 @@ async function you(el) {
   if (done.length) s0.append(h('details', { class: 'notes-done' }, h('summary', { text: `Settled (${done.length})` }), h('div', { class: 'notes-list' }, ...done.map(noteRow))));
   el.append(s0);
   const L = h('div');
+  el.prepend(L0);
   el.append(L);
   try {
     const l = await learner();
-    const strip = t => String(t || '').replace(/^# [^\n]*\n[\s\S]*?(?=^## )/m, '');
+    L0.replaceChildren(instructionsSheet(l.instructions || ''));
+    // the profile without its title and without "In my own words" (shown above, editable)
+    const strip = t => String(t || '').replace(/^# [^\n]*\n[\s\S]*?(?=^## )/m, '').replace(/^## In my own words[^\n]*\n[\s\S]*?(?=^## |(?![\s\S]))/m, '');
     L.append(sheet(group(['Across all your topics', h('span', { class: 'spacer' }), h('span', { class: 'group-note', text: 'learner/knowledge.md: kept by the tutors and the reviewer' })]),
       h('div', { class: 'sheet-pad' }, rich(strip(l.knowledge) || '*Nothing yet.*', 'wiki-md hl-scope', { terms: false }))));
     L.append(sheet(group(['How you like to learn', h('span', { class: 'spacer' }), h('span', { class: 'group-note', text: 'learner/profile.md: every tutor reads this; edit it freely' })]),
       h('div', { class: 'sheet-pad' }, rich(strip(l.profile) || '*Empty.*', 'wiki-md hl-scope', { terms: false }))));
   } catch (e) { L.append(h('div', { class: 'error', text: 'Could not load the learner files: ' + e.message })); }
   el.append(pillSheet(app.topic.slug));
+}
+
+// Your instructions to every tutor: the "In my own words" section of learner/profile.md. Agents
+// never edit it and it overrides what they derive; a running tutor gets the new version with your
+// next message. The draft survives a reload until it's saved or cancelled.
+let instrEditing = false;
+function instructionsSheet(text) {
+  const body = h('div', { class: 'sheet-pad instr' });
+  const note = h('span', { class: 'group-note' });
+  const view = () => {
+    instrEditing = false;
+    body.replaceChildren(text ? rich(text, 'wiki-md', { terms: false })
+      : h('p', { class: 'muted', text: 'Nothing yet. How should the tutors work with you? Tone, pace, how direct the feedback, what to avoid. Every tutor reads this first, and it overrides what they work out themselves.' }));
+    edit.hidden = false;
+  };
+  const editor = () => {
+    instrEditing = true; edit.hidden = true;
+    const ta = h('textarea', { class: 'input instr-box', id: 'instrBox', rows: 10, placeholder: 'e.g. Be direct: tell me plainly when I\'m wrong.' });
+    ta.value = store.get('draft:instructions', null) ?? text;
+    ta.addEventListener('input', () => store.set('draft:instructions', ta.value));
+    const msg = h('div', { class: 'instr-msg' });
+    const save = h('button', { class: 'btn btn-primary btn-small', id: 'instrSave', onclick: async () => {
+      save.disabled = true;
+      try {
+        text = (await postJSON('/api/instructions', { text: ta.value }, { tries: 3 })).instructions;
+        store.set('draft:instructions', null); view();
+        note.textContent = 'Saved. The tutor gets it with your next message.';
+        setTimeout(() => { note.textContent = ''; }, 5000);
+      } catch (e) { save.disabled = false; msg.className = 'instr-msg pop-warn'; msg.textContent = 'Not saved: ' + e.message; }
+    } }, 'Save');
+    const cancel = h('button', { class: 'btn btn-small', onclick: () => { store.set('draft:instructions', null); view(); } }, 'Cancel');
+    ta.addEventListener('keydown', ev => { if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); save.click(); } else if (ev.key === 'Escape') cancel.click(); });
+    body.replaceChildren(ta, msg, h('div', { class: 'instr-actions' }, save, cancel, h('span', { class: 'muted small', text: 'Markdown. ⌘↵ saves, Esc cancels.' })));
+    setTimeout(() => ta.focus(), 30);
+  };
+  const edit = h('button', { class: 'btn btn-small', id: 'instrEdit', onclick: editor }, icon('compose'), 'Edit');
+  if (store.get('draft:instructions', null) != null) editor(); else view();
+  return sheet(group(['Your instructions to every tutor', h('span', { class: 'spacer' }), note,
+    h('span', { class: 'group-note', title: 'learner/profile.md, section "In my own words". The tutors never edit it; it overrides what they work out.', text: 'only you edit this' }), edit]), body);
 }
 
 // The knowledge pill: what you know in this topic as one portable file (app/pill.js), for seeding

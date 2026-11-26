@@ -77,6 +77,8 @@ function fillPopover() {
           : 'Shown once the tutor has replied at least once in this session.' }))
         : h('div', { class: 'pop-warn' }, 'This tutor wasn’t started by ', h('code', { text: 'bin/learn' }), ', so it can’t be switched from here. Run ', h('code', { text: 'bin/learn' }), ' in a terminal.'),
       s.kind === 'handoff' && !busy ? h('div', { class: 'pop-hint', text: 'This session took over from an earlier one with fresh context.' }) : null,
+      app.topic ? h('div', { class: 'pop-hint' }, h('a', { href: `#/${app.topic.slug}/wiki/you`, id: 'instrLink', onclick: () => closePopover() }, 'Your instructions to every tutor'),
+        ': how they should work with you; they override everything the tutors work out themselves.') : null,
       note ? h('div', { class: 'pop-note', text: note }) : null),
     s.launcher ? h('div', { class: 'pop-f' },
       h('button', { class: 'btn', disabled: busy, title: 'The tutor saves its notes, then a new session continues where it left off', onclick: () => handoff(false) }, icon('auto'), 'Fresh tutor'),

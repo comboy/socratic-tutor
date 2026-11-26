@@ -1021,3 +1021,9 @@ body.no-topics #leftToggle, body.no-topics #dockBtn, body.no-topics #searchBtn {
 .send-btn .dots { margin-right: 6px; }
 .send-error { margin: 0 0 8px; }
 .typing.offline .btn { margin-left: 6px; vertical-align: baseline; }
+
+/* your instructions to every tutor (Wiki → You) */
+.instr .instr-box { min-height: 180px; resize: vertical; }
+.instr-actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.instr-msg:empty { display: none; }
+.instr-msg { margin-top: 8px; }

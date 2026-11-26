@@ -127,6 +127,34 @@ Written by the learner. Agents: never edit or paraphrase this section; propose c
 
 ## Interface preferences (derived)
 `;
+// ---------- the learner's own instructions ----------
+// The "In my own words" section of learner/profile.md: written by the learner (in the UI: Wiki →
+// You), authoritative for every tutor, never edited by agents. Kept there, not in a file of its
+// own, because every tutor already reads the profile first. Stored as a blockquote under the
+// section's note line; the UI edits the plain text.
+const OWN_HEAD = '## In my own words (authoritative)';
+const OWN_NOTE = 'Written by the learner. Agents: never edit or paraphrase this section; propose changes instead.';
+const OWN_RE = /^## In my own words[^\n]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m;
+function profilePath() { return path.join(LEARNER, 'profile.md'); }
+function readInstructions() {
+  const m = readText(profilePath(), '').match(OWN_RE);
+  if (!m) return '';
+  return m[1].split('\n').filter(l => !l.startsWith('Written by the learner.'))
+    .map(l => l.replace(/^> ?/, '')).join('\n').trim();
+}
+function writeInstructions(text) {
+  const body = String(text ?? '').replace(/\r\n?/g, '\n').trim();
+  if (body.length > 8000) throw new Error('too long (8000 characters max)');
+  return withLock(profilePath(), () => {
+    ensureDir(LEARNER);
+    const cur = readText(profilePath(), null) ?? PROFILE_TEMPLATE;
+    const section = `${OWN_HEAD}\n\n${OWN_NOTE}\n\n${body ? body.split('\n').map(l => (l ? '> ' + l : '>')).join('\n') + '\n' : ''}\n`;
+    const next = OWN_RE.test(cur) ? cur.replace(OWN_RE, section)
+      : cur.replace(/^(# [^\n]*\n(?:(?!^## )[\s\S])*)/m, `$1${cur.endsWith('\n\n') ? '' : '\n'}${section}`);
+    fs.writeFileSync(profilePath(), next);
+    return readInstructions();
+  });
+}
 const KNOWLEDGE_TEMPLATE = `# Knowledge across topics
 
 What the learner knows across all topics: islands of solid knowledge, shaky foundations, and links
@@ -561,5 +589,5 @@ module.exports = {
   walkSkills, findSkill, leafSkills, parseGlossary, readGlossary, addTerm, META_KEYS,
   NOTE_KINDS, readNotes, addNote, closeNote, parseDue, appendLog,
   journalDir, journalFiles, readJournal, readJournalFile, appendJournal, findEntry, lastEntry, pendingQuestion, metaIds, tracksState, trackOf, awaitingReply,
-  hasQuestion, setLevel, COLOR, LEGEND_KEY, setLegend, removeLegend, enqueue, inboxIds, inboxEntries, appendFeedback, openFeedback,
+  hasQuestion, setLevel, COLOR, LEGEND_KEY, setLegend, removeLegend, enqueue, inboxIds, inboxEntries, readInstructions, writeInstructions, profilePath, appendFeedback, openFeedback,
 };

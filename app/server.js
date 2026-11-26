@@ -106,6 +106,7 @@ function topicPayload(slug) {
 function learnerPayload() {
   return {
     profile: S.readText(path.join(S.LEARNER, 'profile.md'), ''),
+    instructions: S.readInstructions(),
     knowledge: S.readText(path.join(S.LEARNER, 'knowledge.md'), ''),
     feedback: S.readText(S.FEEDBACK, ''),
     topics: S.listTopics().map(slug => { const m = S.loadTopicMeta(slug); return { slug, title: m.title, goal: m.goal || null, foundations: m.foundations || [] }; }),
@@ -198,6 +199,18 @@ const routes = {
     const r = S.appendFeedback(b.text, [b.topic, b.view].filter(Boolean).join(' · '));
     broadcast({ type: 'learner' });
     return r;
+  },
+  // The learner's instructions to every tutor (Wiki → You): the "In my own words" section of
+  // learner/profile.md. Saved, committed (it's the learner's own text: worth its history), and
+  // the running tutor sees the new version with the next message (`bin/learn wait`).
+  'POST /api/instructions': async (req) => {
+    const b = await readBody(req);
+    if (typeof b.text !== 'string') throw new Error('text required');
+    const text = S.writeInstructions(b.text);
+    log(`instructions saved (${text.length} chars)`);
+    try { S.commitData('Learner: custom instructions edited in the UI', [S.profilePath()]); } catch (e) { log('instructions commit: ' + e.message); }
+    broadcast({ type: 'learner' });
+    return { instructions: text };
   },
   // "Fresh tutor": politely (the tutor saves its notes, then runs `bin/learn handoff`) or,
   // with force, right away (for a stuck tutor; unanswered messages are requeued).

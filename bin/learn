@@ -216,6 +216,7 @@ commands.resume = () => {
   const sess = T.readSession();
   if (process.env.LEARN_SESSION && sess?.id === process.env.LEARN_SESSION && sess.topic !== slug) T.writeSession({ ...sess, topic: slug });
   const meta = S.loadTopicMeta(slug), dir = S.topicDir(slug);
+  T.markInstructionsSeen(process.env.LEARN_SESSION);   // the profile below has them
   const J = S.readJournal(slug);
   const appTalk = S.metaIds(J);
   const out = [];
@@ -225,7 +226,7 @@ commands.resume = () => {
   const last = [...J].reverse().find(e => e.kind !== 'session' && e.kind !== 'tag');
   const gapMs = last ? Date.now() - Date.parse(last.ts) : null;
   let advice;
-  if (!meta.skills?.length) advice = 'NEW TOPIC: no skill tree yet. Follow docs/bootstrap.md (first reply fast: one line + diagnostic question 1; then write the tree).';
+  if (!meta.skills?.length) advice = 'NEW TOPIC: no skill tree yet. Follow docs/bootstrap.md (sketch the diagnostic questions, then first reply fast: two threads, question 1 in a, question 2 in b; then write the tree).';
   else if (gapMs == null) advice = 'No messages yet: introduce the plan briefly and ask the first question.';
   else {
     const size = gapMs < 8 * 3600e3 ? 'hours: no refresher, re-ask the pending question if it got lost'
@@ -372,6 +373,8 @@ commands.wait = async () => {
     console.log();
     if (T.isFreshTutorAction(m)) handoff = true;
   }
+  const instr = T.instructionsChanged(mine);
+  if (instr != null) console.log(`── INSTRUCTIONS CHANGED ── The learner just edited their instructions to every tutor (the "In my own words" section of the profile). They override everything derived; follow them from this reply on:\n${instr ? instr.replace(/^/gm, '  ') : '  (now empty)'}\n`);
   // which topic is this session for? A message for another topic means a topic switch.
   const sess = T.readSession();
   const mineSess = sess && (!mine || sess.id === mine) ? sess : null;

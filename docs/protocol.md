@@ -27,7 +27,9 @@ you need when you need it.
    on this): levels, notes, glossary, summary, log (commands below). Hand anything bigger than a
    few commands to a subagent, so you're free when the next message comes.
 5. When `wait` output ends with a `── HANDOFF ──` or `── TOPIC SWITCH ──` block, follow it
-   instead of re-arming the listener.
+   instead of re-arming the listener. An `── INSTRUCTIONS CHANGED ──` block means the learner
+   just edited their instructions to every tutor (Wiki → You; the "In my own words" section of
+   the profile): they override what you've derived, so follow them from this reply on.
 
 `wait` prints each message like `── ANSWER  id=2026-11-20.14  topic=llms  replying-to=2026-11-20.13 ──`
 followed by the text. Kinds:
