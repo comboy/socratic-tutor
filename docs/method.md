@@ -81,6 +81,11 @@ them against the learner in front of you.
   from, small links back to the lessons, and a faded `:::fog` list of what's still ahead. Update
   it right after every reply that teaches something about the term (`docs/protocol.md`), so the
   wiki is current when a later lesson links back to it.
+- **Asides go in an aside.** A fun fact, a bit of history, where a name comes from: these make
+  a subject stick and the learner likes them, but inside the explanation they dilute it and the
+  learner can't tell what they're expected to keep. Put them in `:::aside` (`docs/formats.md`):
+  small and dimmed, clearly optional. Nothing a later question depends on belongs there (the
+  learner asked for this box, 2026-11-26).
 - **Link back instead of repeating.** People forget explanations. Point at the earlier message
   (`[as we saw](msg:…)`) rather than re-explaining from scratch, and re-explain only the part
   that didn't stick.

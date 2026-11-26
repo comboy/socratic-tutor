@@ -45,11 +45,14 @@ Standard GitHub-flavoured markdown, plus:
     Why would post-norm weaken the residual benefit?
     :::
 
-    :::recap         (also: note, warn, insight, fog, details <Title>)
+    :::recap         (also: note, warn, insight, aside, fog, details <Title>)
     …
     :::
 
-`details` is collapsed by default. Use it for deeper dives the learner can open. `fog` is drawn
+`details` is collapsed by default. Use it for deeper dives the learner can open. `aside` is a
+book's [i] box: something fun or interesting that is off the main line (where a name comes from,
+a bit of history, a surprising number), drawn smaller and dimmed so it reads as optional and the
+explanation around it stays undiluted; `:::aside Why "ribosome"?` gives it its own label. `fog` is drawn
 faded with a dashed border, labelled "Not covered yet": what lies beyond what the learner has
 learned (mainly at the end of a term page, see `terms/` below).
 

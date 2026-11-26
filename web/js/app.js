@@ -174,11 +174,16 @@ export function renderLeft() {
       title: `${s.id} ${s.name} · level ${fmtLevel(lv)}/5${m.focus === s.id ? ' · current focus' : ''}`,
       onclick: () => openDock('skill', s.id),
     },
-      kids ? h('button', { class: 'tw' + (collapsed[s.id] ? '' : ' open'), title: collapsed[s.id] ? 'Expand' : 'Collapse',
+      // Rows give their width to the name (the learner reads this at high zoom, where the old fold
+      // button + number + inline bar left the text a few letters): a sub-skill is indented by a few
+      // pixels and has no empty fold slot; a chapter's progress is a thin bar under its title.
+      s.depth ? null : kids ? h('button', { class: 'tw' + (collapsed[s.id] ? '' : ' open'), title: collapsed[s.id] ? 'Expand' : 'Collapse',
         onclick: e => { e.stopPropagation(); collapsed[s.id] = !collapsed[s.id]; store.set('collapsed:' + app.topic.slug, collapsed); renderLeft(); } }, icon('chev')) : h('span'),
       h('span', { class: 'sid', text: s.id }),
       h('span', { class: 'name', text: s.name }),
-      h('span', { class: 'right' }, m.focus === s.id ? h('span', { class: 'focus-tag', text: 'now' }) : null, kids ? meter(lv) : null, lvChip(lv))));
+      h('span', { class: 'right' }, m.focus === s.id ? h('span', { class: 'focus-tag', text: 'now' }) : null, lvChip(lv)),
+      kids && !s.depth ? meter(lv, null, 'under') : null));
+    if (s.depth > 1) tree.lastChild.style.paddingLeft = 18 + (s.depth - 1) * 10 + 'px';
   }
   const lastCheck = lastChecks();
   const due = flatSkills(m.skills).filter(s => !s.children?.length && (s.level || 0) >= 2)

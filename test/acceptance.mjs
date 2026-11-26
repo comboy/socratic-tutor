@@ -1366,6 +1366,27 @@ async function main() {
       return { marker: mk.id, ref: v.querySelector('line').getAttribute('marker-end'), uid: v.dataset.uid }; })`);
     assert(ids[0].marker !== ids[1].marker && ids.every(x => x.ref === `url(#${x.marker})` && x.uid === x.marker && /^ah-/.test(x.marker)), 'marker ids: ' + JSON.stringify(ids));
   });
+  await test('aside callout: off the main line, drawn smaller and dimmed, with its own label when given', async () => {
+    post('cells', ['The membrane keeps the inside in.', '', ':::aside', 'Robert Hooke named cells after the small rooms of monks.', ':::', '', ':::aside A number', 'About 37 trillion of them.', ':::', '', 'Back on the main line.'].join('\n'));
+    const id = lastTutor('cells').id;
+    await page.nav(`${BASE}/#/cells/learn`, 1200);
+    const r = await page.waitFor(`(() => { const m = document.querySelector('[id="m-${id}"] .msg-body'), a = m && [...m.querySelectorAll('.callout-aside')]; if (!a || a.length < 2) return null;
+      const px = n => parseFloat(getComputedStyle(n).fontSize);
+      return { labels: a.map(x => x.querySelector('.callout-label').textContent), smaller: px(a[0].querySelector('.callout-body')) < px(m.querySelector(':scope > p')),
+        dimmed: getComputedStyle(a[0].querySelector('.callout-body')).color !== getComputedStyle(m.querySelector(':scope > p')).color, raw: /:::/.test(m.textContent) }; })()`, { timeout: 5000 });
+    assert(r.labels.join('|') === 'Aside|A number' && r.smaller && r.dimmed && !r.raw, JSON.stringify(r));
+    await page.eval(`document.querySelector('[id="m-${id}"]').scrollIntoView({ block: 'center' })`);
+    await page.shot('aside');
+  });
+  await test('sidebar skills: the name gets the row (thin indent, no fold slot on sub-skills); a chapter\'s progress is a thin bar under its title', async () => {
+    await page.nav(`${BASE}/#/demo/learn`, 900);
+    const r = await page.waitFor(`(() => { const p = document.querySelector('#left .trow.parent'), c = document.querySelector('#left .trow.child'); if (!p || !c) return null;
+      const x = (row, sel) => row.querySelector(sel).getBoundingClientRect(), bar = p.querySelector('.meter.under')?.getBoundingClientRect();
+      return { indent: x(c, '.name').left - x(p, '.name').left, nameShare: x(c, '.name').width / c.getBoundingClientRect().width, tw: !!c.querySelector('.tw'),
+        barBelow: bar && bar.top >= x(p, '.name').bottom - 4, barH: bar?.height, barW: bar && bar.width / p.getBoundingClientRect().width, inline: !!p.querySelector('.right .meter') }; })()`);
+    assert(r.indent > 0 && r.indent <= 24 && r.nameShare > 0.7 && !r.tw, 'sub-skill rows: ' + JSON.stringify(r));
+    assert(r.barBelow && r.barH <= 4 && r.barW > 0.8 && !r.inline, 'chapter bar: ' + JSON.stringify(r));
+  });
   await test('grading names its message: --grade-of grades an answer sent from the Ask box or in the other thread and closes the right question; a graded answer is not silently graded again', async () => {
     // the learner's messages, written straight into the journal (no tutor listens on this topic)
     const say = entry => JSON.parse(execFileSync(process.execPath, ['-e', `const S = require(${JSON.stringify(path.join(CODE, 'app', 'store.js'))}); console.log(JSON.stringify(S.appendJournal('cells', [JSON.parse(process.argv[1])])[0]))`, JSON.stringify({ role: 'user', ...entry })], { env: ENV, encoding: 'utf8' }));
