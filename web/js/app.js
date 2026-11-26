@@ -130,7 +130,7 @@ async function route() {
   const parts = hash.split('/').filter(Boolean).map(decodeURIComponent);
   let [slug, view = 'learn', ...args] = parts;
   if (!slug || !app.topics.some(t => t.slug === slug)) slug = store.get('topic', null);
-  if (!app.topics.some(t => t.slug === slug)) slug = app.topics[0]?.slug;
+  if (!app.topics.some(t => t.slug === slug)) slug = [...app.topics].sort((a, b) => (b.last || '').localeCompare(a.last || ''))[0]?.slug;   // the latest activity
   if (!VIEWS[view]) view = 'learn';
   const switched = app.topic?.slug !== slug;
   if (switched) { await loadTopic(slug); store.set('topic', slug); renderLeft(); renderTopicSel(); app.dockStack = []; renderDock(); }

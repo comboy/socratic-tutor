@@ -157,6 +157,7 @@ commands.serve = () => { S.ensureHome(); require('../app/server').start(); };
 commands.demo = () => {
   const f = flags(argv, { real: 'bool', port: 'string', keep: 'bool', 'no-open': 'bool', empty: 'bool' });
   const os = require('os');
+  if (f.real && !S.listTopics().length) die('demo --real copies your own topics, and there are none yet (bin/learn demo shows the sample topic; bin/learn starts your first)');
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-demo-'));
   const src = f.real ? S.TOPICS : path.join(S.CODE, 'test', 'fixture', 'topics');
   if (!f.empty) fs.cpSync(src, path.join(home, 'topics'), { recursive: true });
