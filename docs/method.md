@@ -46,6 +46,9 @@ them against the learner in front of you.
   back, and the miss looked like not understanding when it was not remembering. The same goes for
   something that only came up in a side answer: bring it into the main thread before a check
   builds on it.
+- **Put the premise inside the question box.** A setup sentence placed just above the box ("1 in 10
+  patients has a different mutation…") was read as a side fact, and the answer addressed the
+  previous topic instead (2026-11-26). The box is what gets read when answering.
 - **One question per question box.** A question with two parts got half answers: the first part
   answered and the second dropped. If two parts are really needed, number them (a)/(b); that got
   both answered.
