@@ -139,7 +139,6 @@ textarea.input { resize: none; font: 14.5px/1.5 var(--sans); min-height: 64px; }
 .group-h .count { font-weight: 600; color: var(--faint); letter-spacing: 0; }
 .group-h .btn, .group-h .linkish { text-transform: none; letter-spacing: 0; font-weight: 500; }
 .group-b { padding: 10px 12px; }
-.group-b.flush { padding: 0; }
 
 /* ============ toolbar ============ */
 .toolbar { height: 46px; display: flex; align-items: center; gap: 10px; padding: 0 10px; background: var(--chrome); border-bottom: 1px solid var(--line); }
@@ -329,7 +328,6 @@ button.badge { cursor: pointer; }
 .msg.showing-prev { border-style: dashed; }
 .msg.showing-prev > .msg-body { opacity: .78; }
 .badge-best { background: var(--accent-soft); color: var(--accent); height: 17px; font-size: 10.5px; }
-.badge-first { background: var(--well); color: var(--muted); height: 17px; font-size: 10.5px; }
 .chip-skill { height: 19px; font: 700 10.5px var(--mono); cursor: pointer; border: 0; color: var(--lv-text); background: var(--lvc); }
 .chip-skill:hover { filter: brightness(1.1); color: var(--lv-text); }
 .chip-skill.l0 { background: var(--well); color: var(--muted); border: 1px dashed var(--lv0); }
@@ -420,7 +418,6 @@ body.resizing-v { cursor: row-resize; user-select: none; }
 .quick { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
 .quick .btn { padding: 0 7px; gap: 5px; }
 .quick .sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
-.quick-label { font-size: 11px; font-weight: 700; color: var(--faint); text-transform: uppercase; letter-spacing: .06em; margin-right: 2px; }
 
 /* ============ markdown ============ */
 .md { font: 15px/1.6 var(--sans); color: var(--fg); overflow-wrap: break-word; }
@@ -505,7 +502,6 @@ details.callout[open] summary { border-bottom: 1px solid var(--line-soft); }
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--hc) 28%, var(--card)), 0 0 0 4.5px var(--hc); }
 .katex .pin { box-shadow: 0 0 0 3px color-mix(in srgb, var(--hc) 28%, var(--card)), 0 0 0 5px var(--hc); }
 .katex-display { padding: 8px 6px; }
-.has-hl .mx-cell:not(.hl), .has-hl .bar-row[data-k]:not(.hl) { opacity: .5; }
 
 .hovercard { position: fixed; z-index: 50; background: var(--card); border: 1px solid var(--btn-line); border-radius: 8px; box-shadow: var(--shadow-pop); padding: 0; opacity: 0; pointer-events: none; transform: translateY(3px); transition: opacity .12s, transform .12s; max-height: 60vh; overflow: auto; }
 .hovercard.on { opacity: 1; pointer-events: auto; transform: none; }
@@ -1038,12 +1034,6 @@ body.no-topics #leftToggle, body.no-topics #dockBtn, body.no-topics #searchBtn {
 .send-btn .dots { margin-right: 6px; }
 .send-error { margin: 0 0 8px; }
 .typing.offline .btn { margin-left: 6px; vertical-align: baseline; }
-
-/* your instructions to every tutor (Wiki → You) */
-.instr .instr-box { min-height: 180px; resize: vertical; }
-.instr-actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-.instr-msg:empty { display: none; }
-.instr-msg { margin-top: 8px; }
 
 /* Tell (toolbar): your instructions to the tutors, and changes to the app */
 .tell-page { max-width: 860px; margin: 0 auto; padding: 22px 26px 40px; }

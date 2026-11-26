@@ -272,7 +272,6 @@ function findSkill(meta, id) {
   walkSkills(meta.skills, s => { if (s.id === String(id)) found = s; });
   return found;
 }
-function leafSkills(meta) { const out = []; walkSkills(meta.skills, s => { if (!s.children?.length) out.push(s); }); return out; }
 
 // ---------- pages/<name>.md: standalone wiki pages ----------
 // Markdown with the usual extensions (viz blocks, links). Title: the first "# " heading, else the name.
@@ -595,7 +594,7 @@ module.exports = {
   CODE, ROOT, TOPICS, LEARNER, LEARNER_OUTSIDE, REPORTS, FEEDBACK, CONFIG, STATE, INBOX, PORT, HOST, realish, dataRepo, shown,
   ensureDir, readText, readJSON, writeJSON, withLock, localDate, config, ensureHome, commitData, dataPath,
   listTopics, topicDir, slugify, createTopic, readPages, PAGE_NAME, readTermPages, termPagePath, termPagesDir, termSlug, TERM_PAGE, pageForTerm, MEDIA_NAME, mediaDir, readMedia, loadTopicMeta, saveTopicMeta,
-  walkSkills, findSkill, leafSkills, parseGlossary, readGlossary, addTerm, META_KEYS,
+  walkSkills, findSkill, parseGlossary, readGlossary, addTerm, META_KEYS,
   NOTE_KINDS, readNotes, addNote, closeNote, parseDue, appendLog,
   journalDir, journalFiles, readJournal, readJournalFile, appendJournal, findEntry, lastEntry, pendingQuestion, metaIds, tracksState, trackOf, awaitingReply, applyCorrections, openQueue,
   hasQuestion, setLevel, COLOR, LEGEND_KEY, setLegend, removeLegend, enqueue, inboxIds, inboxEntries, readInstructions, writeInstructions, profilePath, appendFeedback, openFeedback,
