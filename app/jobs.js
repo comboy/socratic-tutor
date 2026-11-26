@@ -32,7 +32,7 @@ const PLANNER = 'plan';
 function available() {
   let files = [];
   try { files = fs.readdirSync(JOBS_DIR).filter(f => /^[a-z][a-z0-9-]*\.md$/.test(f) && f !== PLANNER + '.md'); } catch {}
-  const order = ['builder', 'reviewer', 'wiki', 'janitor', 'task'];
+  const order = ['builder', 'reviewer', 'wiki', 'visuals', 'janitor', 'task'];
   return files.map(f => {
     const text = S.readText(path.join(JOBS_DIR, f), '');
     const title = (text.match(/^#\s+(.+)$/m) || [])[1] || f.slice(0, -3);
@@ -106,6 +106,7 @@ function snapshot() {
       out.push(`- wiki pages: ${S.readPages(slug).length}`);
     } catch {}
     try { const n = S.readNotes(slug).items.filter(x => x.status === 'open'); out.push(`- open notes: ${n.length} (${S.NOTE_KINDS.map(k => `${n.filter(x => x.kind === k).length} ${k}`).join(', ')})`); } catch {}
+    try { const vl = require('./visuals').snapshotLine(slug, meta); if (vl) out.push(vl); } catch {}
     try { const sr = check?.staleNoteRefs(slug) || []; if (sr.length) out.push(`- progress.md names closed notes: ${sr.map(r => r.id).join(', ')} (stale "Resume here")`); } catch {}
   }
   try {

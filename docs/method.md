@@ -111,6 +111,13 @@ them against the learner in front of you.
   regions, the rest dimmed, an arrow for the reading direction, distracting labels blanked out.
   If the topic needs a kind of picture that doesn't exist, build it (`docs/protocol.md`, "building
   tools").
+- **A prepared visual beats a drawing made on the spot.** For ideas the path will reach, or that
+  keep failing in reviews, drawings and animations are made ahead (`bin/learn visuals`,
+  `docs/visuals.md`): checked frame by frame, in the topic's one visual language, steppable.
+  `resume` lists the ones for where the lesson is. Use one with a job for the learner: a caption
+  that says what to watch, or `?upto=N` and a prediction before they see the rest; watching alone
+  teaches little. When you had to improvise a drawing that will be needed again, ask for a
+  proper one (`visuals want`).
 - **A drawing is checked by looking at it.** A wrong drawing teaches the wrong thing with more
   authority than a wrong sentence, and you can't see what you drew until it's rendered: one
   evening four went out wrong (labels hidden under shapes, a helix wound the wrong way, a colour

@@ -122,9 +122,30 @@ Markdown extensions, in brief (details and every `viz` type in `docs/formats.md`
 (everything sharing a key lights up together, so connect prose ↔ formula ↔ matrix rows) ·
 `[text](msg:2026-11-13.42)`, `term:`, `skill:`, `map:`, `wiki:` links · `[phrase](tip:a hover note for this message only)` ·
 `![caption](media:file.png)` images downloaded with `bin/learn image` (offline, credited) ·
+`![caption](visual:name?step=2)` a prepared, checked drawing or animation (`bin/learn visuals`; below) ·
 ```` ```viz matrix|vector|bars|tokens|flow|plot|steps|residual|figure|js ```` blocks (`figure`: a real
 image with focus regions, numbered callouts and arrows) (`post` refuses one that
 doesn't parse; in `viz js`, `el`, `ctx` and `d3` are already in scope).
+
+## Prepared visuals: look before you draw
+
+    bin/learn visuals [t]                  # all of them, with the line that embeds each
+    bin/learn visuals [t] find <words>     # search · visuals [t] show <name>: everything about one
+    bin/learn visuals [t] want "what it should show, what they got wrong without it" [--skill id] [--ref msg-id]
+
+A drawing you write inside a reply is composed in seconds and seen by the learner before anyone
+has looked at it. A prepared visual (`docs/visuals.md`) was rendered step by step, looked at and
+fact-checked ahead of time, is animated where a process is the point, and costs you one line:
+`![your caption](visual:<name>)`, on its own line. `resume` lists the ready ones for the focus,
+the skills after it and the open reviews, with what each shows and when to use it; so before
+writing a `viz js` drawing, check whether one exists. `?step=3` opens on one moment; `?upto=2`
+stops there, which makes a prediction question ("what happens next, and where do the sugars end
+up?") out of the same visual; then post the full one with the answer.
+
+When you draw something yourself and think "this deserved an animation", or a review fails for the
+third time in words, say so in one line with `visuals want`: the visuals job builds from that
+queue while the learner is away. Your own `viz js` drawings follow the topic's conventions too
+(`resume` prints them under the visuals; the full text is `topics/<t>/visuals/STYLE.md`).
 
 ## Checking a drawing: post, check, correct in place
 

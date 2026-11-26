@@ -19,6 +19,7 @@ never contains any. Layout:
 | `topics/<slug>/terms/<name>.md` | a glossary term's own article: what the learner knows about it | you, right after the reply that taught it; the wiki job catches up |
 | `topics/<slug>/tags.json` | extra skill tags for old journal entries | you |
 | `topics/<slug>/media/` | downloaded images + `index.json` (author, licence, source) | `bin/learn image` |
+| `topics/<slug>/visuals/` | drawings and animations prepared ahead: `<name>.js`, the topic's drawing kit `_kit.js`, `STYLE.md`, `requests.md` (the queue), generated `index.json` (`docs/visuals.md`) | the visuals job, you; `bin/learn visuals` |
 | `topics/<slug>/journal/YYYY-MM-DD.jsonl` | every message both ways, grades, level changes, tags (format below) | `bin/learn` only, never by hand |
 | `learner/profile.md` | who the learner is, how they like to be taught (all topics) | tutors, reviewer job, the learner |
 | `learner/knowledge.md` | knowledge across topics: islands, shaky foundations, connections, suggested topics | tutors, reviewer job |
@@ -96,6 +97,14 @@ licence and a source link under it. It works offline. Click any image for a larg
 too: `bin/learn image fig.png --author "…" --license "CC BY 4.0" [--source url]`. A message that
 hotlinks a Commons image shows the local copy once that file has been downloaded. `post` refuses,
 and `check` reports, a `media:` file that isn't in the topic's `media/` folder.
+
+**Prepared visuals**: `![Watch which side the sugars end on](visual:budding-and-fusion?step=3)`, on
+its own line, shows a drawing or animation made ahead of the lesson (`topics/<slug>/visuals/`):
+rendered, looked at and reviewed before you needed it, with the same step controls every time.
+Parameters after `?`: `step=3` (open on that moment), `upto=3` (the learner can't go further: show
+the start, ask what comes next), `text=0` (no captions), `hl=key,key`, and the visual's own.
+`bin/learn visuals` lists them, `visuals find <words>` searches, `resume` shows the ones for where
+the lesson is. Works the same in term and wiki pages. Everything else: `docs/visuals.md`.
 
 **Visualizations**: fenced block with language `viz <type>`, whose body is a JS object
 literal (JSON or relaxed: unquoted keys, trailing commas, comments). Types:

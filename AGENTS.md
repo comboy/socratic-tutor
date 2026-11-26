@@ -36,7 +36,7 @@ in order, improving the app, deciding what to do next) is the agents' job, done 
   `bin/learn resume / wait / post`), `docs/method.md` (how to teach), `docs/bootstrap.md` (new
   topics), `docs/formats.md` (file formats and the markdown the UI renders, read on demand).
 - **Background job** (`bin/learn away` or the UI's "I'm going away" button, run headless): your
-  prompt is `docs/jobs/<name>.md` (builder, reviewer, wiki, janitor, task). A planner run
+  prompt is `docs/jobs/<name>.md` (builder, reviewer, wiki, visuals, janitor, task). A planner run
   (`docs/jobs/plan.md`) goes first and decides which jobs run and why; its brief is in your prompt.
 - **Developer** (changing the app): this file, `docs/design.md` (UI principles), `web/viz/README.md`
   (visualization components), and the code. Run `bin/learn test` after any change to `app/`,
@@ -56,7 +56,8 @@ Code and personal data are kept apart so the code can be shared:
   downloads (`media.js`), setup checks (`doctor.js`), access from other machines
   (`access.js`). No dependencies.
 - `web/`: the UI, plain ES modules with no build step; d3, marked and KaTeX vendored in
-  `web/vendor/`. `web/viz/`: visualization components.
+  `web/vendor/`. `web/viz/`: visualization components (`visual.js` + `scene.js` run the
+  visuals prepared ahead per topic, `app/visuals.js`, `docs/visuals.md`).
 - `docs/`: protocol, method, bootstrap, formats, design, roadmap, job prompts, setup, and
   how-it-works (the long tour; the README is kept short, for people).
 - `test/`: acceptance tests, fixture topics, a fake tutor.

@@ -28,6 +28,11 @@ These are what earlier runs found useful, not a recipe; weigh them against what 
 - **Term and wiki pages** matter when the learner keeps losing terms (profile.md may say how much
   they rely on them) and the focus area has terms without pages. The tutor writes pages during the lesson, so a
   wiki run is for the backlog.
+- **Visuals** (`docs/visuals.md`) are worth a run when tutors asked for some (the snapshot's
+  "wanted by tutors"), or the lesson is heading into skills that have none (the snapshot lists the
+  focus, next and review skills without one) and the learner learns from pictures (profile.md).
+  They are made days ahead on purpose, so this is rarely urgent and often worth it. In the brief,
+  name the skills or the confusion you'd start with.
 - **The janitor** is for when the code has grown a lot since its last pass (dozens of commits) and
   nothing more urgent is waiting.
 - **task** is for something worth doing that no job's guide covers, e.g. preparing the code for
