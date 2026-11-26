@@ -408,7 +408,9 @@ One JSON object per line, appended by `bin/learn` and the server, never edited (
 - `message` (the tutor; `text`, `skills`, `question`, `expect`, `replyTo`, `track`; `queue: true`
   for a review question prepared ahead: open alongside others in its thread until answered,
   skipped or graded, `openQueue` in `web/js/journal.js`)
-- `grade` (`target`, `verdict`, `skill`, `note`), `level` (`skill`, `from`, `to`, `reason`),
+- `grade` (`target`: the learner's message, `questionId`: the question it answered, which is what
+  closes that question in `pendingQuestion` / `openQueue`; `verdict`, `skill`, `note`),
+  `level` (`skill`, `from`, `to`, `reason`),
   `session` (a divider; `handoff`)
 - `correction` (`target`, `newText`, `note`, `question`, optional `expect`): the tutor put a
   message of its own right (`bin/learn post --corrects`). Never an edit: the original line stays.

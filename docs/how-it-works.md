@@ -9,9 +9,10 @@ humans.
 
 - **New topic:** the first screen, or "+ New topic…" in the topic selector. Say what you want to
   learn in your own words; optionally what for and what you already know.
-- **Answer** box: replies to the open question, shown in full above it. **Ask / learn more** box:
-  side questions, which don't close the open question. ⌘↵ sends either.
-- Buttons under the boxes: just tell me, example, I'm lost, skip, easier/harder, progress.
+- **The input box** is one box with a switch: **Answer** replies to the open question (the tutor
+  grades it), **Ask** is a side question, which doesn't close the open question. ⌘↵ sends (Ctrl+Enter
+  off the Mac). Esc hides the box in the corner while you read; `a` / `q` bring it back.
+- Buttons under the box: just tell me, example, I'm lost, skip, easier/harder, progress.
 - Hover an underlined term for its definition; click it for the full entry and every message
   that explained it. Hover a coloured symbol in a formula, a matrix row or a highlighted phrase,
   and the matching parts light up. Select text in any message and press **Ask about this**.
@@ -20,13 +21,12 @@ humans.
   **Tree** (the skills as a tech tree: what builds on what, what you're ready for, and
   foundations from outside the topic), **Wiki** (overview, cheat sheet, pages, glossary, skills,
   "You": what the tutor has noticed about your understanding, sessions), **Stats**.
-- **The input box**: Answer (closes the open question; the tutor grades it) or Ask (a side
-  question), one box with a switch. Esc hides it in the corner while you read; `a` / `q` bring it
-  back. **Two threads** (experiment): the tutor runs a second, related thread, and sending in one
-  takes you to the other, where the reply is usually ready, so you don't wait while it writes.
-- **Feedback** (speech-bubble button): remarks about the app or the process. They queue up for
-  the builder; tick **Tell the tutor now** and the tutor also sees it and can answer. That talk
-  stays in the conversation, dimmed and folded, and out of your wiki, sessions and stats.
+- **Two threads** (experiment): the tutor runs a second, related thread, and sending in one
+  takes you to the other, where the reply is usually ready, so you don't wait while it writes
+  (`t` switches). The second thread can hold several review questions at once; a strip above the
+  box picks which one you answer, in any order.
+- A message the tutor put right afterwards changes where it stands, marked **corrected**, with
+  the earlier version one click away.
 - **I'm going away** (coffee-cup button): one click, nothing to choose. A planner agent looks at
   what's waiting and decides which background jobs are worth running, and why: the builder
   (implements your feedback, with tests), the reviewer (reads recent sessions with fresh eyes:
@@ -40,10 +40,10 @@ humans.
   agents never edit it, and it overrides what they derive), committed when you save, and a running
   tutor gets the new version with your next message. A new profile starts with "Crocker's rules."
   "Change the app" saves remarks to `feedback.md` for the builder without interrupting the tutor,
-  or with "Tell the tutor now" sends them to it as well; what's still open is listed below. The
-  rest of the profile, and Wiki → You,
-  is what the tutors have noticed; the knowledge pill there is what you know in a topic, as one
-  file you can hand to any other tool.
+  or with "Tell the tutor now" sends them to it as well (that talk stays in the conversation,
+  dimmed and folded, and out of your wiki, sessions and stats); what's still open is listed below.
+  The rest of the profile, and Wiki → You, is what the tutors have noticed; the knowledge pill
+  there is what you know in a topic, as one file you can hand to any other tool.
 
 **What the agents may do.** The tutor runs in a terminal nobody watches (you're in the browser)
 and the background jobs run headless, so a permission prompt would stall them. By default both run
@@ -75,10 +75,12 @@ on first run):
 
 ```
 data/topics/<slug>/     skill tree, glossary, notes, map, pages, journal, …  (one per topic)
-data/learner/           profile.md (how you like to learn), knowledge.md (across topics)
+data/learner/           profile.md (how you like to learn), knowledge.md (across topics),
+                        pills/<topic>.md (what you know in a topic, as one portable file)
 data/feedback.md        your remarks about the app, worked through by the builder
 data/reports/           what the background jobs did
 data/config.json        optional settings (agent, thresholds)
+data/state/             runtime only (message queue, tutor session, job state); not versioned
 ```
 
 The code in this repo contains no personal data, so it can be shared as is, and your data is
