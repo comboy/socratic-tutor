@@ -666,6 +666,13 @@ async function main() {
     await until(() => fakeLog().some(l => l.event === 'noreply' && l.id === sent.id), 'picked up');
     await until(async () => (await api('/api/status')).phase === 'listening', 'listening again', 6000);
   });
+  await test('a message claimed by a wait that died before showing it is delivered again by the next wait', async () => {
+    const inbox = path.join(HOME, 'state/inbox'), id = 'lost-' + Date.now();
+    fs.writeFileSync(path.join(inbox, `1-${id}.json.999999`), JSON.stringify({ id, topic: 'demo', role: 'user', kind: 'ask', text: 'claimed, then the wait died', ts: new Date().toISOString() }));
+    await api('/api/send', { topic: 'demo', kind: 'action', text: 'FAKE-NOREPLY nudge: the tutor re-arms wait' });
+    await until(() => fakeLog().some(l => l.event === 'replied' && l.id === id), 'the lost message reaches the tutor', 10000);
+    assert(!fs.readdirSync(inbox).some(f => f.includes(id)), 'claim file left behind: ' + fs.readdirSync(inbox));
+  });
   await test('ping names the data home, status lists the queue by topic/id and the open browser tabs', async () => {
     const p = await api('/api/ping');
     assert(p.home === fs.realpathSync(HOME), JSON.stringify(p));

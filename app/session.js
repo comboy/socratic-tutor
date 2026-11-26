@@ -115,11 +115,39 @@ function requeueUnanswered(topic, maxAgeMs = 6 * 3600e3) {
   lost.forEach(S.enqueue);
   return lost;
 }
+// A message is lost when `wait` took it out of the inbox and the tutor never saw it (2026-11-26: a
+// wait exited with no output after claiming an ask; the learner waited 50 minutes, the tutor had
+// no way to know). Two nets, both run when a `wait` starts:
+// - a claimed file (`….json.<pid>`, kept until its message is printed) whose process is gone goes
+//   back in the queue;
+// - a message of this session, out of the inbox for over `graceMs` with no reply, is queued again,
+//   once (a tutor re-arms `wait` after replying, so by then a reply should exist; once only, since
+//   a tutor may have a reason not to reply). -> ids queued again
+const REDELIVERED = path.join(S.STATE, 'redelivered.json');
+function recoverLost(topic, since, graceMs = Number(process.env.LEARN_REDELIVER_MS) || 120e3) {
+  const back = [];
+  let files = [];
+  try { files = fs.readdirSync(S.INBOX); } catch {}
+  for (const f of files) {
+    const m = f.match(/^(.*\.json)\.(\d+)$/);
+    if (!m || alive(Number(m[2]))) continue;
+    try { fs.renameSync(path.join(S.INBOX, f), path.join(S.INBOX, m[1])); back.push(m[1].replace(/^\d+-/, '').replace(/\.json$/, '')); } catch {}
+  }
+  if (!topic || !S.listTopics().includes(topic)) return back;
+  const seen = S.readJSON(REDELIVERED, {});
+  const held = new Set(files.map(f => f.replace(/^\d+-/, '').replace(/\.json(\.\d+)?$/, '')));
+  const queued = new Set(S.inboxEntries().map(e => `${e.topic}/${e.id}`));
+  const lost = unanswered(S.readJournal(topic), Math.max(Date.parse(since) || 0, Date.now() - 6 * 3600e3))
+    .filter(e => Date.now() - Date.parse(e.ts) > graceMs && !queued.has(`${topic}/${e.id}`) && !held.has(e.id) && !seen[`${topic}/${e.id}`]);
+  for (const e of lost) { S.enqueue({ ...e, topic, redelivered: true }); seen[`${topic}/${e.id}`] = new Date().toISOString(); back.push(e.id); }
+  if (lost.length) { S.ensureDir(S.STATE); S.writeJSON(REDELIVERED, Object.fromEntries(Object.entries(seen).slice(-200))); }
+  return back;
+}
 const FRESH_TUTOR = 'fresh tutor';
 const isFreshTutorAction = e => e.kind === 'action' && String(e.text).startsWith(FRESH_TUTOR);
 
 module.exports = {
   SESSION_FILE, HANDOFF_FILE, HANDOFF_TOKENS, HANDOFF_MESSAGES, FRESH_TUTOR, alive,
   readSession, writeSession, launcherAlive, readHandoff, requestHandoff, clearHandoff,
-  listeners, registerListener, killListeners, markInstructionsSeen, instructionsChanged, contextTokens, requeueUnanswered, isFreshTutorAction,
+  listeners, registerListener, killListeners, markInstructionsSeen, instructionsChanged, contextTokens, requeueUnanswered, recoverLost, isFreshTutorAction,
 };

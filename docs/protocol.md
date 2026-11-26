@@ -26,6 +26,10 @@ you need when you need it.
 4. **Then** the bookkeeping, after the learner has your reply (they're waiting on the reply, not
    on this): levels, notes, glossary, summary, log (commands below). Hand anything bigger than a
    few commands to a subagent, so you're free when the next message comes.
+   If a `wait` ever comes back with nothing, or dies, the message it had taken isn't gone: the next
+   `wait` delivers it again (it also re-delivers, once, a message of yours that has sat over two
+   minutes out of the queue with no reply, marked `DELIVERED AGAIN`). A learner once waited 50
+   minutes on a message the tutor never saw (2026-11-26); if one arrives that way, say so.
 5. When `wait` output ends with a `── HANDOFF ──` or `── TOPIC SWITCH ──` block, follow it
    instead of re-arming the listener. (`── TOPIC SWITCH AFTER REPLY ──`: messages wait in another
    topic as well as yours; answer yours, then switch as it says.) An `── INSTRUCTIONS CHANGED ──` block means the learner

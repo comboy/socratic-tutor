@@ -374,11 +374,19 @@ commands.wait = async () => {
     for (const f of files) {
       const src = path.join(S.INBOX, f), dst = src + '.' + process.pid;
       try { fs.renameSync(src, dst); } catch { continue; }    // someone else took it
-      try { got.push(JSON.parse(fs.readFileSync(dst, 'utf8'))); } catch {}
-      fs.unlinkSync(dst);
+      try { got.push(JSON.parse(fs.readFileSync(dst, 'utf8'))); held.push(dst); } catch { fs.unlinkSync(dst); }
     }
     return got;
   };
+  // A claimed message stays on disk (….json.<pid>) until it has been printed: if this process dies
+  // or goes quiet in between, the next wait puts it back (T.recoverLost has the story).
+  const held = [];
+  const release = () => { for (const f of held.splice(0)) { try { fs.unlinkSync(f); } catch {} } };
+  try {
+    const s0 = T.readSession();
+    const back = T.recoverLost(s0 && (!mine || s0.id === mine) ? s0.topic : null, s0 && s0.startedAt);
+    if (back.length) console.log(`(${back.length} message(s) had been taken from the queue without a reply and are delivered again: ${back.join(', ')})`);
+  } catch (e) { console.log(`(checking for lost messages failed: ${e.message})`); }
   let msgs = claim();
   while (!msgs.length) {
     await new Promise(res => {
@@ -409,6 +417,7 @@ commands.wait = async () => {
     if (m.quote) bits.push(`quote=${m.quote}`);
     if (m.kind !== 'meta' && m.topic && S.tracksState(S.readJournal(m.topic)).open) bits.push(`track=${S.trackOf(m)}`);
     if (m.kind === 'meta') bits.push('(about the app, not the lesson: reply with `post --meta`; already in feedback.md for the builder)');
+    if (m.redelivered) bits.push('(DELIVERED AGAIN: it was taken from the queue earlier and never got a reply; say so to the learner if they waited)');
     console.log(`── ${String(m.kind).toUpperCase()}  ${bits.join('  ')} ──`);
     console.log(m.text);
     // an answer to (or a skip of) a queued review question: which one, its rubric, how to grade it
@@ -424,6 +433,7 @@ commands.wait = async () => {
     console.log();
     if (T.isFreshTutorAction(m)) handoff = true;
   }
+  release();   // printed (messages for another topic are requeued by the handoff, as before)
   const instr = T.instructionsChanged(mine);
   if (instr != null) console.log(`── INSTRUCTIONS CHANGED ── The learner just edited their instructions to every tutor (the "In my own words" section of the profile). They override everything derived; follow them from this reply on:\n${instr ? instr.replace(/^/gm, '  ') : '  (now empty)'}\n`);
   if (mineSess && !mineSess.topic && msgs[0]?.topic) {
