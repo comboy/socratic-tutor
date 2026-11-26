@@ -169,11 +169,14 @@ async function main() {
       const visit = await req('GET', `/?token=${tok}&x=1`);
       const sc = String(visit.headers['set-cookie'] || '');
       assert(visit.status === 302 && visit.headers.location === '/?x=1', 'redirect strips the token: ' + visit.status + ' ' + visit.headers.location);
-      assert(/HttpOnly/.test(sc) && /SameSite=Strict/.test(sc) && sc.startsWith(`learn-${rport}=`), 'cookie: ' + sc);
+      assert(/HttpOnly/.test(sc) && /SameSite=Lax/.test(sc) && sc.startsWith(`learn-${rport}=`), 'cookie: ' + sc);
       const cookie = sc.split(';')[0];
       const ok = await req('GET', '/api/topics', { cookie });
       assert(ok.status === 200 && JSON.parse(ok.body).length === 2, 'with the cookie: ' + ok.status);
       assert((await req('GET', '/', { cookie })).status === 200, 'page with the cookie');
+      // a page visit renews the cookie (400 days from the last visit; an older Strict cookie becomes Lax); an API call doesn't
+      assert(String((await req('GET', '/', { cookie, accept: 'text/html,*/*' })).headers['set-cookie'] || '') === sc, 'page visit should renew the cookie');
+      assert(!ok.headers['set-cookie'], 'API answer sets a cookie');
       const fb = () => { try { return fs.readFileSync(path.join(rhome, 'feedback.md'), 'utf8'); } catch { return ''; } };
       const body = JSON.stringify({ text: 'remote feedback' }), json = { cookie, 'content-type': 'application/json' };
       assert((await req('POST', '/api/feedback', json, body)).status === 403, 'cookie POST without Origin');
@@ -395,6 +398,57 @@ async function main() {
   if (!chromePath()) { console.log('\n(Chrome not found: skipping UI tests. Set CHROME=…)'); return; }
   page = await launch({ headed: opt.headed, outDir: OUT });
   await page.dark(true);
+
+  // The learner, on another machine, was asked for the token again in a new tab of a browser that
+  // already had it: the cookie was SameSite=Strict, which a tab opened from a link on another page
+  // doesn't send.
+  await test('from another machine, in a browser: the token link once; a second tab, a link from another page and the link itself on another page do not ask again; a changed token asks once', async () => {
+    const rhome = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-remote-'));
+    fs.cpSync(path.join(CODE, 'test', 'fixture', 'topics'), path.join(rhome, 'topics'), { recursive: true });
+    const rport = String(Number(PORT) + 151), RB = `http://localhost:${rport}`;
+    const srv = spawn(process.execPath, [BIN, 'serve'], { env: { ...ENV, LEARN_HOME: rhome, LEARN_PORT: rport, LEARN_TEST_REMOTE: '1' }, stdio: 'ignore' });
+    const tokenFile = path.join(rhome, '.access-token');
+    const inApp = `/· learn$/.test(document.title) && !!document.querySelector('.thread .msg')`;
+    const asked = `/bin\\/learn status/.test(document.body.innerText)`;
+    const elsewhere = href => 'data:text/html,' + encodeURIComponent(`<title>elsewhere</title><a id="go" href="${href}">the tutor</a>`);
+    let tabs = [];
+    try {
+      await until(() => fetch(RB + '/api/ping').then(r => r.status === 401).catch(() => false), 'remote server');
+      const tok = fs.readFileSync(tokenFile, 'utf8').trim();
+      await page.nav(RB + '/#/demo/learn', 600);
+      assert(await page.eval(asked), 'a browser without the token got in');
+      await page.nav(`${RB}/?token=${tok}#/demo/learn`, 600);
+      await page.waitFor(inApp);
+      assert(!(await page.eval('location.href')).includes('token'), 'token left in the address bar: ' + await page.eval('location.href'));
+      // a second tab of the same browser
+      tabs = await page.openTabs(RB + '/#/demo/learn', 1);
+      const second = await until(async () => (await page.tabs()).find(t => t.id === tabs[0] && t.title && !/^about:/.test(t.url) && t.title !== 'about:blank'), 'second tab');
+      await sleep(600);
+      const title = (await page.tabs()).find(t => t.id === tabs[0]).title;
+      assert(/· learn$/.test(title), `second tab asked for the token (title "${title}", was "${second.title}")`);
+      // a tab that gets here from a link on another page
+      await page.nav(elsewhere(RB + '/#/demo/learn'), 300);
+      await page.click('#go', 600);
+      await page.waitFor(inApp).catch(async () => { throw new Error('a link from another page asked for the token: ' + await page.eval('document.body.innerText.slice(0, 80)')); });
+      // everything the page does from there: live updates (EventSource), a read, a change
+      assert(await page.eval(`new Promise(r => { const e = new EventSource('/api/events'); e.onmessage = () => { e.close(); r(true); }; e.onerror = () => { e.close(); r(false); }; })`), 'live updates refused');
+      assert(await page.eval(`fetch('/api/topics').then(r => r.status)`) === 200, 'read refused');
+      assert(await page.eval(`fetch('/api/feedback', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: 'from the other machine' }) }).then(r => r.status)`) === 200, 'change refused');
+      // the token link itself, followed from another page, in a browser that has no cookie yet
+      // (127.0.0.1 is another host than localhost, so the cookie above isn't its)
+      await page.nav(elsewhere(`http://127.0.0.1:${rport}/?token=${tok}#/demo/learn`), 300);
+      await page.click('#go', 600);
+      await page.waitFor(inApp).catch(async () => { throw new Error('the token link on another page did not let in: ' + await page.eval('document.body.innerText.slice(0, 80)')); });
+      // the token changed on the server: asked once (no redirect loop), and the new link works
+      fs.writeFileSync(tokenFile, 'another-token-for-the-acceptance-test\n');
+      await page.nav(RB + '/#/demo/learn', 600);
+      assert(await page.eval(asked), 'old cookie still lets in after the token changed');
+      await page.nav(`${RB}/?token=another-token-for-the-acceptance-test#/demo/learn`, 600);
+      await page.waitFor(inApp);
+      await page.nav(RB + '/#/demo/tree', 600);
+      await page.waitFor(`/· learn$/.test(document.title)`);
+    } finally { await page.closeTabs(tabs); srv.kill(); fs.rmSync(rhome, { recursive: true, force: true }); await page.nav('about:blank', 100); page.errors.length = 0; }
+  });
 
   console.log('\nRendering');
   await test('learn view renders every fixture message without leftovers', async () => {

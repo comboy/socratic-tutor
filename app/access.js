@@ -5,7 +5,7 @@
 // commands on this machine. Requests from this machine (a loopback socket: the CLI, a local
 // browser, an SSH tunnel) work as before; any other request needs the access token, kept in
 // <data home>/.access-token (gitignored, created on first need). The link `http://<host>:<port>/?token=…`
-// sets an HttpOnly, SameSite=Strict cookie; the CLI sends it as a bearer token.
+// sets an HttpOnly, SameSite=Lax cookie; the CLI sends it as a bearer token.
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -56,6 +56,18 @@ function credential(req) {
   if (c && valid(decodeURIComponent(c.slice(COOKIE.length + 1)))) return 'cookie';
   return null;
 }
+// The cookie that keeps a browser in. SameSite=Lax, not Strict: a Strict cookie is withheld from a
+// tab that got here by a link on another page (a start page, a web chat, a note), and the learner
+// was asked for the token again in a browser that already had it. Lax still keeps it out of
+// everything another site can do except a top-level GET, which changes nothing here (and whose
+// answer that site can't read); a change must come from the app's own origin (refused() in server.js).
+const setCookie = () => `${COOKIE}=${encodeURIComponent(token())}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${400 * 86400}`;
+// A page opened with the cookie gets it again: the 400 days (the most browsers keep) count from the
+// last visit, not the first, and a cookie from before the change above becomes a Lax one.
+function keep(req, res) {
+  if (!OPEN || req.method !== 'GET' || fromThisMachine(req) || !/\btext\/html\b/.test(String(req.headers.accept || ''))) return;
+  if (credential(req) === 'cookie') res.setHeader('set-cookie', setCookie());
+}
 // `?token=` on a visit: a cookie for the next requests, and a redirect that takes the token out of
 // the address bar (and so out of history and bookmarks). -> true when it answered the request.
 function tokenVisit(req, res, url) {
@@ -63,7 +75,7 @@ function tokenVisit(req, res, url) {
   if (!valid(url.searchParams.get('token'))) { denied(res); return true; }
   url.searchParams.delete('token');
   res.writeHead(302, {
-    'set-cookie': `${COOKIE}=${encodeURIComponent(token())}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${400 * 86400}`,
+    'set-cookie': setCookie(),
     location: url.pathname + (url.search || ''), 'cache-control': 'no-store',
   });
   res.end();
@@ -119,4 +131,4 @@ function remoteLines(host = S.HOST) {
   ];
 }
 
-module.exports = { OPEN, TOKEN_FILE, token, isLoopback, isWildcard, fromThisMachine, credential, tokenVisit, denied, record, connectHost, clientHeaders, localUrl, remoteLines };
+module.exports = { OPEN, TOKEN_FILE, token, isLoopback, isWildcard, fromThisMachine, credential, tokenVisit, keep, denied, record, connectHost, clientHeaders, localUrl, remoteLines };

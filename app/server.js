@@ -296,6 +296,7 @@ async function handle(req, res) {
   const no = refused(req);
   if (no?.[0] === 401) return A.denied(res);
   if (no) return send(res, no[0], { error: `refused: ${no[1]}` });
+  A.keep(req, res);
   try {
     if (p === '/api/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });

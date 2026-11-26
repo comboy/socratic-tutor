@@ -152,6 +152,8 @@ export async function launch({ headed = false, width = 1400, height = 900, outDi
       for (let i = 0; i < n; i++) ids.push((await (await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`, { method: 'PUT' })).json()).id);
       return ids;
     },
+    // every tab of the browser: [{ id, url, title }]
+    async tabs() { return (await (await fetch(`http://127.0.0.1:${port}/json`)).json()).filter(t => t.type === 'page').map(({ id, url, title }) => ({ id, url, title })); },
     async closeTabs(ids) { for (const t of ids) await fetch(`http://127.0.0.1:${port}/json/close/${t}`).catch(() => {}); },
     async close() { try { ws.close(); } catch {} proc.kill(); await sleep(200); fs.rmSync(profile, { recursive: true, force: true }); },
   };

@@ -51,7 +51,9 @@ reason not to:
 With 2 and 3 other machines need the access token: the server creates one in
 `data/.access-token` (gitignored, mode 600), and `bin/learn status` (and the startup log)
 prints the link to open, `http://<address>:4747/?token=…`. Opening it once sets a cookie in that
-browser. Without the token the server answers 401. Why: what's typed in the browser reaches agents
+browser: every tab is in from then on, for 400 days after the last visit (per address: to a browser
+the IP and a host name for the same machine are two sites, each needing the link once). Without
+the token the server answers 401. Why: what's typed in the browser reaches agents
 that run shell commands, so anyone who could reach an open port could get commands run. To change
 the token, delete the file; the next request makes a new one (and old links stop working). The
 launcher doesn't open a browser then (it prints the link). A reverse proxy on the same machine looks
