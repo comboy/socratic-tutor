@@ -276,7 +276,7 @@ async function you(el) {
 // rest of the learner model; edited on the Tell page (toolbar), so there's one editor.
 function instructionsSheet(text) {
   return sheet(group(['Your instructions to every tutor', h('span', { class: 'spacer' }),
-    h('button', { class: 'btn btn-small', id: 'instrEdit', onclick: () => go('tell', 'instructions') }, icon('compose'), 'Edit')]),
+    h('button', { class: 'btn btn-small', id: 'instrEdit', onclick: () => go('system', 'instructions') }, icon('compose'), 'Edit')]),
   h('div', { class: 'sheet-pad instr' }, text ? rich(text, 'wiki-md', { terms: false })
     : h('p', { class: 'muted', text: 'None yet: tell the tutors how to work with you (Edit).' })));
 }

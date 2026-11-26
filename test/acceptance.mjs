@@ -706,6 +706,72 @@ async function main() {
     assert(Math.abs(h - (g[2] + 120)) < 6 && await page.eval(`+localStorage['learn:composerH'] > 0`), `height ${g[2]} → ${h}`);
     await page.eval(`document.querySelector('.composer-grip').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
   });
+  await test('glossary terms while typing: a list at the word with definitions; Tab inserts, Enter and Esc keep their meaning; nothing for common or finished words; the switch turns it off; "Find term" searches by meaning', async () => {
+    await page.nav(`${BASE}/#/demo/learn`, 1000);
+    await page.eval(`localStorage['learn:composerHidden'] = 'false'; localStorage.removeItem('learn:termComplete')`);
+    const box = `document.querySelector('#answerBox')`, pop = `document.querySelector('.tc-pop')`;
+    const rows = () => page.eval(`[...document.querySelectorAll('.tc-pop .tc-row')].map(r => r.querySelector('.tc-name b').textContent + '|' + r.querySelector('.tc-def').textContent.slice(0, 12))`);
+    const clear = async () => { await page.eval(`(() => { const b = ${box}; b.value = ''; b.dispatchEvent(new Event('input', { bubbles: true })); })()`); await page.click('#answerBox'); };
+    // the matching itself, without the page: beginnings of names and aliases, several words, later words
+    const sug = await page.eval(`import('/js/complete.js').then(m => { const G = [{ term: 'DNA polymerase', aliases: ['Pol III'], short: 'copies DNA' }, { term: 'token', aliases: ['token ID'], short: 'a chunk' }, { term: 'thylakoid', aliases: [], short: 'a sac' }, { term: 'Golgi apparatus', aliases: ['Golgi'], short: 'sorts' }];
+      const f = t => { const r = m.suggest(G, t); return r ? r.items.map(i => i.form).join(',') + '@' + r.from : null; };
+      return [f('it uses dna pol'), f('the poly'), f('the'), f('a tok'), f('one token'), f('to'), f('thy'), f('pol i'), f('first line\\nGol'), f('xgol'), m.insertText('token', 'Tok'), m.insertText('DNA polymerase', 'dna')]; })`);
+    assert(JSON.stringify(sug) === JSON.stringify(['DNA polymerase@8', 'DNA polymerase@4', null, 'token@2', null, null, 'thylakoid@0', 'Pol III@0', 'Golgi apparatus@11', null, 'Token', 'DNA polymerase']), 'suggest: ' + JSON.stringify(sug));
+    // typing a term's beginning opens the list at the word: names with a line of definition
+    await clear(); await page.type('The model reads tok');
+    await page.waitFor(pop, { timeout: 3000 });
+    const r = await rows();
+    assert(r[0] === 'token|A chunk of t' && r.some(x => x.startsWith('tokenizer|')), 'rows: ' + JSON.stringify(r));
+    const at = await page.eval(`(() => { const p = ${pop}.getBoundingClientRect(), b = ${box}.getBoundingClientRect(); return { inView: p.top >= 0 && p.bottom <= innerHeight && p.left >= 0 && p.right <= innerWidth, near: p.bottom <= b.bottom + 400 && p.top >= b.top - 400 }; })()`);
+    assert(at.inView && at.near, 'list placement: ' + JSON.stringify(at));
+    await page.shot('term-suggest');
+    // Tab puts the term in (the draft is saved like typed text), the list goes
+    await page.key('Tab');
+    await page.waitFor(`!${pop} && ${box}.value === 'The model reads token' && document.activeElement === ${box} && JSON.parse(localStorage['learn:draft:answer:demo']) === 'The model reads token'`, { timeout: 3000 });
+    // a finished term, a common word, two letters: nothing
+    await page.type(' and the so'); await sleep(200);
+    assert(!(await page.eval(`!!${pop}`)), 'a list for "so"');
+    // arrows choose when there are several; Enter is not taken: the list goes, nothing is inserted or sent
+    const jl = journal().length;
+    await page.type('f'); await page.waitFor(pop, { timeout: 3000 });   // "sof" -> softmax
+    await clear(); await page.type('att'); await page.waitFor(`document.querySelectorAll('.tc-pop .tc-row').length >= 2`, { timeout: 3000 });
+    const first = await page.eval(`document.querySelector('.tc-row.on .tc-name b').textContent`);
+    await page.key('ArrowDown');
+    const second = await page.eval(`document.querySelector('.tc-row.on .tc-name b').textContent`);
+    assert(first !== second, 'ArrowDown does not move the choice');
+    await page.key('Enter'); await sleep(200);
+    assert(await page.eval(`!${pop} && ${box}.value.startsWith('att') && !${box}.value.includes('${second}')`) && journal().length === jl, 'Enter took the suggestion or sent');
+    // Esc closes the list and leaves the input; the next Esc hides the input, as always
+    await clear(); await page.type('soft'); await page.waitFor(pop, { timeout: 3000 });
+    await page.key('Escape'); await sleep(200);
+    assert(await page.eval(`!${pop} && !!${box} && !document.querySelector('.composer.collapsed')`), 'Esc with the list open hid the input');
+    await page.key('Escape');
+    await page.waitFor(`document.querySelector('.composer.collapsed')`, { timeout: 2000 });
+    await page.eval(`document.querySelector('.corner-answer').click()`);
+    await page.waitFor(`document.activeElement?.id === 'answerBox'`, { timeout: 2000 });
+    // switched off in System → Settings: no list
+    await page.nav(`${BASE}/#/demo/system/settings`, 900);
+    await page.waitFor(`document.querySelector('#setComplete button.on')?.dataset.v === 'true'`, { timeout: 3000 });
+    await page.shot('system-settings');
+    await page.eval(`document.querySelector('#setComplete button[data-v="false"]').click()`);
+    await page.waitFor(`localStorage['learn:termComplete'] === 'false' && document.querySelector('#setComplete button.on').dataset.v === 'false'`, { timeout: 2000 });
+    await page.nav(`${BASE}/#/demo/learn`, 1000);
+    await clear(); await page.type('the tok'); await sleep(300);
+    assert(!(await page.eval(`!!${pop}`)), 'suggestions while switched off');
+    // "Find term": by what it means; Enter puts it where the caret was, replacing the word begun
+    await page.click('#findTermBtn');
+    await page.waitFor(`document.activeElement?.id === 'findTermBox' && document.querySelector('#findTermBox').value === 'tok'`, { timeout: 3000 });
+    await page.eval(`(() => { const i = document.querySelector('#findTermBox'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await page.type('how much each token contributes');
+    await page.waitFor(`document.querySelector('.tc-row.on .tc-name b')?.textContent === 'attention weights'`, { timeout: 3000 });
+    await page.shot('term-find');
+    await page.key('Enter');
+    await page.waitFor(`!${pop} && ${box}.value === 'the attention weights' && document.activeElement === ${box}`, { timeout: 3000 });
+    assert(journal().length === jl, 'something was sent');
+    await page.eval(`localStorage.removeItem('learn:termComplete')`);
+    await clear();
+    await page.eval(`localStorage['learn:draft:answer:demo'] = '""'`);
+  });
   await test('status popover shows tutor memory from the transcript', async () => {
     await page.click('#status', 300);
     const t = await page.waitFor(`document.querySelector('.tutor-pop')?.innerText`);
@@ -728,6 +794,50 @@ async function main() {
     assert(journal().some(e => e.kind === 'session' && e.handoff), 'handoff marker in journal');
     await page.waitFor(`document.querySelector('.thread .divider.handoff')`);
     await page.click('#status', 200);
+  });
+  await test('status light: green, then yellow from 70% of the handoff threshold, red from 90%, with the reason in words; stalled messages and a quiet agent without a meter count too', async () => {
+    // the rule itself (app/sysstats.js)
+    const H = JSON.parse(execFileSync(process.execPath, ['-e', `const Y = require('./app/sysstats'); const c = t => ({ tokens: t, limit: 400000 });
+      const lv = o => { const h = Y.tutorHealth(o); return h.level + ':' + h.reasons.map(r => r.short).join('+'); };
+      console.log(JSON.stringify([lv({ context: c(279000) }), lv({ context: c(280000) }), lv({ context: c(359000) }), lv({ context: c(360000) }), lv({ context: c(420000) }),
+        lv({ context: c(100000), stalled: ['demo/x'] }), lv({ context: c(300000), watchdogFired: 2 }), lv({ turns: 55, handoffMessages: 80 }), lv({ turns: 56, handoffMessages: 80 }), lv({ turns: 72, handoffMessages: 80 }),
+        lv({ context: c(200000), waits: { recent: 200, usual: 60, n: 5 } }), lv({ context: c(100000), waits: { recent: 200, usual: 60, n: 5 } }), lv({ context: c(200000), waits: { recent: 100, usual: 30, n: 5 } }),
+        Y.tutorHealth({ context: c(310000) }).reasons[0].text]))`], { env: ENV, cwd: CODE, encoding: 'utf8' }));
+    assert(JSON.stringify(H.slice(0, -1)) === JSON.stringify(['ok:', 'warn:context 70%', 'warn:context 90%', 'now:context 90%', 'now:context 105%', 'now:no reply', 'now:not answering+context 75%',
+      'ok:', 'warn:56/80 messages', 'now:72/80 messages', 'warn:slow replies', 'ok:', 'ok:']), 'tutorHealth: ' + JSON.stringify(H));
+    assert(/^Context 310k of 400k \(78%\)/.test(H.at(-1)), H.at(-1));
+    // in the UI: the fresh session is small, so the light is green and the pill says nothing more
+    await page.nav(`${BASE}/#/demo/learn`, 1000);
+    const st0 = await until(async () => { const x = await api('/api/status'); return x.phase === 'listening' && x.health && x; }, 'a listening tutor with a light');
+    assert(st0.health.level === 'ok' && !st0.health.reasons.length && !(st0.context?.tokens > 60000), 'a fresh session is not green (the size of the session it replaced?): ' + JSON.stringify([st0.health, st0.context]));
+    await page.waitFor(`document.querySelector('#status').dataset.light === 'ok' && !document.querySelector('#status .light-tag')`, { timeout: 5000 });
+    // each fake turn adds 30k of 150k: yellow comes first, then red, before the automatic handoff
+    const before = sessions().length, seen = [];
+    let had = st0.context?.tokens || 0;
+    for (let i = 0; i < 6 && sessions().length === before && seen.at(-1)?.level !== 'now'; i++) {
+      await api('/api/send', { topic: 'demo', kind: 'ask', text: 'light filler ' + i });
+      await until(() => fakeLog().some(l => l.event === 'replied' && journal().find(e => e.id === l.id)?.text === 'light filler ' + i), 'reply ' + i);
+      // (the context is read every few seconds: wait for this reply's size)
+      const st = await until(async () => { const x = await api('/api/status'); return x.phase === 'listening' && x.context?.tokens > had && x; }, 'the context after reply ' + i);
+      had = st.context.tokens;
+      const f = st.context.tokens / st.context.limit;
+      assert(st.health.level === (f >= 0.9 ? 'now' : f >= 0.7 ? 'warn' : 'ok'), `level ${st.health.level} at ${Math.round(f * 100)}%`);
+      if (st.health.level !== 'ok' && st.health.level !== seen.at(-1)?.level) {
+        seen.push({ level: st.health.level, f });
+        await page.waitFor(`document.querySelector('#status').classList.contains('light-${st.health.level}')`, { timeout: 5000 });
+        const pill = await page.eval(`(() => { const e = document.querySelector('#status'); return { text: e.innerText.replace(/\\s+/g, ' '), title: e.title, tag: getComputedStyle(e.querySelector('.light-tag .long')).display !== 'none' }; })()`);
+        assert(pill.tag && pill.text.includes(st.health.level === 'warn' ? 'fresh tutor soon' : 'restart now'), 'the pill says it in words: ' + JSON.stringify(pill));
+        assert(/Context \d+k of 150k/.test(pill.title), 'the reason is in the tooltip: ' + pill.title);
+        await page.click('#status', 300);
+        const p = await page.waitFor(`document.querySelector('#popLight')?.innerText`, { timeout: 3000 });
+        assert(/Context \d+k of 150k/.test(p) && (st.health.level === 'warn' ? /sensible/ : /Restart the tutor now/i).test(p), 'popover: ' + p);
+        assert(await page.eval(`[...document.querySelectorAll('.tutor-pop .pop-f .btn')].find(b => /Fresh tutor/.test(b.textContent)).classList.contains('btn-primary')`), 'Fresh tutor is not the main button');
+        await page.shot('status-light-' + st.health.level);
+        await page.click('#status', 200);
+      }
+    }
+    assert(seen.map(x => x.level).join() === 'warn,now', 'yellow, then red: ' + JSON.stringify(seen));
+    assert(sessions().length === before, 'the light replaced the tutor: it only informs');
   });
   await test('automatic handoff when the context passes the threshold (after replying)', async () => {
     const before = sessions().length;
@@ -975,7 +1085,7 @@ async function main() {
     await page.nav(`${BASE}/#/demo/wiki/you`, 900);
     await page.waitFor(`document.querySelector('#instrEdit')`, { timeout: 4000 });
     await page.click('#instrEdit');
-    await page.waitFor(`location.hash === '#/demo/tell/instructions' && document.querySelector('#instrBox') && document.querySelector('#instrSave').disabled`, { timeout: 4000 });
+    await page.waitFor(`location.hash === '#/demo/system/instructions' && document.querySelector('#instrBox') && document.querySelector('#instrSave').disabled`, { timeout: 4000 });
     await page.eval(`document.querySelector('#instrBox').value = ''`);
     await page.click('#instrBox'); await page.type('Be direct.\n\nNo softening.');
     await page.click('#instrSave');
@@ -1440,7 +1550,9 @@ async function main() {
     await page.nav(`${BASE}/#/demo/wiki/session/2026-01-08`, 900);
     const sess = await page.eval(`({ has: !!document.querySelector('.sheet [data-id="2026-01-08.13"]'), note: /2 messages about the app not shown/.test(document.querySelector('.sheet').innerText) })`);
     assert(!sess.has && sess.note, 'session page: ' + JSON.stringify(sess));
-    await page.nav(`${BASE}/#/demo/learn/m/2026-01-08.13`, 1500);
+    // (the earlier of the two: the thread draws back to the message asked for, and how many entries
+    // the tests before this one added decides whether a page boundary falls between the two)
+    await page.nav(`${BASE}/#/demo/learn/m/2026-01-08.12`, 1500);
     const t = await page.eval(`(() => { const n = document.querySelector('[id="m-2026-01-08.13"]'), q = document.querySelector('[id="m-2026-01-08.12"]');
       return { folded: n.matches('.msg-meta.folded') && q.matches('.msg-meta.folded'), body: !!n.querySelector('.msg-body'), preview: n.querySelector('.meta-preview')?.textContent || '' }; })()`);
     assert(t.folded && !t.body && /^Short version/.test(t.preview), 'thread: ' + JSON.stringify(t));
@@ -1499,12 +1611,12 @@ async function main() {
       assert(all.heads[0] === 'A' && all.names.length > 10, `${where}: an empty filter is the A–Z list again`);
     }
   });
-  await test('the toolbar button opens a page with two tabs: instructions, and changes to the app (saved for the builder, the tutor not interrupted, open items listed); again goes back', async () => {
+  await test('the toolbar button opens the System page on the tab used last: instructions, and changes to the app (saved for the builder, the tutor not interrupted, open items listed); again goes back; the old /tell links still work', async () => {
     const jl = journal().length;
     await page.nav(`${BASE}/#/demo/learn`, 1000);
     await page.eval(`localStorage['learn:tellTab'] = '"instructions"'`);
     await page.click('#feedbackBtn');
-    await page.waitFor(`location.hash === '#/demo/tell/instructions' && document.activeElement?.id === 'instrBox' && document.querySelector('#feedbackBtn.on')`, { timeout: 3000 });
+    await page.waitFor(`location.hash === '#/demo/system/instructions' && document.activeElement?.id === 'instrBox' && document.querySelector('#feedbackBtn.on') && document.querySelectorAll('.view.system .tab').length === 4`, { timeout: 3000 });
     await page.click('#tellTab-app');
     await page.waitFor(`document.activeElement?.id === 'feedbackBox' && /Save for the builder/.test(document.querySelector('#feedbackSave').textContent)`, { timeout: 3000 });
     await page.type('UI feedback from the box');
@@ -1520,6 +1632,70 @@ async function main() {
     assert(journal().length === jl, 'journaled');
     await page.click('#feedbackBtn');
     await page.waitFor(`location.hash === '#/demo/learn'`, { timeout: 3000 });   // back where it came from (and where the light-theme test reloads)
+  });
+  await test('System page, Status: the tutor session and its light, tokens from the transcript, delivery (all picked up, none twice), reply times, days, sessions, jobs, server; what is not measured says so; settings switch the theme', async () => {
+    // the numbers (GET /api/system) against what this run did
+    const sent = fs.readFileSync(path.join(HOME, 'state/server.log'), 'utf8').split('\n').filter(l => / send \S+ \S+ \w+.*: queued/.test(l)).length;
+    const y = await api('/api/system?topic=demo');
+    assert(y.delivery.today.sent === sent && sent > 5 && y.delivery.week.sent === sent, `sent ${y.delivery.today.sent}, the log has ${sent}`);
+    assert(y.delivery.today.picked <= sent && y.delivery.today.picked >= sent * 0.7 && y.delivery.today.pickMedianMs >= 0, 'picked: ' + JSON.stringify(y.delivery.today));
+    assert(y.delivery.today.again >= 1, 'the messages this run delivered a second time are counted: ' + JSON.stringify(y.delivery.today));
+    assert(y.delivery.today.watchdog >= 1, 'the watchdog restarts of this run are counted: ' + JSON.stringify(y.delivery.today));
+    assert(y.tutor.session && y.tutor.limits.handoffTokens === 150000 && y.tutor.limits.warnAt === 0.7 && y.tutor.limits.nowAt === 0.9 && y.tutor.health, 'tutor: ' + JSON.stringify(y.tutor));
+    const today = y.days.find(d => d.d === new Date().toLocaleDateString('sv'));
+    assert(today && today.sent >= 5 && today.replies >= 5 && today.handoffs >= 1 && today.waitN >= 3, 'today: ' + JSON.stringify(y.days));
+    assert(y.latency.topic === 'demo' && y.latency.today.n >= 3 && y.latency.today.median >= 0, 'latency: ' + JSON.stringify(y.latency));
+    assert(y.sessions.list.length >= 2 && y.sessions.list.filter(r => r.current).length === 1 && y.sessions.list.some(r => r.tokens > 100000 && !r.current), 'sessions with the context they ended at: ' + JSON.stringify(y.sessions));
+    assert(y.jobs.tokens === null && Array.isArray(y.jobs.history), 'jobs');
+    assert(/^[0-9a-f]{7,}$/.test(y.server.head.hash) && y.server.pid > 0 && y.server.uptimeS >= 0 && y.server.clients >= 1, 'server: ' + JSON.stringify(y.server));
+    // tokens: summed over the transcript, each API call once
+    const sid = JSON.parse(fs.readFileSync(path.join(HOME, 'state/session.json'), 'utf8')).id;
+    const tfile = path.join(HOME, 'claude/projects/fake', sid + '.jsonl');
+    const lines = fs.existsSync(tfile) ? fs.readFileSync(tfile, 'utf8').split('\n').filter(Boolean).length : 0;
+    assert(lines ? y.tutor.session.usage.turns === lines && y.tutor.session.usage.output === 100 * lines : y.tutor.session.usage === null, 'usage: ' + JSON.stringify(y.tutor.session.usage) + ' lines ' + lines);
+    const dup = execFileSync(process.execPath, ['-e', `const fs = require('fs'), os = require('os'), path = require('path');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-usage-')); process.env.CLAUDE_CONFIG_DIR = dir;
+      fs.mkdirSync(path.join(dir, 'projects/p/s1/subagents'), { recursive: true });
+      const line = (id, out) => JSON.stringify({ type: 'assistant', message: { id, usage: { input_tokens: 1, cache_read_input_tokens: 1000, cache_creation_input_tokens: 10, output_tokens: out } } }) + '\\n';
+      fs.writeFileSync(path.join(dir, 'projects/p/s1.jsonl'), line('a', 5) + line('a', 50) + '{"type":"user"}\\n' + line('b', 7) + 'not json "usage"\\n');
+      fs.writeFileSync(path.join(dir, 'projects/p/s1/subagents/x.jsonl'), line('c', 3));
+      const A = require('./app/agent').agent(); const u = A.usage('s1');
+      fs.appendFileSync(path.join(dir, 'projects/p/s1.jsonl'), line('d', 1));
+      console.log(JSON.stringify([u, A.usage('s1').output, A.usage('nope')])); fs.rmSync(dir, { recursive: true });`], { env: ENV, cwd: CODE, encoding: 'utf8' });
+    assert(dup.trim() === JSON.stringify([{ turns: 2, input: 2, cacheWrite: 20, cacheRead: 2000, output: 57, partial: false, subagents: { n: 1, turns: 1, input: 1, cacheWrite: 10, cacheRead: 1000, output: 3 } }, 58, null]), 'usage: ' + dup);
+    // the page
+    await page.nav(`${BASE}/#/demo/system/status`, 1200);
+    const t = await page.waitFor(`document.querySelector('#sysDelivery') && document.querySelector('.sys-page').innerText`, { timeout: 5000 });
+    for (const want of [/TUTOR/i, /Context/, /Tokens, this session/, /DELIVERY/i, new RegExp(`Today: ${sent} messages sent`), /Handed over a second time/, /REPLY TIMES/i, /RECENT DAYS/i, /TUTOR SESSIONS/i, /BACKGROUND JOBS/i, /SERVER/i, y.server.startHead.hash])
+      assert(new RegExp(want).test(t), `the page lacks ${want}: ` + t.slice(0, 300));
+    assert(await page.eval(`document.querySelector('#sysLight').dataset.level === ${JSON.stringify((await api('/api/status')).health.level)}`), 'the light on the page');
+    assert(await page.eval(`document.documentElement.scrollWidth <= innerWidth + 1`), 'horizontal overflow');
+    await page.shot('system-status');
+    // background jobs: runs are listed with how long they took; what they used is "not measured"
+    if (y.jobs.history.length) assert(await page.eval(`[...document.querySelectorAll('.sys-panel')].find(p => /Background jobs/i.test(p.querySelector('.sys-h').textContent)).querySelectorAll('.not-measured').length`) === y.jobs.history.length, 'job tokens not marked');
+    // it follows what happens: a message sent now is counted without a reload
+    await api('/api/send', { topic: 'demo', kind: 'ask', text: 'counted on the system page' });
+    await page.waitFor(`/Today: ${sent + 1} messages sent/.test(document.querySelector('#sysDelivery').innerText)`, { timeout: 20000 });
+    // a link from before the page was called System, and the tab the button remembers
+    await page.nav(`${BASE}/#/demo/tell/app`, 900);
+    await page.waitFor(`document.querySelector('#feedbackBox') && document.querySelector('#tellTab-app.on') && document.querySelector('#feedbackBtn.on')`, { timeout: 3000 });
+    // settings: the theme, as buttons
+    await page.nav(`${BASE}/#/demo/system/settings`, 900);
+    await page.eval(`document.querySelector('#setTheme button[data-v="dark"]').click()`);
+    await page.waitFor(`document.documentElement.dataset.theme === 'dark' && document.querySelector('#setTheme button.on').dataset.v === 'dark' && localStorage['learn:theme'] === '"dark"'`, { timeout: 2000 });
+    await page.nav(`${BASE}/#/demo/system/status`, 1200);
+    await page.waitFor(`document.querySelector('#sysDelivery')`, { timeout: 5000 });
+    await page.shot('system-status-dark');
+    await page.size(1100, 800);
+    await sleep(300);
+    assert(await page.eval(`document.documentElement.scrollWidth <= innerWidth + 1`), 'horizontal overflow at 1100px');
+    await page.shot('system-status-narrow');
+    await page.size(1400, 900);
+    await page.nav(`${BASE}/#/demo/system/settings`, 900);
+    await page.eval(`document.querySelector('#setTheme button[data-v="auto"]').click()`);
+    await page.waitFor(`!document.documentElement.dataset.theme && localStorage['learn:theme'] === '"auto"'`, { timeout: 2000 });
+    await page.eval(`localStorage['learn:tellTab'] = '"instructions"'`);
+    await page.nav(`${BASE}/#/demo/learn`, 900);
   });
   await test('formulas: keyed parts are coloured without hovering; tables are centred', async () => {
     // (a formula of its own: the thread draws the latest 60 entries, and the fixture's formulas

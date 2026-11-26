@@ -13,13 +13,15 @@ import * as mapView from './map.js';
 import * as tree from './tree.js';
 import * as wiki from './wiki.js';
 import * as stats from './stats.js';
-import * as tell from './tell.js';
+import * as system from './system.js';
 
 export const app = {
   topics: [], topic: null, d: null, status: { phase: 'offline', queued: 0 },
   view: 'learn', args: [], dockStack: [], learner: null,
 };
-const VIEWS = { learn, map: mapView, tree, wiki, stats, tell };
+// system: the toolbar's speech-bubble page (settings, feedback, instructions, status). `tell` was
+// its name when it had two tabs: old links and bookmarks go on working.
+const VIEWS = { learn, map: mapView, tree, wiki, stats, system, tell: system };
 const VIEW_KEYS = { '1': 'learn', '2': 'map', '3': 'tree', '4': 'wiki', '5': 'stats' };
 
 // ---------------------------------------------------------------- data
@@ -137,7 +139,7 @@ async function route() {
   const prev = app.view;
   app.view = view; app.args = args;
   $$('.views button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
-  $('#feedbackBtn')?.classList.toggle('on', view === 'tell');
+  $('#feedbackBtn')?.classList.toggle('on', VIEWS[view] === system);
   document.body.dataset.view = view;
   if (switched || prev !== view || !$('#center').firstChild || VIEWS[view].routeAlways) VIEWS[view].render($('#center'), app, args);
   else VIEWS[view].update?.(args);
@@ -152,12 +154,16 @@ function renderTopicSel() {
   $('#topicSel').replaceChildren(...app.topics.map(t => h('option', { value: t.slug, text: t.title, selected: t.slug === app.topic?.slug && app.view !== 'new' })),
     h('option', { value: '__new', text: '+ New topic…', selected: app.view === 'new' }));
 }
-const THEMES = ['auto', 'light', 'dark'];
-function applyTheme(t) {
+export const THEMES = ['auto', 'light', 'dark'];
+export const getTheme = () => store.get('theme', 'auto');
+// the toolbar button cycles; System → Settings has the three as buttons
+export function setTheme(t) {
+  store.set('theme', t);
   if (t === 'auto') delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
   const b = $('#themeBtn');
   b.replaceChildren(icon(t === 'auto' ? 'auto' : t === 'light' ? 'sun' : 'moon'));
   b.title = `Theme: ${t === 'auto' ? 'follows the system' : t} (click to switch)`;
+  VIEWS[app.view]?.onTheme?.();
 }
 
 // ---------------------------------------------------------------- left: skills sidebar
@@ -270,20 +276,19 @@ async function boot() {
   $$('.views button').forEach(b => b.addEventListener('click', () => go(b.dataset.view)));
   $('#searchBtn').addEventListener('click', openSearch);
   $('#status').addEventListener('click', togglePopover);
-  // a page, not a popover: your instructions to the tutors, and changes to the app (tell.js); again = back
+  // a page, not a popover: the System page (system.js), on the tab used last; again = back
   let beforeTell = null;
   $('#feedbackBtn')?.addEventListener('click', () => {
-    if (app.view === 'tell') { if (beforeTell && !/\/tell(\/|$)/.test(beforeTell)) location.hash = beforeTell; else go('learn'); return; }
+    if (VIEWS[app.view] === system) { if (beforeTell && !/\/(tell|system)(\/|$)/.test(beforeTell)) location.hash = beforeTell; else go('learn'); return; }
     beforeTell = location.hash;
-    go('tell', store.get('tellTab', 'instructions'));
+    go('system', store.get('tellTab', 'instructions'));
   });
   $('#awayBtn')?.addEventListener('click', toggleAway);
   $('#reloadBtn')?.addEventListener('click', reloadKeepingPlace);
   $('#dockBtn').addEventListener('click', () => { setDock(!document.body.classList.contains('dock-open')); renderDock(); });
   $('#leftToggle').addEventListener('click', () => setLeft(document.body.classList.contains('left-closed')));
-  let theme = store.get('theme', 'auto');
-  applyTheme(theme);
-  $('#themeBtn').addEventListener('click', () => { theme = THEMES[(THEMES.indexOf(theme) + 1) % 3]; store.set('theme', theme); applyTheme(theme); });
+  setTheme(getTheme());
+  $('#themeBtn').addEventListener('click', () => setTheme(THEMES[(THEMES.indexOf(getTheme()) + 1) % 3]));
   configure({
     hoverCard,
     onRef: (type, id) => {

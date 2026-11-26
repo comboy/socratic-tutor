@@ -35,13 +35,19 @@ humans.
 - The UI picks up code changes by itself when you're idle, or shows an "Updated · reload" button,
   so it never blinks while you read.
 - **Tell it how you learn, and what to change in the app:** the speech-bubble button in the
-  toolbar opens a page with two tabs. "How to teach me" is your instructions to every tutor, the
+  toolbar opens the System page. "How to teach me" is your instructions to every tutor, the
   "In my own words" section of `data/learner/profile.md` in your data repo: yours alone (the
   agents never edit it, and it overrides what they derive), committed when you save, and a running
   tutor gets the new version with your next message. A new profile starts with "Crocker's rules."
   "Change the app" saves remarks to `feedback.md` for the builder without interrupting the tutor,
   or with "Tell the tutor now" sends them to it as well (that talk stays in the conversation,
   dimmed and folded, and out of your wiki, sessions and stats); what's still open is listed below.
+  "Settings" has the few switches there are (glossary suggestions while you type, theme), and
+  "Status" shows the machinery: the tutor session, tokens used, reply times, whether every
+  message was delivered, background jobs, the server. What isn't measured says so.
+- **The words you keep forgetting:** when you start typing a glossary term in the answer box, a
+  small list offers it with its definition (Tab inserts it; Settings switches this off). When the
+  word is gone altogether, "Find term" under the box (Ctrl+Space) searches by what it means.
   The rest of the profile, and Wiki → You, is what the tutors have noticed; the knowledge pill
   there is what you know in a topic, as one file you can hand to any other tool.
 
@@ -63,7 +69,10 @@ the machine itself, an SSH tunnel included, work as before. `app/access.js` has 
 
 ### Long sessions
 
-The status button (top right) shows the tutor's context use. When it gets high, the tutor saves
+The status button (top right) shows the tutor's context use, and it is a light: it turns yellow
+when a fresh tutor would be sensible at your next break (the context is 70% full, or replies have
+slowed down) and red when it should be restarted now (90%, or a message that got no reply), with
+the reason on hover. You don't have to act on it: at the threshold the tutor saves
 its notes and a fresh session takes over by itself; you see "switching tutor" for a few seconds.
 **Fresh tutor** in that popover does it on demand; **Restart now** is for a stuck tutor. Nothing is
 lost, because everything lives in files rather than in the conversation.
@@ -151,6 +160,12 @@ What keeps a message from getting lost, and where to look when one seems to:
   mid-answer: that is an error, and `wait` prints its message before it talks to the server.
 - `state/server.log` has a timestamped line for every message received, picked up and posted, and
   every restart. A restart first checks that the new code loads, and keeps the old server if not.
+- The System page's Status tab (`GET /api/system`, `app/sysstats.js`) reads those same files: the
+  delivery counts come from `server.log` (a message picked up twice was handed over again), reply
+  times and per-day counts from the journals' last seven day files, tokens from the agent's
+  transcript (`app/agent.js` `usage`), job runs from `state/jobs.json`. The server also keeps
+  `state/sessions.json`, one line per tutor session with the context size it ended at. The tutor's
+  status light (`tutorHealth`, sent with every status event) is computed from the same signals.
 - Journal appends, notes, terms and levels are written under a lock (`state/locks/`): the
   server, the tutor's parallel CLI calls and the jobs all write the same files.
 - `app/`: Node server, storage, launcher, agent adapter, background jobs, topic checker. No

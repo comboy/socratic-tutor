@@ -1,5 +1,4 @@
-// "Tell": the learner's two channels besides the lesson, on one page (the toolbar's speech-bubble
-// button), as two tabs:
+// The two writing tabs of the System page (system.js; the toolbar's speech-bubble button):
 //  - How to teach me: the learner's instructions to every tutor, the "In my own words" section of
 //    learner/profile.md in the data folder (POST /api/instructions). Tutors read it first and it
 //    overrides what they derive; a running tutor gets the new version with the next message.
@@ -8,25 +7,12 @@
 //    (POST /api/send kind "meta", which adds the feedback.md item itself). Below: what's still open.
 // Drafts live in localStorage, so a reload, a redraw or a wrong click never loses text.
 import { h, store, MOD } from './util.js';
-import { icon } from './icons.js';
-import { app, go, learner, postJSON, send } from './app.js';
+import { app, learner, postJSON, send } from './app.js';
 import { rich } from './rich.js';
 
-export const routeAlways = true;
-const TABS = [['instructions', 'How to teach me', 'hole'], ['app', 'Change the app', 'feedback']];
 let openList = null;   // the "still open" list on the app tab, refreshed when feedback.md changes
-
-export function render(center, _app, args) {
-  const tab = args[0] === 'app' ? 'app' : 'instructions';
-  store.set('tellTab', tab);
-  const body = h('div', { class: 'view-body' });
-  center.replaceChildren(h('div', { class: 'view tell' },
-    h('div', { class: 'view-bar tabbed' }, h('div', { class: 'tabs' }, ...TABS.map(([id, label, ic]) =>
-      h('button', { class: 'tab' + (tab === id ? ' on' : ''), id: 'tellTab-' + id, onclick: () => go('tell', id) }, icon(ic), label)))),
-    body));
-  openList = null;
-  (tab === 'app' ? appTab : instructionsTab)(body);
-}
+// a tab is about to be drawn: the list of the last one is gone
+export function leaveTab() { openList = null; }
 // learner files changed (a save here, an agent's commit): only the parts that are safe to redraw
 export function onLearner() { if (openList) fillOpen(openList); }
 
@@ -34,7 +20,7 @@ const page = (...kids) => h('div', { class: 'tell-page' }, ...kids);
 const onSaveKey = (ta, fn) => ta.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); fn(); } });
 
 // ---------------------------------------------------------------- how to teach me
-async function instructionsTab(body) {
+export async function instructionsTab(body) {
   const ta = h('textarea', { class: 'input tell-box', id: 'instrBox', spellcheck: 'true',
     placeholder: 'How should the tutors work with you? Tone, pace, how direct the feedback, what to avoid…' });
   const note = h('div', { class: 'tell-note', role: 'status' });
@@ -72,7 +58,7 @@ async function instructionsTab(body) {
 }
 
 // ---------------------------------------------------------------- change the app
-function appTab(body) {
+export function appTab(body) {
   const ta = h('textarea', { class: 'input tell-box', id: 'feedbackBox',
     placeholder: 'Something awkward, missing or broken in the app, or in how the sessions run…' });
   ta.value = store.get('draft:feedback', '');
@@ -91,7 +77,7 @@ function appTab(body) {
     try {
       let file = 'feedback.md';
       if (live.checked) await send('meta', text);
-      else file = (await postJSON('/api/feedback', { text, topic: app.topic?.slug, view: 'tell' }, { tries: 1 })).file || file;
+      else file = (await postJSON('/api/feedback', { text, topic: app.topic?.slug, view: 'tell' }, { tries: 1 })).file || file;   // ('tell': the page's first name, kept so the items in feedback.md read alike)
       ta.value = ''; store.set('draft:feedback', '');
       // told to the tutor: its reply comes in the conversation, so go there (as the quick buttons do)
       if (live.checked && app.topic) { location.hash = `#/${app.topic.slug}/learn`; return; }

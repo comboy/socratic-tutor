@@ -31,16 +31,36 @@ a minimalist "modern web" page.
   with an Answer / Ask switch (its colour says which; each mode keeps its own draft), the quick
   buttons sit in its footer (icons only when narrow), and Esc or the chevron hides it to two
   buttons in the corner; `a` / `q` or those buttons bring it back.
-- **The learner thinks about the topic, not the tool.** Anything about the tool goes to one page
-  (the toolbar's speech bubble, `web/js/tell.js`): "Change the app" saves it for the builder, who
-  works through it while they're away, or with "Tell the tutor now" also sends it to the tutor, who
-  answers in the conversation (the UI goes there). Its other tab, "How to teach me", is the
-  learner's instructions to every tutor. A full page, not a popover: the learner asked for room to
-  write (2026-11-26). One place for app remarks: an "About the app" button next to Ask was
-  confusing next to a separate feedback box.
-  Don't make them configure things; pick good defaults. App talk in the conversation (those
-  remarks, the tutor's `--meta` replies, tagged entries) is shown dimmed and folded to one line, and
-  kept out of the learning record (wiki, sessions, stats).
+- **The learner thinks about the topic, not the tool.** Anything about the tool is on one page,
+  System (the toolbar's speech bubble, `web/js/system.js`), in four tabs. "Change the app" saves a
+  remark for the builder, who works through it while they're away, or with "Tell the tutor now"
+  also sends it to the tutor, who answers in the conversation (the UI goes there). "How to teach
+  me" is the learner's instructions to every tutor. "Settings" holds the few choices that are
+  taste (term suggestions, theme). "Status" shows what the machinery does: the tutor session and
+  its light, tokens, reply times, delivery, jobs, the server (`app/sysstats.js`). A full page, not
+  a popover: the learner asked for room to write (2026-11-26). The button opens the tab used last,
+  so the feedback box, which is how they report problems, stays one click away.
+  One place for app remarks: an "About the app" button next to Ask was confusing next to a
+  separate feedback box.
+  Don't make them configure things; pick good defaults, and add a setting only where people
+  really differ. App talk in the conversation (those remarks, the tutor's `--meta` replies,
+  tagged entries) is shown dimmed and folded to one line, and kept out of the learning record
+  (wiki, sessions, stats).
+- **Show only what is measured.** The Status tab is what trust in the delivery rests on ("25
+  messages sent, all picked up, none had to be delivered again"), so every number on it comes from
+  a file that records it (the journal, the agent's transcript, `state/server.log`,
+  `state/jobs.json`), and what nothing records says "not measured" instead of an estimate.
+- **The tutor's pill is a light.** Green while nothing suggests a restart, yellow when a fresh
+  tutor would be sensible at the next break, red when it should be restarted now; the rule and
+  the reasons for its numbers are in `app/sysstats.js` (`tutorHealth`). It informs and never acts:
+  the handoff at the threshold and the watchdog work by themselves. Colour is never the only
+  carrier: the pill says it in words, and the tooltip, the popover and the Status tab give the
+  reason ("Context 310k of 400k").
+- **Help with writing must not get in the way of writing.** Glossary suggestions in the text box
+  (`web/js/complete.js`) open only for the beginning of a term (three letters, not a common or
+  finished word), never take Enter, take the arrow keys only when there is a choice, and Esc
+  closes the list before it hides the input. "Find term" (Ctrl+Space) is for the case the
+  learner described: the word is gone, what it does is remembered.
 - **No dependencies, no build step,** so anyone can clone it and run it. Plain ES modules; d3,
   marked and KaTeX are vendored in `web/vendor/`. A small vendored library is fine when it's
   really needed; each one is more to keep up to date.

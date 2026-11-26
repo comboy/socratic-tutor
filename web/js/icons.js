@@ -41,6 +41,8 @@ const P = {
   dot: '<circle cx="12" cy="12" r="4" fill="currentColor"/>',
   threads: '<path d="M4 4.5h9v6H8l-3 2.5v-2.5H4z"/><path d="M11 13.5h9v6h-1v2.5l-3-2.5h-5z"/>',
   compose: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
+  sliders: '<path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/>',
+  pulse: '<path d="M3 12h4l2.5-6 4 12 2.5-6h5"/>',
   palette: '<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.1 0 1.7-.8 1.7-1.7 0-1.2-1-1.6-1-2.7 0-1 .8-1.6 1.7-1.6h2.3a3.8 3.8 0 0 0 3.8-3.8c0-4-3.8-7.2-8.5-7.2z"/><circle cx="7.6" cy="11.2" r="1.1"/><circle cx="10.2" cy="7.4" r="1.1"/><circle cx="14.6" cy="7.6" r="1.1"/>',
 };
 export function icon(name, cls = '') {
