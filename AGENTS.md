@@ -86,8 +86,11 @@ What the setup depends on, and why:
 - Commit code changes to this repo and data with `bin/learn commit "…" -- <paths>` (the data
   repo; the paths keep another agent's half-written files out of your commit). Small commits are
   easy to read and to revert.
-- Everything durable goes in files in these repos, not in an agent's private memory, so any agent
-  (or a fresh session) can pick it up. Learner preferences: `data/learner/profile.md` (its "In my
+- Everything durable goes in files in these repos, never in an agent's private memory (Claude
+  Code's auto-memory, or any other agent's), about the project or about the learner: the system
+  moves between machines and agents, and memory outside the repos is lost or silently stale
+  there (the learner asked for this, 2026-11-26). If your harness offers a memory, write the
+  fact to the right file here instead. Learner preferences: `data/learner/profile.md` (its "In my
   own words" section is the learner's own voice, the only part that isn't derived). Process
   ideas: `docs/roadmap.md` or `data/feedback.md`.
 - The journal is the append-only record that the UI, stats and wiki are built from, so it's
