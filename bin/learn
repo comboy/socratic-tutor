@@ -1145,4 +1145,14 @@ else if (argv[0] && !argv[0].startsWith('-')) {
   else if (!S.listTopics().includes(argv[0])) die(`unknown command or topic "${argv[0]}"; try bin/learn help`);
 } else if (argv[0] && !['-c', '--continue', '--no-open', '--'].includes(argv[0])) die(`unknown option "${argv[0]}"; try bin/learn help`);
 // sync and async commands alike: an error is a one-line message, not a stack trace
-Promise.resolve().then(() => commands[cmd]()).catch(e => die(e.message));
+// A command whose promise never settles (it awaits something that will never answer, and nothing
+// else keeps node running) would end here with exit code 0 and no output, which reads as "done,
+// nothing to say": a `wait` did that with a learner's message in hand (2026-11-26). Say so instead.
+let settled = false;
+process.on('beforeExit', () => {
+  if (settled) return;
+  settled = true;
+  console.error(`learn: \`${cmd}\` ended before it finished (it was waiting for something that never answered). ${cmd === 'wait' ? 'Any message it had taken is back in the queue; run it again' : 'Check whether it took effect before running it again'}.`);
+  process.exitCode = 1;
+});
+Promise.resolve().then(() => commands[cmd]()).then(() => { settled = true; }, e => die(cmd === 'wait' ? `wait failed: ${e.message}. Any message it had taken is back in the queue; run \`bin/learn wait\` again.` : e.message));
