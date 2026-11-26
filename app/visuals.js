@@ -88,8 +88,8 @@ function describe(v, { full = false } = {}) {
   if (v.shows) out.push(`      shows: ${cut(v.shows)}`);
   if (v.use) out.push(`      use:   ${cut(v.use)}`);
   if (v.steps.length) out.push(`      steps: ${stepsLine(v)}`);
+  if (v.params) out.push(`      params: ${cut(v.params)}`);   // its own parameters: a tutor needs them to pick a state
   if (full) {
-    if (v.params) out.push(`      params: ${v.params}`);
     if (v.simplified) out.push(`      simplified: ${v.simplified}`);
     if (v.sources) out.push(`      sources: ${v.sources}`);
     if (v.reviewed) out.push(`      reviewed: ${v.reviewed}`);
