@@ -131,4 +131,69 @@ function lastActivity(id) {
   return t;
 }
 
+// What a session has used so far, summed over its transcript (and its subagents' transcripts):
+// { turns, input, cacheWrite, cacheRead, output, subagents: { n, turns, input, … } }, or null when
+// there's no transcript. One API call is written as several lines (one per content block) carrying
+// the same usage, so calls are counted once, by message id. Every call re-reads the whole context
+// (mostly from the cache), so cacheRead is by far the largest number and grows with the square of
+// the session's length; output is what the model actually wrote. Read incrementally and cached:
+// the System page asks every few seconds, a transcript grows to many MB. A first read of a long
+// session with subagents takes a second or more, and the server answers the learner's messages on
+// the same thread: so each call reads for at most `budgetMs` and says `partial` until it has
+// caught up (the next call carries on where this one stopped).
+const usageCache = new Map();   // file -> { off, rest, dec, ids, sum }
+const zero = () => ({ turns: 0, input: 0, cacheWrite: 0, cacheRead: 0, output: 0 });
+function scanUsage(file, until = Infinity) {
+  let size; try { size = fs.statSync(file).size; } catch { return null; }
+  let c = usageCache.get(file);
+  if (!c || size < c.off) c = { off: 0, rest: '', dec: new (require('string_decoder').StringDecoder)('utf8'), ids: new Map(), sum: zero() };
+  if (size > c.off) {
+    let fd;
+    try {
+      fd = fs.openSync(file, 'r');
+      const buf = Buffer.alloc(Math.min(4 << 20, size - c.off));
+      while (c.off < size && Date.now() < until) {
+        const n = fs.readSync(fd, buf, 0, Math.min(buf.length, size - c.off), c.off);
+        if (!n) break;
+        c.off += n;
+        const lines = (c.rest + c.dec.write(buf.subarray(0, n))).split('\n');
+        c.rest = lines.pop();
+        for (const line of lines) {
+          if (!line.includes('"usage"')) continue;
+          let d; try { d = JSON.parse(line); } catch { continue; }
+          const u = d.type === 'assistant' && d.message?.usage;
+          if (!u) continue;
+          const now = { input: u.input_tokens || 0, cacheWrite: u.cache_creation_input_tokens || 0, cacheRead: u.cache_read_input_tokens || 0, output: u.output_tokens || 0 };
+          const id = d.message.id || d.uuid || `${c.off}:${c.ids.size}`, was = c.ids.get(id);
+          if (!was) c.sum.turns++;
+          for (const k of Object.keys(now)) c.sum[k] += now[k] - (was ? was[k] : 0);
+          c.ids.set(id, now);
+        }
+      }
+    } catch {} finally { if (fd != null) fs.closeSync(fd); }
+  }
+  usageCache.delete(file); usageCache.set(file, c);
+  if (usageCache.size > 60) usageCache.delete(usageCache.keys().next().value);
+  return { ...c.sum, partial: c.off < size };
+}
+function usage(id, budgetMs = 120) {
+  const f = findTranscript(id), until = Date.now() + budgetMs;
+  const main = f && scanUsage(f, until);
+  if (!main) return null;
+  const sub = { n: 0, ...zero() };
+  const dir = path.join(f.replace(/\.jsonl$/, ''), 'subagents');
+  try {
+    for (const n of fs.readdirSync(dir)) {
+      if (!n.endsWith('.jsonl')) continue;
+      const u = scanUsage(path.join(dir, n), until);
+      if (!u) continue;
+      sub.n++;
+      if (u.partial) main.partial = true;
+      for (const k of Object.keys(zero())) sub[k] += u[k];
+    }
+  } catch {}
+  return { ...main, subagents: sub };
+}
+claude.usage = usage;
+
 module.exports = { agent, agentEnv, contextTokens, lastActivity };

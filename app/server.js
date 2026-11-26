@@ -8,6 +8,7 @@ const S = require('./store');
 const T = require('./session');
 const J = require('./jobs');
 const A = require('./access');
+const Y = require('./sysstats');
 
 const WEB = path.join(S.CODE, 'web');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -25,8 +26,17 @@ function broadcast(ev) {
 
 // ---------- tutor status ----------
 // phase: listening | thinking | handoff (old tutor wrapping up / new one booting) | starting | offline
-const status = { phase: 'offline', queued: 0, inbox: [], stalled: [], pickedAt: 0, tutorAt: 0, context: null, launcher: false, kind: null };
-let ctxAt = 0, lastSent = '';
+const status = { phase: 'offline', queued: 0, inbox: [], stalled: [], pickedAt: 0, tutorAt: 0, context: null, health: null, launcher: false, kind: null };
+let ctxAt = 0, ctxFor = null, lastSent = '';
+// The status light (app/sysstats.js tutorHealth): whether a fresh tutor would be sensible, and why.
+// The slow parts (the session's reply times and message count, from the journal) are looked up
+// once a minute. It only informs; a failure here must never touch the status itself.
+const slow = { id: null, at: 0, waits: null, turns: 0 };
+function tutorHealth(sess, launcher) {
+  if (!sess || !launcher) return null;
+  if (slow.id !== sess.id || Date.now() - slow.at > 60e3) Object.assign(slow, { id: sess.id, at: Date.now(), waits: Y.sessionWaits(sess), turns: status.context ? 0 : Y.sessionTurns(sess) });
+  return Y.tutorHealth({ context: status.context, turns: slow.turns, stalled: status.stalled, watchdogFired: dog.fired, waits: slow.waits });
+}
 function computeStatus(force) {
   const sess = T.readSession();
   const launcher = T.launcherAlive(sess);
@@ -50,22 +60,29 @@ function computeStatus(force) {
   else if (listening) phase = 'listening';
   else if (booting) phase = 'starting';
   else phase = 'offline';
-  if (Date.now() - ctxAt > 4000 || force) {
-    ctxAt = Date.now();
+  // (a new session at once: its light must not show the size of the one it replaced)
+  const fresh = Date.now() - ctxAt > 4000 || force || (sess?.id || null) !== ctxFor;
+  if (fresh) {
+    ctxAt = Date.now(); ctxFor = sess?.id || null;
     const c = launcher && sess ? T.contextTokens(sess.id) : null;
     status.context = c ? { tokens: c.tokens, model: c.model, limit: T.HANDOFF_TOKENS } : null;
   }
   Object.assign(status, { phase, queued, inbox, launcher, kind: sess?.kind || null });
   try { watchdog({ sess, launcher, listening, booting, handoffReq, phase, inbox }); } catch (e) { log('watchdog: ' + e.message); }
+  if (fresh) {
+    try { status.health = tutorHealth(sess, launcher); } catch (e) { status.health = null; }
+    try { if (launcher) Y.noteSession(sess, status.context); } catch {}
+  }
   const pub = JSON.stringify(publicStatus());
   if (pub !== lastSent || force) { lastSent = pub; broadcast({ type: 'status', ...publicStatus() }); }
 }
 function publicStatus() {
-  const { phase, queued, inbox, stalled, context, launcher, kind } = status;
+  const { phase, queued, inbox, stalled, context, health, launcher, kind } = status;
   // inbox: "<topic>/<id>" of the messages not picked up yet (the UI says "delivering" only for those).
   // listening/thinking kept for older UI code paths
   // stalled: "<topic>/<id>" of messages the tutor was given long ago and hasn't answered (the UI says so)
-  return { phase, queued, inbox, stalled, context, launcher, kind, listening: phase === 'listening' || phase === 'thinking', thinking: phase === 'thinking' };
+  // health: the status light, { level: ok|warn|now, reasons } (null without a tutor that can be restarted from here)
+  return { phase, queued, inbox, stalled, context, health, launcher, kind, listening: phase === 'listening' || phase === 'thinking', thinking: phase === 'thinking' };
 }
 
 // ---------- the learner must never have to unstick it ----------
@@ -183,6 +200,8 @@ const routes = {
     return { slug, title: m.title, last: files.length ? files[files.length - 1].slice(0, 10) : null, created: m.created || null };
   }),
   'GET /api/learner': () => learnerPayload(),
+  // the System page's numbers: tutor session, tokens, reply times, delivery, jobs, this server
+  'GET /api/system': (_req, url) => Y.system({ topic: url.searchParams.get('topic'), status: publicStatus(), clients: clients.size, pendingRestart }),
   // New topic from the browser: scaffold it, journal the learner's request as a START message and
   // queue it. The tutor (on a topic switch, a fresh session) builds the skill tree and runs the
   // diagnostic, as docs/bootstrap.md says.

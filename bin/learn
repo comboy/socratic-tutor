@@ -964,24 +964,11 @@ commands.track = async () => {
     : `back to one thread in ${topic} (${saved.id}). Pending questions now: ${S.pendingQuestion(S.readJournal(topic))?.id || 'none'}.`);
 };
 
-// How long the learner waited: for each lesson message, the time until the tutor's next lesson
-// message in the same thread; with two threads, whether the other thread had a reply ready to read
-// at that moment (the wait was hidden) or not (felt).
+// How long the learner waited for replies (app/sysstats.js replyWaits; the System page shows the same).
 commands.latency = () => {
   const f = flags(argv, { topic: 'string', days: 'string' });
   const topic = topicOf(f);
-  const since = Date.now() - (Number(f.days) || 7) * 86400e3;
-  const J = S.readJournal(topic), meta = S.metaIds(J);
-  const lesson = J.filter(e => !meta.has(e.id) && !e.imported && (e.role === 'user' ? ['answer', 'ask', 'action'].includes(e.kind) : e.kind === 'message'));
-  const rows = [];
-  lesson.forEach((u, i) => {
-    if (u.role !== 'user' || Date.parse(u.ts) < since) return;
-    const t = S.trackOf(u), reply = lesson.slice(i + 1).find(e => e.role === 'tutor' && S.trackOf(e) === t);
-    if (!reply) return;
-    // two threads: did the other one have a tutor message waiting (its last entry before u)?
-    const other = lesson.slice(0, i).filter(e => S.trackOf(e) !== t && e.track).pop();
-    rows.push({ s: (Date.parse(reply.ts) - Date.parse(u.ts)) / 1000, two: !!u.track, hidden: !!(u.track && other?.role === 'tutor') });
-  });
+  const rows = require('../app/sysstats').replyWaits(S.readJournal(topic), Date.now() - (Number(f.days) || 7) * 86400e3);
   if (!rows.length) { console.log('no replies in that period'); return; }
   const med = a => { const s = [...a].sort((x, y) => x - y); return s.length ? Math.round(s[s.length >> 1]) : '-'; };
   const p75 = a => { const s = [...a].sort((x, y) => x - y); return s.length ? Math.round(s[Math.floor(s.length * 0.75)]) : '-'; };
