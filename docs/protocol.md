@@ -39,7 +39,7 @@ followed by the text. Kinds:
   With `quote=<id>`, the learner selected text in that message (quoted in a `>` block) and asks
   about exactly that.
 - **action**: a button: `just tell me`, `skip`, `harder`, `easier`, `example`, `show progress`,
-  `pause`, `review <skill>`, `recap <skill>`, `welcome back (<gap> away): recap …`. `fresh tutor: …` means the learner pressed "Fresh
+  `review <skill>`, `recap <skill>`, `welcome back (<gap> away): recap …`. `fresh tutor: …` means the learner pressed "Fresh
   tutor": do the handoff steps that `wait` prints, and don't reply.
 - **start**: a new topic the learner created in the browser (their goal, what for, what they
   know). `docs/bootstrap.md`.

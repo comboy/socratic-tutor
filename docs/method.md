@@ -189,6 +189,9 @@ integrative problem. If they pass, summarise their weakest areas and suggest wha
 
 `just tell me` (skip the Socratic part for this question only), `example`, `I'm lost`, `skip`,
 `easier`/`harder`, `show progress` (summarise the skill map in prose; the UI already draws it),
-`pause` (wrap up: update the notes), `review <skill>` (a review question on that skill),
+`review <skill>` (a review question on that skill),
 `recap <skill>` (a short recap of what they covered, linking the earlier explanations),
 `two threads: on` / `two threads: off` (above, "Two threads").
+There's no pause button (removed at the learner's request): notes are kept current after every
+reply, so they can leave or close the session whenever it's idle. A `pause` in older journals, or
+typed, needs only a short goodbye.

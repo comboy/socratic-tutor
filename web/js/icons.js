@@ -27,7 +27,6 @@ const P = {
   skip: '<path d="M5 6l8 6-8 6zM17 6v12"/>',
   down: '<path d="M12 5v14M6 13l6 6 6-6"/>',
   up: '<path d="M12 19V5M6 11l6-6 6 6"/>',
-  pause: '<path d="M9 5v14M15 5v14"/>',
   progress: '<path d="M4 18l5-6 4 3 7-9"/><path d="M15 6h5v5"/>',
   quiz: '<path d="M7 4h10v16H7z"/><path d="M10 9l1.5 1.5L14.5 7.5M10 15h4"/>',
   chev: '<path d="M9 6l6 6-6 6"/>',

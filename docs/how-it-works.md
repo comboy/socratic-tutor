@@ -11,7 +11,7 @@ humans.
   learn in your own words; optionally what for and what you already know.
 - **Answer** box: replies to the open question, shown in full above it. **Ask / learn more** box:
   side questions, which don't close the open question. ⌘↵ sends either.
-- Buttons under the boxes: just tell me, example, I'm lost, skip, easier/harder, progress, pause.
+- Buttons under the boxes: just tell me, example, I'm lost, skip, easier/harder, progress.
 - Hover an underlined term for its definition; click it for the full entry and every message
   that explained it. Hover a coloured symbol in a formula, a matrix row or a highlighted phrase,
   and the matching parts light up. Select text in any message and press **Ask about this**.

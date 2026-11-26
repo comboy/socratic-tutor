@@ -408,7 +408,6 @@ const QUICK = [
   ['Harder', 'harder', 'up', 'Make questions harder'],
   null,
   ['Progress', 'show progress', 'progress', 'Ask the tutor for a progress summary'],
-  ['Pause', 'pause: wrap up the session, update progress notes', 'pause', 'End the session; the tutor saves its notes'],
 ];
 const TWO_ON = 'two threads: on (open a second, closely related thread, so I can read and answer one while you write the other; docs/method.md "Two threads")';
 
