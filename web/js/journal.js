@@ -64,7 +64,7 @@ export function pendingQuestion(J, track = null, meta = metaIds(J)) {
     if (meta.has(e.id)) continue;
     if (e.role === 'user' && answered.has(e.id)) { if (pending && answered.get(e.id) === pending.id) pending = null; continue; }
     if (track && trackOf(e) !== track) continue;
-    if (e.role === 'tutor' && e.kind === 'message' && e.question) pending = e;
+    if (e.role === 'tutor' && e.kind === 'message' && e.question && !e.queue) pending = e;   // a queued review question is open on its own (openQueue)
     else if (e.role === 'user' && e.kind === 'answer' && pending && (!e.replyTo || e.replyTo === pending.id)) pending = null;
   }
   return pending;
@@ -94,4 +94,22 @@ export function applyCorrections(J) {
     t.corrected = { ids: [...ids, c.id], ts: c.ts, note: c.note || '' };
   }
   return J;
+}
+
+// Review queue (`bin/learn post --queue`, two threads only): besides its one pending question a
+// thread can hold several review questions prepared ahead, each a message with "queue": true. They
+// are open side by side and answered in any order, so the learner always has something to do while
+// the tutor writes (the learner's idea, 2026-11-25: the second thread is mostly review, and its
+// questions can be ready before they're needed). One is closed by the learner's answer to it
+// (replyTo), by "skip" on it, or by a grade that names it; each answer is graded on its own
+// (`post --grade … --grade-of <answer>`). A queued question never is, and never closes, the
+// thread's pending question. Folding the threads back into one drops the queue.
+export function openQueue(J, meta = metaIds(J), tracks = tracksState(J)) {
+  if (!tracks.open) return [];
+  const closed = new Set();
+  for (const e of J) {
+    if (e.role === 'user' && e.replyTo && !e.imported && (e.kind === 'answer' || (e.kind === 'action' && /^skip\b/i.test(e.text || '')))) closed.add(e.replyTo);
+    else if (e.kind === 'grade' && e.questionId) closed.add(e.questionId);
+  }
+  return J.filter(e => e.queue && e.role === 'tutor' && e.kind === 'message' && e.question && !meta.has(e.id) && e.ts >= tracks.since && !closed.has(e.id));
 }

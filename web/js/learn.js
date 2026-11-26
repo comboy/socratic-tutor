@@ -21,7 +21,27 @@ function curTrack() {
   return t === 'b' ? 'b' : 'a';
 }
 const otherTrack = t => (t === 'b' ? 'a' : 'b');
-function curPending() { const t = curTrack(); return t ? app.d.pendingBy[t] : app.d.pending; }
+// The questions open in a thread: its pending question and, after it, the review questions queued
+// there (journal.js openQueue). The answer box answers one of them: the one the learner picked
+// (the strip above the box, or "Answer this" on the message), else the first.
+function openQs(t = curTrack()) { return t ? [app.d.pendingBy[t], ...app.d.queueBy[t]].filter(Boolean) : [app.d.pending].filter(Boolean); }
+const pickKey = t => `qpick:${app.topic.slug}:${t}`;
+function curPending() {
+  const t = curTrack(), qs = openQs(t);
+  return (t && qs.length > 1 && qs.find(q => q.id === store.get(pickKey(t), ''))) || qs[0] || null;
+}
+function pickQuestion(id, focus = true) {
+  const t = curTrack(); if (!t) return;
+  store.set(pickKey(t), id);
+  markPending();
+  if (focus) openComposer('answer'); else drawComposer();
+}
+function markPending() {
+  const pend = curPending();
+  $$('.pending-q', thread).forEach(n => { if (n.dataset.id !== pend?.id) n.classList.remove('pending-q'); });
+  if (pend) thread.querySelector(`[id="m-${CSS.escape(pend.id)}"]`)?.classList.add('pending-q');
+  for (const b of $$('.answer-this', thread)) b.hidden = b.dataset.q === pend?.id;
+}
 // the lesson exchange of a thread: the learner's messages and the tutor's replies, no app talk
 const lessonEntry = e => !e._meta && !e.imported && (e.role === 'user' ? ['answer', 'ask', 'action', 'start'].includes(e.kind) : e.role === 'tutor' && e.kind === 'message');
 function lastLesson(t) {
@@ -43,11 +63,15 @@ function trackState(t) {
   if (l.role === 'user') {
     const queued = (s.inbox || []).includes(`${app.topic.slug}/${l.id}`);
     if (s.phase === 'thinking' || s.phase === 'handoff') return { key: 'writing', text: 'writing…' };
+    // review questions are waiting here whatever the tutor is doing
+    const nq = app.d.queueBy?.[t]?.length || 0;
+    if (nq) return { key: 'turn', text: nq > 1 ? `${nq} questions` : '1 question' };
     if (queued || Date.now() - Date.parse(l.ts) < 4e3) return { key: 'writing', text: queued && s.phase !== 'listening' ? 'queued' : 'writing…' };
     return { key: 'idle', text: 'nothing waiting' };
   }
   if (t !== curTrack() && store.get(seenKey(t), '') !== l.id) return { key: 'ready', text: 'ready' };
-  return app.d.pendingBy?.[t] ? { key: 'turn', text: 'your turn' } : { key: 'idle', text: 'nothing waiting' };
+  const n = openQs(t).length;
+  return n ? { key: 'turn', text: n > 1 ? `${n} questions` : 'your turn' } : { key: 'idle', text: 'nothing waiting' };
 }
 // Two threads are on by default (the learner asked: they hadn't seen the button), so the bar is
 // there from the start of a topic, saying the second thread isn't open yet. Only their own
@@ -224,6 +248,11 @@ export function messageNode(e, opts = {}) {
   if (e.track === 'b' && (compact || !curTrack())) head.append(h('span', { class: 'track-chip', title: 'From the second thread', text: 'thread B' }));
   const g = app.d.grades.get(e.id);
   if (g) head.append(h('span', { class: `badge verdict-${g.verdict}`, title: g.note || '', text: VERDICT[g.verdict] || g.verdict }));
+  if (e.queue) {
+    const open = !compact && app.d.queue.some(q => q.id === e.id);
+    head.append(h('span', { class: 'kind-tag queue-tag' + (open ? ' open' : ''), title: 'A review question prepared ahead: the open ones can be answered in any order, each is graded on its own' }, icon('quiz'), open ? 'Review question' : 'Review'));
+    if (open) head.append(h('button', { class: 'btn btn-tiny answer-this', 'data-q': e.id, hidden: curPending()?.id === e.id, title: 'Put this question in the answer box', onclick: () => pickQuestion(e.id) }, 'Answer this'));
+  }
   if (e.corrected) head.append(h('span', { class: 'badge badge-corrected', title: `The tutor corrected this message at ${fmtTime(e.corrected.ts)}${e.corrected.note ? ': ' + e.corrected.note : ''}`, text: 'corrected' }));
   for (const sid of e._meta ? [] : e._skills || []) {   // app talk belongs to no skill
     const s = skillById(app.topic.meta, sid);
@@ -336,14 +365,15 @@ export function onEntries(fresh) {
     if (e.kind === 'grade') { redrawEntry(e.target); continue; }
     if (e.kind === 'correction') { shownVersion.delete(e.target); corrected = redrawEntry(e.target) || corrected; continue; }
     if (e.kind === 'tag') { retag(e.ids || []); continue; }
+    // a queued review question was answered, skipped or graded: it is no longer "open"
+    const q = app.d.byId.get(e.replyTo || e.questionId);
+    if (q?.queue && e.kind !== 'message') redrawEntry(q.id);
     if (!visible(e)) continue;
     if (e._meta) openMeta.add(e.id);   // app talk arriving now is shown open; folded on a later visit
     const i = J.findIndex(x => x.id === e.id);
     appendEntry(e, i > 0 ? J[i - 1].ts.slice(0, 10) : null);
   }
-  const pend = curPending();
-  $$('.pending-q', thread).forEach(n => { if (n.dataset.id !== pend?.id) n.classList.remove('pending-q'); });
-  if (pend) thread.querySelector(`[id="m-${CSS.escape(pend.id)}"]`)?.classList.add('pending-q');
+  markPending();
   drawTyping();
   drawComposer(true);
   keepAnchor();
@@ -525,7 +555,14 @@ function drawComposer(keepFocus) {
   if (hidden) { composer.replaceChildren(h('div', { class: 'composer-corner' }, welcomeBack(), cornerButtons(pend))); return; }
 
   const qtext = pend ? questionText(pend.text) : null;
-  const key = draftKey(mode);
+  // an answer half-written to one review question stays with that question
+  const key = draftKey(mode) + (mode === 'answer' && pend?.queue ? ':' + pend.id : '');
+  const qs = openQs(t);
+  const strip = qs.length > 1 ? h('div', { class: 'q-strip', title: 'These questions are all open: answer them in any order. Each answer is graded on its own.' },
+    h('span', { class: 'q-strip-l', text: `${qs.length} open questions, any order:` }),
+    ...qs.map((q, i) => h('button', { class: 'q-pick' + (q.id === pend.id ? ' on' : '') + (q.queue ? '' : ' main'), 'data-q': q.id, title: plain(questionText(q.text) || q.text, 200),
+      onclick: () => pickQuestion(q.id, false) }, q.queue ? `Review ${i + (qs[0].queue ? 1 : 0)}` : 'Lesson',
+      store.get(draftKey('answer') + (q.queue ? ':' + q.id : ''), '').trim() ? h('span', { class: 'q-draft', title: 'You have a draft for this one', text: '✎' }) : null))) : null;
   const ta = h('textarea', { id: mode === 'ask' ? 'askBox' : 'answerBox', class: 'input', rows: 3,
     placeholder: mode === 'ask' ? 'Ask anything: why…, what was…, show me… (or select text in a message to ask about it)'
       : pend ? 'Type your answer. Thinking out loud is fine.' : 'No open question right now. You can still reply to the tutor here.' });
@@ -567,6 +604,7 @@ function drawComposer(keepFocus) {
       h('button', { class: 'icon-btn hide-composer', id: 'hideComposer', title: 'Hide the input in the corner, for reading  (Esc · a / q bring it back)', onclick: hideComposer }, icon('chevd'))),
     // the question is shown only while answering it: an Ask is about something else, and the
     // question text would take the room its writer needs (it stays one click away: Go to question)
+    mode === 'answer' ? strip : null,
     pend && mode === 'answer' && !qCollapsed ? h('div', { class: 'box-q' }, rich(qtext || plain(pend.text, 400), 'hl-scope')) : null,
     mode === 'ask' && quote ? h('div', { class: 'quote-chip' }, h('span', { class: 'muted small', text: `About ${shortId(quote.id)}:` }), h('span', { class: 'quote-text', text: '“' + plain(quote.text, 140) + '”' }),
       h('button', { class: 'icon-btn', title: 'Remove quote', onclick: () => { quote = null; drawComposer(); } }, icon('close'))) : null,

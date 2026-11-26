@@ -1621,6 +1621,68 @@ async function main() {
     assert(!learn('pending', 'cells').includes(m.id), 'a correction that drops the :::question takes it out of the open questions');
     assert(/cells: ok/.test(learn('check', 'cells')), 'check');
   });
+  await test('review queue: post --queue keeps several questions open in thread b, answered in any order from the strip above the box, each graded on its own; the pending question is untouched', async () => {
+    const say = entry => JSON.parse(execFileSync(process.execPath, ['-e', `const S = require(${JSON.stringify(path.join(CODE, 'app', 'store.js'))}); console.log(JSON.stringify(S.appendJournal('cells', [JSON.parse(process.argv[1])])[0]))`, JSON.stringify({ role: 'user', ...entry })], { env: ENV, encoding: 'utf8' }));
+    const run = (input, ...a) => spawnSync(process.execPath, [BIN, 'post', '--topic', 'cells', ...a], { env: ENV, input, encoding: 'utf8' });
+    const jl = () => fs.readdirSync(path.join(HOME, 'topics/cells/journal')).sort().flatMap(f => fs.readFileSync(path.join(HOME, 'topics/cells/journal', f), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)));
+    const Q = name => `${name} intro.\n\n:::question\n${name} QUESTION?\n:::`;
+    assert(/only one thread is open/.test(run(Q('Early'), '--queue', '--expect', 'x').stderr), 'the queue needs the second thread');
+    learn('track', 'cells', 'open', 'Lesson thread', 'Review thread');
+    try {
+      assert(run(Q('Lesson-a'), '--track', 'a', '--expect', 'ra').status === 0 && run(Q('Lesson-b'), '--track', 'b', '--expect', 'rb').status === 0, 'the threads\' own questions');
+      const pa = jl().filter(e => e.question).at(-2), pb = jl().filter(e => e.question).at(-1);
+      assert(/needs a :::question/.test(run('No question here.', '--queue', '--expect', 'x').stderr) && /--expect/.test(run(Q('NoRubric'), '--queue').stderr), 'a queued question needs a question block and a rubric');
+      const r1 = run(Q('Queued-one'), '--queue', '--expect', 'rubric one'), r2 = run(Q('Queued-two'), '--queue', '--expect', 'rubric two', '--skill', '1.1');
+      assert(r1.status === 0 && r2.status === 0 && /review queue, thread b: 2 open/.test(r2.stdout), r1.stderr + r2.stderr + r2.stdout);
+      const [q1, q2] = jl().filter(e => e.queue);
+      assert(q1.track === 'b' && q2.queue === true, 'queued in thread b: ' + JSON.stringify(q1));
+      const pend = learn('pending', 'cells');
+      assert(pend.includes(pa.id) && pend.includes(pb.id) && (pend.match(/review queue, thread b/g) || []).length === 2 && pend.includes('rubric two'), 'pending lists each thread\'s question and the queue: ' + pend);
+      assert(/Review queue: 2 open/.test(learn('resume', 'cells')), 'resume shows the queue');
+      // the UI: thread b's tab counts them, the strip above the box picks which one the box answers
+      await page.nav(`${BASE}/#/cells/learn`, 800);
+      await page.eval(`localStorage['learn:track:cells'] = '"b"'`);
+      await page.nav(`${BASE}/#/cells/learn`, 1200);
+      const ui = () => page.eval(`(() => ({ picks: [...document.querySelectorAll('.q-strip .q-pick')].map(b => b.textContent + (b.classList.contains('on') ? '*' : '')), box: document.querySelector('#composer .box-q')?.innerText || '',
+        tab: document.querySelector('.track-tab.on .track-st')?.innerText || '', pend: document.querySelector('.msg.pending-q')?.dataset.id || null,
+        answerThis: [...document.querySelectorAll('.answer-this')].filter(b => !b.hidden).map(b => b.dataset.q), tags: [...document.querySelectorAll('.queue-tag')].map(b => b.textContent) }))()`);
+      let u = await ui();
+      assert(u.picks.join() === 'Lesson*,Review 1,Review 2' && u.box.includes('Lesson-b QUESTION') && /3 questions/.test(u.tab) && u.pend === pb.id, 'three open questions, the lesson one first: ' + JSON.stringify(u));
+      assert(u.answerThis.join() === [q1.id, q2.id].join() && u.tags.join() === 'Review question,Review question', 'queued messages are marked and offer "Answer this": ' + JSON.stringify(u));
+      await page.click(`.q-pick[data-q="${q2.id}"]`);
+      u = await ui();
+      assert(u.picks.join() === 'Lesson,Review 1,Review 2*' && u.box.includes('Queued-two QUESTION') && u.pend === q2.id, 'picked the second queued question: ' + JSON.stringify(u));
+      // a draft belongs to its question
+      await page.click('#answerBox'); await page.type('half an answer to two'); await sleep(200);
+      await page.click(`.q-pick[data-q="${q1.id}"]`);
+      assert(await page.eval(`document.querySelector('#answerBox').value === '' && /✎/.test(document.querySelector('.q-pick[data-q="${q2.id}"]').textContent)`), 'the draft stays with its question');
+      await page.shot('review-queue');
+      // the answer to q2 (out of order): closes q2 only; the tutor is told which question and its rubric
+      const ans = say({ kind: 'answer', text: 'my answer to queued two', track: 'b', replyTo: q2.id });
+      await page.waitFor(`document.querySelectorAll('.q-strip .q-pick').length === 2`);
+      u = await ui();
+      assert(u.picks.join() === 'Lesson,Review 1*' && u.tags.join() === 'Review question,Review' && /1 question/.test(u.tab), 'q2 is closed, q1 and the lesson question stay: ' + JSON.stringify(u));
+      const p2 = learn('pending', 'cells');
+      assert(p2.includes(pb.id) && p2.includes(q1.id) && !p2.includes(q2.id) && p2.includes(pa.id), 'pending after one queue answer: ' + p2);
+      // `wait` (in a copy of the data, so the running tutor doesn't take the message)
+      const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-queue-'));
+      fs.cpSync(path.join(HOME, 'topics'), path.join(copy, 'topics'), { recursive: true });
+      const cenv = { ...ENV, LEARN_HOME: copy, LEARN_PORT: String(Number(PORT) + 333) };
+      execFileSync(process.execPath, ['-e', `const S = require(${JSON.stringify(path.join(CODE, 'app', 'store.js'))}); S.ensureDir(S.INBOX); S.enqueue(JSON.parse(process.argv[1]))`, JSON.stringify(ans)], { env: cenv });
+      const w = spawnSync(process.execPath, [BIN, 'wait'], { env: cenv, encoding: 'utf8', timeout: 15000 });
+      fs.rmSync(copy, { recursive: true, force: true });
+      assert(w.stdout.includes(`replying-to=${q2.id}`) && w.stdout.includes(`answers review-queue question ${q2.id} [skill 1.1]`) && w.stdout.includes('rubric: rubric two') && w.stdout.includes(`--grade-of ${ans.id}`) && /1 more open in the queue: top it up/.test(w.stdout), 'wait explains a queue answer: ' + w.stdout + w.stderr);
+      // graded on its own; the thread's pending question is still the lesson one
+      const g = run('Good.', '--track', 'b', '--grade', 'correct', '--grade-of', ans.id);
+      assert(g.status === 0 && jl().find(e => e.kind === 'grade' && e.target === ans.id)?.questionId === q2.id, g.stderr + g.stdout);
+      assert(learn('pending', 'cells').includes(pb.id), 'the lesson question of thread b is still open');
+      // skip closes a queued question too; then the strip is gone
+      say({ kind: 'action', text: 'skip', track: 'b', replyTo: q1.id });
+      await page.waitFor(`!document.querySelector('.q-strip')`);
+      assert(!/review queue/.test(learn('pending', 'cells')), 'the queue is empty');
+    } finally { learn('track', 'cells', 'close'); await page.eval(`localStorage.removeItem('learn:track:cells')`); }
+    assert(/cells: ok/.test(learn('check', 'cells')), 'check');
+  });
   await test('viz-check: draws a message\'s viz blocks headless in both themes, reports hidden, overlapping, cut-off, unreadable and tiny text, saves PNGs; post reminds', async () => {
     const vc = (...a) => spawnSync(process.execPath, [BIN, 'viz-check', ...a], { env: ENV, encoding: 'utf8' });
     const bad = path.join(HOME, 'bad-drawing.md');

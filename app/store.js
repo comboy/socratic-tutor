@@ -294,7 +294,7 @@ function readPages(slug) {
 // line is dropped: the term is the title.
 const { termSlug, TERM_PAGE, pageForTerm } = require('../web/js/terms.js');
 // ids of app-talk ("meta") entries, see web/js/journal.js
-const { metaIds, pendingQuestion, tracksState, trackOf, awaitingReply, applyCorrections } = require('../web/js/journal.js');
+const { metaIds, pendingQuestion, tracksState, trackOf, awaitingReply, applyCorrections, openQueue } = require('../web/js/journal.js');
 function termPagesDir(slug) { return path.join(topicDir(slug), 'terms'); }
 function readTermPages(slug) {
   const d = termPagesDir(slug);
@@ -597,6 +597,6 @@ module.exports = {
   listTopics, topicDir, slugify, createTopic, readPages, PAGE_NAME, readTermPages, termPagePath, termPagesDir, termSlug, TERM_PAGE, pageForTerm, MEDIA_NAME, mediaDir, readMedia, loadTopicMeta, saveTopicMeta,
   walkSkills, findSkill, leafSkills, parseGlossary, readGlossary, addTerm, META_KEYS,
   NOTE_KINDS, readNotes, addNote, closeNote, parseDue, appendLog,
-  journalDir, journalFiles, readJournal, readJournalFile, appendJournal, findEntry, lastEntry, pendingQuestion, metaIds, tracksState, trackOf, awaitingReply, applyCorrections,
+  journalDir, journalFiles, readJournal, readJournalFile, appendJournal, findEntry, lastEntry, pendingQuestion, metaIds, tracksState, trackOf, awaitingReply, applyCorrections, openQueue,
   hasQuestion, setLevel, COLOR, LEGEND_KEY, setLegend, removeLegend, enqueue, inboxIds, inboxEntries, readInstructions, writeInstructions, profilePath, appendFeedback, openFeedback,
 };

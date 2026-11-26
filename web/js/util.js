@@ -1,7 +1,7 @@
 // Shared helpers: DOM, skills, derived journal data.
 export { h } from '../viz/core.js';
 import { h } from '../viz/core.js';
-import { metaIds, pendingQuestion, tracksState, applyCorrections } from './journal.js';
+import { metaIds, pendingQuestion, tracksState, applyCorrections, openQueue, trackOf } from './journal.js';
 
 export const $ = (s, r = document) => r.querySelector(s);
 export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -83,5 +83,8 @@ export function derive(topic) {
   const pending = pendingQuestion(J, null, meta);
   const tracks = tracksState(J);
   const pendingBy = tracks.open ? { a: pendingQuestion(J, 'a', meta), b: pendingQuestion(J, 'b', meta) } : null;
-  return { byId, grades, pending, tracks, pendingBy };
+  // review questions waiting side by side in a thread (journal.js openQueue)
+  const queue = openQueue(J, meta, tracks);
+  const queueBy = { a: queue.filter(e => trackOf(e) === 'a'), b: queue.filter(e => trackOf(e) === 'b') };
+  return { byId, grades, pending, tracks, pendingBy, queue, queueBy };
 }

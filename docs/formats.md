@@ -390,7 +390,9 @@ listing it), "Pictures from your lessons" (images in messages whose caption name
 One JSON object per line, appended by `bin/learn` and the server, never edited (ids are
 `<date>.<n>`). Common fields: `id`, `ts`, `topic`, `role` (`user`/`tutor`/`system`), `kind`:
 - `answer`, `ask`, `action`, `start`, `meta` (the learner; `text`, optional `replyTo`, `quote`, `track`)
-- `message` (the tutor; `text`, `skills`, `question`, `expect`, `replyTo`, `track`)
+- `message` (the tutor; `text`, `skills`, `question`, `expect`, `replyTo`, `track`; `queue: true`
+  for a review question prepared ahead: open alongside others in its thread until answered,
+  skipped or graded, `openQueue` in `web/js/journal.js`)
 - `grade` (`target`, `verdict`, `skill`, `note`), `level` (`skill`, `from`, `to`, `reason`),
   `session` (a divider; `handoff`)
 - `correction` (`target`, `newText`, `note`, `question`, optional `expect`): the tutor put a

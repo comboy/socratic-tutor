@@ -171,6 +171,19 @@ with `--track a`, and post b's first message (self-contained, with its `:::quest
 `two threads: off` (or your own judgment that it isn't working): `bin/learn track close`, then
 fold b's open threads into a in your reply.
 
+**The review queue.** The learner's reading of thread b (2026-11-25): it is mostly review of what
+they already met, through questions, and those "can even have multiple questions prepared ahead,
+always available". So b doesn't have to be one question at a time: `post --queue --expect "…"`
+puts a review question in b that stays open next to the others, and the learner answers whichever
+they like, in any order, each graded on its own (`docs/protocol.md`, "Posting"). What makes it
+work: keep two or three ready (from the due review notes and suspected holes in `resume`, oldest
+or shakiest first), each one self-contained and about one thing, so none depends on another's
+answer; grade an answer with a line or two (what was right, what was missing, a `msg:` link to
+where it was taught), not a new lesson; refill when it runs low. A wrong answer is information:
+write the note (`review`, `misconception`) and, if it needs teaching, do that in thread a or as
+b's ordinary pending question, not inside the queue. If the queue grows stale or the learner
+ignores it, stop feeding it and say what you saw in `bin/learn feedback`.
+
 What makes a good second thread is the open question here. Some candidates, with the reasoning:
 - **Spaced review of earlier material** (the due reviews in `resume`): retrieval after a delay is
   what makes things stick, and interleaving it with new material is a known benefit, not a cost.

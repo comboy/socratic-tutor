@@ -54,6 +54,7 @@ followed by the text. Kinds:
 With **two threads** open (`docs/method.md`, "Two threads"), every lesson message carries
 `track=a` or `track=b`: reply in that thread with `post --track a|b` (post refuses a lesson message
 without it then). Each thread has its own pending question, and `resume` / `pending` show both.
+Thread b can also hold a **review queue**: several questions open at once (`post --queue`, below).
 
 ## Posting
 
@@ -79,6 +80,15 @@ without it then). Each thread has its own pending question, and `resume` / `pend
 - `--track a|b`: with two threads open, the thread this message belongs to (required then). The
   reply link, the grade and the pending question are that thread's (a grade for a message from
   the other thread: `--grade-of`, above).
+- `--queue --expect "…"`: a review question prepared ahead, for the second thread (`--track b`
+  is implied; two threads must be open). Several stay open at once, next to the thread's pending
+  question; the learner picks which to answer, in any order (a strip above the answer box, or
+  "Answer this" on the message), so there is always something to answer while you write. One
+  question per message, self-contained (it will be read out of context), with its rubric. The
+  answer arrives as `ANSWER … replying-to=<the question>`, and `wait` prints the question, its
+  rubric and the grade command under it: grade each on its own with `--grade … --grade-of
+  <answer id> --track b` and a line or two of feedback, then top the queue up. `resume` and
+  `pending` list what is open. "skip" on one closes it; `post --corrects` fixes one in place.
 - `--meta`: a reply about the app (to a META message), not the lesson: shown dimmed and foldable,
   kept out of the wiki, session pages, stats, `msgs` and `resume`. No `--grade`/`--skill`/`--expect`
   and no `:::question` (it would become the pending question); ask in prose instead.
