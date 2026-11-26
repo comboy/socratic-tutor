@@ -1621,6 +1621,32 @@ async function main() {
     assert(!learn('pending', 'cells').includes(m.id), 'a correction that drops the :::question takes it out of the open questions');
     assert(/cells: ok/.test(learn('check', 'cells')), 'check');
   });
+  await test('viz-check: draws a message\'s viz blocks headless in both themes, reports hidden, overlapping, cut-off, unreadable and tiny text, saves PNGs; post reminds', async () => {
+    const vc = (...a) => spawnSync(process.execPath, [BIN, 'viz-check', ...a], { env: ENV, encoding: 'utf8' });
+    const bad = path.join(HOME, 'bad-drawing.md');
+    fs.writeFileSync(bad, ['A drawing.', '', '```viz js', `const svg = d3.select(el).append('svg').attr('viewBox', '0 0 400 160').attr('width', '100%').style('max-width', '400px');`,
+      `svg.append('text').attr('x', 20).attr('y', 40).attr('fill', 'var(--fg)').text('helicase');`, `svg.append('text').attr('x', 40).attr('y', 43).attr('fill', 'var(--fg)').text('primase');`,
+      `svg.append('text').attr('x', 200).attr('y', 100).attr('fill', 'var(--fg)').text('covered label');`, `svg.append('rect').attr('x', 190).attr('y', 80).attr('width', 130).attr('height', 30).attr('fill', 'steelblue');`,
+      `svg.append('text').attr('x', 350).attr('y', 140).attr('fill', 'var(--fg)').text('runs off the edge here');`, `svg.append('text').attr('x', 20).attr('y', 140).attr('fill', 'var(--fg)').attr('font-size', 6).text('tiny');`,
+      `svg.append('text').attr('x', 20).attr('y', 90).attr('fill', 'black').text('fixed black');`, '```', '', '```viz bars', '{ items: [{ label: "A", value: 3 }, { label: "B", value: 5 }] }', '```', ''].join('\n'));
+    const r = vc('cells', bad);
+    assert(r.status === 1, 'exit 1 on problems: ' + r.stderr + r.stdout);
+    for (const want of [/2 drawings/, /#1 viz js \(line 3\)/, /hidden text: "covered label"/, /overlapping text: "helicase" and "primase"/, /text cut off: "runs off the edge here"/, /tiny text: "tiny"/,
+      /unreadable text: "fixed black".*\(dark theme only\)/, /#2 viz bars \(line 14\): ok/]) assert(want.test(r.stdout), `missing ${want} in:\n${r.stdout}`);
+    const dir = path.join(HOME, 'state', 'viz-check', 'bad-drawing');
+    for (const f of ['1-light.png', '1-dark.png', '2-light.png', 'message-dark.png']) assert(fs.statSync(path.join(dir, f)).size > 1000, 'no PNG ' + f);
+    fs.mkdirSync(OUT, { recursive: true }); fs.copyFileSync(path.join(dir, '1-light.png'), path.join(OUT, 'viz-check-1-light.png'));
+    // a posted message, by id: post reminds, a clean drawing passes; nothing to check is said so
+    const good = 'A flow.\n\n```viz js\nconst svg = d3.select(el).append("svg").attr("viewBox", "0 0 300 60").attr("width", "100%").style("max-width", "300px");\nsvg.append("text").attr("x", 20).attr("y", 30).attr("fill", "var(--fg)").text("a clear label");\n```';
+    const p = spawnSync(process.execPath, [BIN, 'post', '--topic', 'cells'], { env: ENV, input: good, encoding: 'utf8' });
+    const id = (p.stdout.match(/posted message (\S+)/) || [])[1];
+    assert(p.status === 0 && id && p.stdout.includes(`bin/learn viz-check ${id}`), 'post reminds to check the drawing: ' + p.stdout + p.stderr);
+    const ok = vc('cells', id);
+    assert(ok.status === 0 && /nothing measurable is wrong/.test(ok.stdout) && /look at the PNGs/.test(ok.stdout), ok.stdout + ok.stderr);
+    const none = spawnSync(process.execPath, [BIN, 'viz-check', '-'], { env: ENV, input: 'just prose', encoding: 'utf8' });
+    assert(none.status === 0 && /no viz blocks/.test(none.stdout), none.stdout + none.stderr);
+    assert(vc('cells', '2020-01-01.1').status === 1, 'an unknown message is an error');
+  });
   await test('light theme', async () => {
     await page.eval(`localStorage['learn:theme'] = '"light"'`);
     await page.nav(`${BASE}/?t=light#/demo/learn`, 1200);

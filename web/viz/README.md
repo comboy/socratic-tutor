@@ -56,6 +56,11 @@ drawing are given the drawing's own suffix after it draws (references follow), a
 with `<marker id="ah">` keep their own arrowheads; use `ctx.uid("ah")` to know the final id.
 Hover previews of a message (msg: links) show a drawing as a placeholder. `bin/learn post` parses every viz block (nothing runs) and refuses
 a message whose drawing would show an error box; `bin/learn check` lists old ones.
+`bin/learn viz-check <message id | file.md>` draws the blocks in headless Chrome in both themes,
+reports hidden, overlapping, cut-off, unreadable or tiny text and JS errors, and saves PNGs to look
+at (`app/vizcheck.js`; `docs/protocol.md`, "Checking a drawing"). What it catches most often in
+`viz js`: a label appended before the shape that covers it (append labels last), text with a
+fixed `fill="black"` (use `var(--fg)` / `var(--muted)`), text placed past the viewBox.
 
 ## Components in this folder
 

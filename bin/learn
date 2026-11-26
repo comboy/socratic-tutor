@@ -134,6 +134,8 @@ bin/learn show [--topic t] <id> [--previous] · show <topic>/<id>   ids repeat a
                                          (msgs and grep leave out app talk; --all includes it)
 bin/learn image [t] <Commons file/URL | file --author a --license l> · image search "words" · image list [t]
                                          keep a real image in the topic (offline, credited): ![caption](media:<file>)
+bin/learn viz-check [t] <msg-id | file.md | ->   draw the viz blocks headless (light + dark): JS errors, hidden,
+                                         overlapping, cut-off or tiny text, and PNGs to look at; run it right after posting a drawing
 bin/learn check [t]                      validate topic files (JSON, skill ids, links, map) after editing
 bin/learn commit "message" [-- path…]    commit the learning data (the data home and learner/, in whichever repo holds
                                          them); with paths, only those (relative to the data home), so a job and a
@@ -546,9 +548,17 @@ commands.post = async () => {
     if (miss.length) console.log(`glossary: bold here but not in the glossary: ${miss.join(', ')}. Add the real terms afterwards (\`bin/learn term add\`); ignore emphasis.`);
     // the wiki grows during the lesson, not later: each term this message taught gets its page now
     const taught = require('../app/check').taughtTerms(topic, text);
+    vizReminder(text, saved.find(e => e.kind === 'message')?.id);
     if (taught.length) console.log(`term pages (after re-arming wait; docs/protocol.md "Term pages"): put what this message taught into the article of ${taught.map(t => `"${t.term}" (${t.page ? 'extend ' + rel(t.path) : 'new: ' + rel(t.path)})`).join(', ')}${miss.length ? ', and of the new terms above' : ''}. Skip a term only if this message added nothing about it.`);
   }
 };
+
+// A drawing can only be judged drawn: remind the tutor to check the hand-made ones right after
+// posting (the learner's order: post first, check in the background, correct in place).
+function vizReminder(text, id) {
+  if (!id || !/^ {0,3}(`{3,}|~{3,})[ \t]*viz[ \t]+(js|figure)\b/m.test(text)) return;
+  console.log(`drawing: check it now, in the background: \`bin/learn viz-check ${id}\`, and look at the PNG it saves. Wrong? \`bin/learn post --corrects ${id} --note "what changed"\` puts it right in place.`);
+}
 
 // post --corrects <id>: put a message right where it stands. The journal stays append-only: this
 // appends a "correction" entry, and every reader (the UI, resume, show, grep, the wiki, stats) then
@@ -580,6 +590,7 @@ async function postCorrection(f) {
   const entry = { role: 'tutor', kind: 'correction', target: id, newText: text, note: String(f.note).trim(), question, ...(f.expect && question ? { expect: f.expect } : {}) };
   const [saved] = await viaServer('POST', '/api/append', { topic, entries: [entry] }, () => S.appendJournal(topic, [entry]));
   console.log(`corrected ${id} in place (${saved.id}): the learner sees the new version where the message stands, marked "corrected: ${entry.note}", with the earlier version one click away. \`bin/learn show ${id} --previous\` prints the earlier text.`);
+  vizReminder(text, id);
 }
 
 // ---------------------------------------------------------------- state commands
@@ -944,6 +955,13 @@ commands.msgs = () => {
     if (want.size && !sk.some(x => want.has(x))) continue;
     console.log(`${e.id}${sk.length ? ` [${[...new Set(sk)].join(',')}]` : ''}${e.question ? ' ?' : ''}${meta.has(e.id) ? ' (app talk)' : ''} ${firstLine(e.text)}`);
   }
+};
+
+// Draw a message's viz blocks headless, measure what can be measured, save PNGs to look at
+// (app/vizcheck.js). Made for right after `post`: in the background, then `post --corrects`.
+commands['viz-check'] = async () => {
+  const f = flags(argv, { topic: 'string', width: 'string', out: 'string' });
+  await require('../app/vizcheck').cli(f, x => topicOf(x), readStdin);
 };
 
 commands.check = () => {

@@ -98,6 +98,14 @@ them against the learner in front of you.
   regions, the rest dimmed, an arrow for the reading direction, distracting labels blanked out.
   If the topic needs a kind of picture that doesn't exist, build it (`docs/protocol.md`, "building
   tools").
+- **A drawing is checked by looking at it.** A wrong drawing teaches the wrong thing with more
+  authority than a wrong sentence, and you can't see what you drew until it's rendered: one
+  evening four went out wrong (labels hidden under shapes, a helix wound the wrong way, a colour
+  that meant something else, a "collision" that didn't touch). So: post, then right away
+  `bin/learn viz-check <id>` in the background and look at the PNG it saves; if it's wrong, put
+  it right where it stands with `post --corrects <id> --note "what changed"` (`docs/protocol.md`,
+  "Checking a drawing"). The learner chose this order (reply fast, check after, correct in
+  place, clearly marked) over waiting for a checked drawing.
 - **Wrong is corrected in place, not repeated.** The same goes for a wrong fact or formula you
   notice later: `post --corrects`, with a note saying what changed. The message stays one
   message, the wiki and later tutors read the right version, and the learner can still open what

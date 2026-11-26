@@ -108,6 +108,28 @@ Markdown extensions, in brief (details and every `viz` type in `docs/formats.md`
 image with focus regions, numbered callouts and arrows) (`post` refuses one that
 doesn't parse; in `viz js`, `el`, `ctx` and `d3` are already in scope).
 
+## Checking a drawing: post, check, correct in place
+
+    bin/learn viz-check [t] <message id | file.md | ->     # - reads markdown from stdin
+
+`post` only parses a drawing; whether the labels can be read is seen only once it's drawn.
+`viz-check` draws every viz block of a message headless, the way the app does, in the light and
+the dark theme, and reports what can be measured: JS errors and error boxes, text hidden under a
+shape, text over text, text cut off at the edge, text that can't be read against its background
+in one theme (a fixed black is gone in dark), tiny text, a drawing wider than the column. It
+saves a PNG per drawing and theme (in `data/state/viz-check/`, runtime only) and exits 1 when it
+found something. It takes about 4 seconds.
+
+The machine can't see meaning: a helix wound the wrong way, a colour that means something else
+than the legend says, two things that should touch and don't all pass the checks. So look at the
+PNG (Read shows it), every time, with the question "would this teach the wrong thing?".
+
+The order the learner asked for (2026-11-26): **post first** (the reply isn't held up), **check
+right after** (`viz-check <id>`, in the background or by a subagent, once `wait` is re-armed),
+and when it's wrong **correct in place** (`post --corrects <id> --note "…"`, then check that
+one too). `post` reminds you when a message has a hand-drawn block. For a big or risky drawing
+(`viz js` with many labels) checking a draft first (`viz-check draft.md`) is worth the 4 seconds.
+
 ## Bookkeeping commands
 
     bin/learn level [t] <skill> <0-5> "reason"     # levels: earned, see docs/method.md

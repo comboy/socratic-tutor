@@ -141,6 +141,11 @@ export async function launch({ headed = false, width = 1400, height = 900, outDi
       fs.mkdirSync(outDir, { recursive: true });
       fs.writeFileSync(path.join(outDir, name + '.png'), Buffer.from(r.data, 'base64'));
     },
+    // a PNG of the page (the viewport), or of one rectangle of it ({ x, y, width, height, scale })
+    async png(clip = null) {
+      const r = await send('Page.captureScreenshot', { format: 'png', ...(clip ? { clip: { scale: 1, ...clip }, captureBeyondViewport: true } : {}) });
+      return Buffer.from(r.data, 'base64');
+    },
     // more tabs of the same browser (not driven; closed with closeTabs)
     async openTabs(url, n) {
       const ids = [];
