@@ -335,33 +335,63 @@ async function handle(req, res) {
   }
 }
 
+// fs.watch alone isn't enough. On Linux a recursive watch follows every file by inode, so a file
+// replaced by an atomic write (tmp + rename: every JSON this app saves, a git checkout, most
+// editors) is reported once and never again: levels, notes and UI reloads silently stopped
+// arriving after the first change (seen 2026-11-26, Node 24). So next to the watch a slow scan
+// compares mtime and size of the files in list() (paths relative to root); whichever notices a
+// change first reports it, and the other finds the signature already known.
+function watchTree(root, list, onChange, every = 2000) {
+  const sigs = new Map();
+  const sig = rel => { try { const st = fs.statSync(path.join(root, rel)); return st.isDirectory() ? 'dir' : `${st.mtimeMs}:${st.size}`; } catch { return null; } };
+  const note = (rel, fire) => {
+    const s = sig(rel);
+    if ((sigs.get(rel) ?? null) === s) return;
+    if (s === null) sigs.delete(rel); else sigs.set(rel, s);
+    if (fire) onChange(rel);
+  };
+  const scan = fire => {
+    const now = new Set(list());
+    for (const rel of now) note(rel, fire);
+    for (const rel of [...sigs.keys()]) if (!now.has(rel)) note(rel, fire);
+  };
+  try { scan(false); } catch {}
+  try { fs.watch(root, { recursive: true }, (_ev, rel) => { if (rel) note(rel, true); }); } catch (e) { console.error('watch failed', e.message); }
+  setInterval(() => { try { scan(true); } catch (e) { console.error('scan failed', e.message); } }, every).unref();
+}
+// files under root, as relative paths, down to `depth` levels; skip(rel) leaves a file or folder out
+function walk(root, depth, skip = () => false, rel = '', out = []) {
+  let names = [];
+  try { names = fs.readdirSync(path.join(root, rel), { withFileTypes: true }); } catch {}
+  for (const d of names) {
+    const r = rel ? path.join(rel, d.name) : d.name;
+    if (d.name.startsWith('.') || skip(r)) continue;
+    out.push(r);
+    if (depth > 1 && d.isDirectory()) walk(root, depth - 1, skip, r, out);
+  }
+  return out;
+}
+
 function watch() {
   const timers = new Map();
   const debounce = (key, fn, ms = 120) => { clearTimeout(timers.get(key)); timers.set(key, setTimeout(fn, ms)); };
-  try {
-    fs.watch(S.TOPICS, { recursive: true }, (_ev, rel) => {
-      if (!rel) return;
-      const parts = rel.split(path.sep);
-      const slug = parts[0];
-      if (!slug || !S.listTopics().includes(slug)) { debounce('topics', () => broadcast({ type: 'topics' })); return; }
-      if (parts[1] === 'journal') debounce('j:' + slug, () => rescanJournal(slug));
-      else if (/\.(json|md)$/.test(rel) && !rel.endsWith('.tmp')) debounce('t:' + slug + parts[1], () => broadcast({ type: 'topic', topic: slug, part: parts[1] }));
-    });
-  } catch (e) { console.error('watch failed', e); }
+  // topics/<slug>/<file> and one folder level below (journal/, media/, terms/, pages/)
+  watchTree(S.TOPICS, () => walk(S.TOPICS, 3), rel => {
+    const parts = rel.split(path.sep);
+    const slug = parts[0];
+    if (!slug || !S.listTopics().includes(slug)) { debounce('topics', () => broadcast({ type: 'topics' })); return; }
+    if (parts[1] === 'journal') debounce('j:' + slug, () => rescanJournal(slug));
+    else if (/\.(json|md)$/.test(rel) && !rel.endsWith('.tmp')) debounce('t:' + slug + parts[1], () => broadcast({ type: 'topic', topic: slug, part: parts[1] }));
+  });
   // learner files, feedback, reports, job state: tell browsers (the Away popover, the "You" page)
-  try {
-    fs.watch(S.ROOT, { recursive: true }, (_ev, rel) => {
-      if (!rel) return;
-      if (rel === path.join('state', 'jobs.json')) debounce('jobs', () => broadcast({ type: 'jobs' }), 150);
-      else if (rel.startsWith('learner') || rel === 'feedback.md' || rel.startsWith('reports')) debounce('learner', () => broadcast({ type: 'learner' }), 200);
-    });
-  } catch {}
+  watchTree(S.ROOT, () => ['feedback.md', path.join('state', 'jobs.json'), ...walk(S.ROOT, 3, r => !/^(learner|reports)(\/|\\|$)/.test(r))], rel => {
+    if (rel === path.join('state', 'jobs.json')) debounce('jobs', () => broadcast({ type: 'jobs' }), 150);
+    else if (rel.startsWith('learner') || rel === 'feedback.md' || rel.startsWith('reports')) debounce('learner', () => broadcast({ type: 'learner' }), 200);
+  });
   // the learner folder, when config.json keeps it outside the data home
-  if (S.LEARNER_OUTSIDE) try { S.ensureDir(S.LEARNER); fs.watch(S.LEARNER, { recursive: true }, () => debounce('learner', () => broadcast({ type: 'learner' }), 200)); } catch {}
+  if (S.LEARNER_OUTSIDE) try { S.ensureDir(S.LEARNER); watchTree(S.LEARNER, () => walk(S.LEARNER, 3), () => debounce('learner', () => broadcast({ type: 'learner' }), 200)); } catch {}
   // UI files: tell browsers the UI changed (they reload when idle, or offer a button)
-  try {
-    fs.watch(WEB, { recursive: true }, (_ev, rel) => { if (rel && !rel.startsWith('vendor')) debounce('web', () => broadcast({ type: 'reload-ui', file: rel }), 400); });
-  } catch {}
+  watchTree(WEB, () => walk(WEB, 4, r => r.startsWith('vendor')), rel => { if (!rel.startsWith('vendor')) debounce('web', () => broadcast({ type: 'reload-ui', file: rel }), 400); });
   // server code changed (the builder job, or the tutor extending the app): restart into the new code,
   // unless background jobs are running (their runner restarts the server when they finish)
   try {

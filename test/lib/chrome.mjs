@@ -10,7 +10,16 @@ const CANDIDATES = [
   '/Applications/Chromium.app/Contents/MacOS/Chromium',
   '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser',
 ].filter(Boolean);
-export const chromePath = () => CANDIDATES.find(p => fs.existsSync(p)) || null;
+// a Chromium that Playwright downloaded (a server often has no other browser), newest first
+function playwrightChrome() {
+  const dir = path.join(os.homedir(), '.cache', 'ms-playwright');
+  try {
+    for (const d of fs.readdirSync(dir).filter(n => /^chromium-\d+$/.test(n)).sort().reverse())
+      for (const sub of fs.readdirSync(path.join(dir, d))) { const p = path.join(dir, d, sub, 'chrome'); if (fs.existsSync(p)) return p; }
+  } catch {}
+  return null;
+}
+export const chromePath = () => CANDIDATES.find(p => fs.existsSync(p)) || playwrightChrome();
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // Chromes left behind by a test run that was killed outright (an agent's command timeout sends
@@ -39,11 +48,20 @@ export async function launch({ headed = false, width = 1400, height = 900, outDi
   if (typeof WebSocket === 'undefined') throw new Error('needs Node 22+ (global WebSocket)');
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-chrome-'));
   const port = 9300 + Math.floor(Math.random() * 500);
-  const proc = spawn(bin, [...(headed ? [] : ['--headless=new']), '--disable-gpu', '--hide-scrollbars', '--no-first-run',
-    '--no-default-browser-check', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' });
-  let targets;
-  for (let i = 0; i < 100 && !targets; i++) { try { targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json(); } catch { await sleep(100); } }
-  if (!targets) { proc.kill(); throw new Error('Chrome did not start'); }
+  // Where the kernel refuses Chrome its sandbox (Ubuntu 23.10+ with AppArmor, containers), Chrome
+  // exits at once. The pages here are our own, served from this machine, so the second try runs
+  // without the sandbox, and says so.
+  let proc, targets;
+  for (const extra of [[], ['--no-sandbox']]) {
+    let gone = false;
+    proc = spawn(bin, [...(headed ? [] : ['--headless=new']), ...extra, '--disable-gpu', '--hide-scrollbars', '--no-first-run',
+      '--no-default-browser-check', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' });
+    proc.on('exit', () => { gone = true; });
+    for (let i = 0; i < 100 && !targets && !gone; i++) { try { targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json(); } catch { await sleep(100); } }
+    if (targets) { if (extra.length) console.log('(Chrome could not use its sandbox on this machine: running it with --no-sandbox, for these local test pages only)'); break; }
+    proc.kill();
+  }
+  if (!targets) { fs.rmSync(profile, { recursive: true, force: true }); throw new Error('Chrome did not start'); }
   const ws = new WebSocket(targets.find(t => t.type === 'page').webSocketDebuggerUrl);
   await new Promise((res, rej) => { ws.addEventListener('open', res); ws.addEventListener('error', rej); });
 
