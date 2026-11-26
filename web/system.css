@@ -1,0 +1,17 @@
+/* Glossary suggestions in the text box (web/js/complete.js). Colours are the app's own variables (app.css). */
+
+/* ============ glossary terms while writing ============ */
+.tc-pop { position: fixed; z-index: 70; width: min(460px, calc(100vw - 16px)); background: var(--card); border: 1px solid var(--btn-line); border-radius: 8px; box-shadow: var(--shadow-pop); overflow: hidden; font-size: 13px; }
+.tc-list { max-height: 262px; overflow: auto; }
+.tc-row { display: grid; grid-template-columns: minmax(90px, max-content) minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 5px 10px; cursor: pointer; border-left: 3px solid transparent; }
+.tc-row + .tc-row { border-top: 1px solid var(--line-soft); }
+.tc-row.on { background: var(--sel); border-left-color: var(--accent); }
+.tc-name { max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-strong); }
+.tc-alias { color: var(--muted); font-size: 12px; }
+.tc-def { color: var(--muted); font-size: 12.5px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tc-row.on .tc-def { color: var(--fg); white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.tc-foot { display: flex; align-items: center; gap: 12px; padding: 4px 10px; font-size: 11.5px; color: var(--muted); background: var(--band); border-top: 1px solid var(--line); }
+.tc-key { align-self: center; }
+.tc-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line); background: var(--well); color: var(--muted); }
+.tc-input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--fg); font: inherit; font-size: 13.5px; }
+.tc-empty { padding: 12px 10px; color: var(--muted); }

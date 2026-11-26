@@ -9,6 +9,7 @@ import { app, send } from './app.js';
 import { openDock, togglePin, isPinned, renderDock } from './panels.js';
 import { trackOf, awaitingReply, questionText } from './journal.js';
 import { handoff } from './tutor.js';
+import { attachComplete, findTerm } from './complete.js';
 
 const PAGE = 60;
 let thread, composer, trackBar, shownFrom = 0, quote = null, sizes = null, drawnLegend = '';
@@ -572,6 +573,8 @@ function drawComposer(keepFocus) {
     placeholder: mode === 'ask' ? 'Ask anything: why…, what was…, show me… (or select text in a message to ask about it)'
       : pend ? 'Type your answer. Thinking out loud is fine.' : 'No open question right now. You can still reply to the tutor here.' });
   ta.value = store.get(key, '');
+  // glossary terms while writing (complete.js); first, so a key its list takes doesn't also reach the box
+  attachComplete(ta, () => app.topic.glossary);
   const busy = sending === key;
   if (busy) { ta.readOnly = true; ta.classList.add('sending'); }
   const fit = () => {
@@ -618,7 +621,12 @@ function drawComposer(keepFocus) {
     h('div', { class: 'box-f' },
       h('div', { class: 'quick' }, ...QUICK.map(q => q ? h('button', { class: 'btn btn-small', title: q[3], onclick: () => quickAction(q[1]) }, icon(q[2]), h('span', { class: 'lbl', text: q[0] })) : h('span', { class: 'sep' })),
         t || !tracksOff() ? null : h('button', { class: 'btn btn-small btn-exp', id: 'twoThreadsBtn', onclick: () => quickAction(TWO_ON),
-          title: 'Experiment: the tutor opens a second, closely related thread. When you answer in one, you are taken to the other, where its reply is usually ready, so you don’t wait while the tutor writes.' }, icon('threads'), h('span', { class: 'lbl', text: 'Two threads' }))),
+          title: 'Experiment: the tutor opens a second, closely related thread. When you answer in one, you are taken to the other, where its reply is usually ready, so you don’t wait while the tutor writes.' }, icon('threads'), h('span', { class: 'lbl', text: 'Two threads' })),
+        // not a message to the tutor like its neighbours: a tool for the text being written
+        app.topic.glossary.length ? h('span', { class: 'sep' }) : null,
+        app.topic.glossary.length ? h('button', { class: 'btn btn-small find-term', id: 'findTermBtn', onmousedown: ev => ev.preventDefault(),
+          onclick: () => findTerm(ta, [app.topic.meta.focus, ...(pend?._skills || [])].filter(Boolean)),
+          title: 'Forgot the word? Find a glossary term by part of its name or by what it does, and put it in your text  (Ctrl+Space)' }, icon('book'), h('span', { class: 'lbl', text: 'Find term' })) : null),
       busy ? h('button', { class: 'btn send-btn', disabled: true }, h('span', { class: 'dots' }, h('i'), h('i'), h('i')), 'Sending…')
       : mode === 'ask'
         ? h('button', { class: 'btn btn-ask send-btn', onclick: sendIt, title: `Send the side question  ${MOD}↵` }, 'Ask ', h('kbd', { text: MOD + '↵' }))
