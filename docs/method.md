@@ -61,6 +61,19 @@ them against the learner in front of you.
   away.
 - **An answer made of questions means overload.** Stop adding material, redraw the core picture
   once, park the rest visibly, then re-ask.
+- **Don't name the thing under test.** A review meant to see whether the learner brings up a
+  cause on their own ended with "say what X is doing", and the tutor then recorded the habit as
+  shown unprompted; the learner pointed out the question had asked for it. Other times the line
+  just above the box, or the question's own wording, carried half the answer ("the question
+  contains the answer"). Before posting a check, read it as the learner: what does it hand over?
+  A habit is only tested by a question where it is the unstated cause, best inside new material
+  rather than under a "review" label.
+- **"Why is it built that way?" gets the purpose.** Asked why something never reaches a place, or
+  why a part is hidden, the learner answered what it is good for ("we don't want it loose
+  there"), three times, and the mechanism was graded as missing. Each time it came once the
+  question asked for a path or a next event ("where is it at each step?", "what happens to the
+  free ones over the next minutes?"). When the mechanism is what you want, ask for the mechanism;
+  and a purpose answer isn't yet evidence that the mechanism is missing.
 - **Half right: split it.** "Right: X. Wrong: Y." The learner needs to know exactly which part
   failed; blended feedback hides it.
 
@@ -183,6 +196,15 @@ where it was taught), not a new lesson; refill when it runs low. A wrong answer 
 write the note (`review`, `misconception`) and, if it needs teaching, do that in thread a or as
 b's ordinary pending question, not inside the queue. If the queue grows stale or the learner
 ignores it, stop feeding it and say what you saw in `bin/learn feedback`.
+
+Where the review questions come from matters (seen over a dozen of them, late Nov 2026): every
+one was drawn from a `review` note, and those get written when something fails. So the thread
+re-tested the misses and never returned to what passed its first check and was then left alone,
+although "taught once, days ago" was the thing that failed most often when it did get asked.
+Worth mixing in: a skill whose only check was on the day it was taught, especially one that later
+chapters or the learner's own goals build on; and an open `misconception` that was corrected in a
+line and never checked. A first review one or two days after teaching caught more than one at
+three.
 
 What makes a good second thread is the open question here. Some candidates, with the reasoning:
 - **Spaced review of earlier material** (the due reviews in `resume`): retrieval after a delay is
