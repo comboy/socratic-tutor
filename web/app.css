@@ -310,6 +310,15 @@ button.badge { cursor: pointer; }
 .verdict-partial { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
 .verdict-wrong { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
 .verdict-skipped { background: var(--well); color: var(--muted); }
+/* a message the tutor corrected in place: marked, with what changed, and the earlier version one click away */
+.badge-corrected { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
+.corrected-line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; padding: 5px 14px; font-size: 12.5px; color: var(--muted); background: color-mix(in srgb, var(--warn) 9%, transparent); border-bottom: 1px solid var(--line-soft); }
+.corrected-line b { color: var(--warn); font-weight: 700; white-space: nowrap; }
+.corrected-note { flex: 1 1 200px; min-width: 0; color: var(--fg); }
+.corrected-line.prev { background: var(--well); }
+.corrected-line.prev b { color: var(--fg); }
+.msg.showing-prev { border-style: dashed; }
+.msg.showing-prev > .msg-body { opacity: .78; }
 .badge-best { background: var(--accent-soft); color: var(--accent); height: 17px; font-size: 10.5px; }
 .badge-first { background: var(--well); color: var(--muted); height: 17px; font-size: 10.5px; }
 .chip-skill { height: 19px; font: 700 10.5px var(--mono); cursor: pointer; border: 0; color: var(--lv-text); background: var(--lvc); }

@@ -69,3 +69,29 @@ export function pendingQuestion(J, track = null, meta = metaIds(J)) {
   }
   return pending;
 }
+
+// Corrections in place (`bin/learn post --corrects <id>`): the journal is append-only, so a
+// corrected message is a later entry { kind: "correction", target, newText, note } and never an
+// edit. Everything that reads the journal (the UI, `resume`, `show`, `grep`, stats, the wiki)
+// reads through this: the target carries the corrected text, and what it said before stays in
+// `versions` (oldest first), so the UI can mark it "corrected" and show the earlier version (the
+// learner asked for both, 2026-11-25: a corrected drawing reposted as a new message read as two
+// drawings). Only the tutor's messages are ever corrected. Mutates the entries of J; applying it
+// again (the server did, then the browser does on what it received) changes nothing.
+export function applyCorrections(J) {
+  let byId = null;
+  for (const c of J) {
+    if (c.kind !== 'correction' || !c.target || typeof c.newText !== 'string') continue;
+    byId ||= new Map(J.map(e => [e.id, e]));
+    const t = byId.get(c.target);
+    if (!t || t.role !== 'tutor' || t.kind !== 'message') continue;
+    const ids = t.corrected?.ids || [];
+    if (ids.includes(c.id)) continue;
+    t.versions = [...(t.versions || []), { text: t.text, ts: t.corrected?.ts || t.ts }];
+    t.text = c.newText;
+    if (typeof c.question === 'boolean') t.question = c.question;
+    if (c.expect) t.expect = c.expect;
+    t.corrected = { ids: [...ids, c.id], ts: c.ts, note: c.note || '' };
+  }
+  return J;
+}

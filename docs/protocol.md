@@ -82,6 +82,17 @@ without it then). Each thread has its own pending question, and `resume` / `pend
 - `--meta`: a reply about the app (to a META message), not the lesson: shown dimmed and foldable,
   kept out of the wiki, session pages, stats, `msgs` and `resume`. No `--grade`/`--skill`/`--expect`
   and no `:::question` (it would become the pending question); ask in prose instead.
+- `--corrects <id> --note "what changed"`: put right a message you already posted, in place (the
+  whole corrected message on stdin; it replaces the old text). The journal stays append-only: a
+  `correction` entry is added, and the UI, `resume`, `show`, `grep`, the wiki and the stats read
+  the corrected text from then on. The learner sees the message change where it stands, marked
+  "corrected" with your note, and the earlier version is one click away (`show <id> --previous`
+  for you). Use it for a wrong drawing, a wrong fact, a broken formula: anything where the old
+  text should no longer be read. Don't repost as a new message (four reposted drawings in one
+  evening read as eight drawings; the learner asked for in-place, clearly marked, 2026-11-25),
+  and don't use it to continue the lesson: new material is a new message. The note is required
+  because it tells the learner whether to re-read ("the arrow pointed the wrong way; nothing
+  else changed"). The message keeps its thread, skills and grade; `--expect` replaces the rubric.
 - `post` refuses broken `msg:` and `skill:` links (a `msg:` must point at a message, not a grade
   entry), and a message that ends with a question outside `:::question` (`--force` if it's
   rhetorical). `bin/learn msgs --skill 6.5` lists the real message ids for a skill. It also lists
@@ -117,7 +128,7 @@ doesn't parse; in `viz js`, `el`, `ctx` and `d3` are already in scope).
     bin/learn meta [t] <id>… [--off]               # tag past entries as app talk (append-only)
     bin/learn track [t] open "a title" "b title" · track [t] close   # two threads (docs/method.md)
     bin/learn latency [t] [--days n]               # how long the learner waited for replies
-    bin/learn recent [n] · show <id> · grep <regex> · pending · msgs --skill <id> · term show <name>
+    bin/learn recent [n] · show <id> [--previous] · grep <regex> · pending · msgs --skill <id> · term show <name>
 
 **Term pages** (`terms/<name>.md`: one per glossary term, what goes in them in `docs/method.md`,
 format in `docs/formats.md`) are written *during* the lesson, by you, because you have the context: right

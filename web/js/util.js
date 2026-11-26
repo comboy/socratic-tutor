@@ -1,7 +1,7 @@
 // Shared helpers: DOM, skills, derived journal data.
 export { h } from '../viz/core.js';
 import { h } from '../viz/core.js';
-import { metaIds, pendingQuestion, tracksState } from './journal.js';
+import { metaIds, pendingQuestion, tracksState, applyCorrections } from './journal.js';
 
 export const $ = (s, r = document) => r.querySelector(s);
 export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -66,7 +66,7 @@ export function shortId(id) { const [d, n] = String(id).split('.'); return `${fm
 
 // ---------- journal derivations ----------
 export function derive(topic) {
-  const J = topic.journal;
+  const J = applyCorrections(topic.journal);   // corrected messages read as corrected (journal.js)
   const byId = new Map(J.map(e => [e.id, e]));
   const grades = new Map();       // answer id -> grade entry
   for (const e of J) if (e.kind === 'grade') grades.set(e.target, e);

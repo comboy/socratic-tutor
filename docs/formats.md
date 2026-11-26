@@ -393,6 +393,12 @@ One JSON object per line, appended by `bin/learn` and the server, never edited (
 - `message` (the tutor; `text`, `skills`, `question`, `expect`, `replyTo`, `track`)
 - `grade` (`target`, `verdict`, `skill`, `note`), `level` (`skill`, `from`, `to`, `reason`),
   `session` (a divider; `handoff`)
+- `correction` (`target`, `newText`, `note`, `question`, optional `expect`): the tutor put a
+  message of its own right (`bin/learn post --corrects`). Never an edit: the original line stays.
+  Readers go through `applyCorrections` (`web/js/journal.js`; `S.readJournal` and the UI do), which
+  gives the target message the new `text` (and `question`/`expect`), `corrected: { ts, note, ids }`
+  and `versions: [{ text, ts }, …]` (what it said before, oldest first). `readJournalFile` is the
+  raw lines.
 - `tag`: `{"kind": "tag", "tag": "meta", "ids": ["2026-11-22.33", …]}` marks earlier entries
   (`bin/learn meta`); `"off": true` takes the tag back.
 - `tracks`: `{"kind": "tracks", "open": true, "titles": {"a": "…", "b": "…"}}` opens two threads,

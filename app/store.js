@@ -294,7 +294,7 @@ function readPages(slug) {
 // line is dropped: the term is the title.
 const { termSlug, TERM_PAGE, pageForTerm } = require('../web/js/terms.js');
 // ids of app-talk ("meta") entries, see web/js/journal.js
-const { metaIds, pendingQuestion, tracksState, trackOf, awaitingReply } = require('../web/js/journal.js');
+const { metaIds, pendingQuestion, tracksState, trackOf, awaitingReply, applyCorrections } = require('../web/js/journal.js');
 function termPagesDir(slug) { return path.join(topicDir(slug), 'terms'); }
 function readTermPages(slug) {
   const d = termPagesDir(slug);
@@ -441,8 +441,10 @@ function readJournalFile(slug, file) {
   }
   return out;
 }
+// The journal as it reads now: messages the tutor corrected carry their corrected text (and the
+// earlier ones in `versions`; journal.js applyCorrections). readJournalFile is the raw lines.
 function readJournal(slug) {
-  return journalFiles(slug).flatMap(f => readJournalFile(slug, f));
+  return applyCorrections(journalFiles(slug).flatMap(f => readJournalFile(slug, f)));
 }
 // Append entries (without ids) to a topic journal; assigns ids "<date>.<n>". Returns entries.
 function appendJournal(slug, entries, date = null) {
@@ -472,7 +474,8 @@ function findEntry(id, slug = null) {
   const order = slug ? [slug, ...listTopics().filter(t => t !== slug)] : listTopics();
   for (const t of m ? [slug] : order) {
     if (!fs.existsSync(path.join(journalDir(t), `${date}.jsonl`))) continue;
-    const e = readJournalFile(t, `${date}.jsonl`).find(x => x.id === id);
+    // with its corrections, which can only be in that day's file or a later one
+    const e = applyCorrections(journalFiles(t).filter(f => f.slice(0, 10) >= date).flatMap(f => readJournalFile(t, f))).find(x => x.id === id);
     if (e) return e;
   }
   return null;
@@ -594,6 +597,6 @@ module.exports = {
   listTopics, topicDir, slugify, createTopic, readPages, PAGE_NAME, readTermPages, termPagePath, termPagesDir, termSlug, TERM_PAGE, pageForTerm, MEDIA_NAME, mediaDir, readMedia, loadTopicMeta, saveTopicMeta,
   walkSkills, findSkill, leafSkills, parseGlossary, readGlossary, addTerm, META_KEYS,
   NOTE_KINDS, readNotes, addNote, closeNote, parseDue, appendLog,
-  journalDir, journalFiles, readJournal, readJournalFile, appendJournal, findEntry, lastEntry, pendingQuestion, metaIds, tracksState, trackOf, awaitingReply,
+  journalDir, journalFiles, readJournal, readJournalFile, appendJournal, findEntry, lastEntry, pendingQuestion, metaIds, tracksState, trackOf, awaitingReply, applyCorrections,
   hasQuestion, setLevel, COLOR, LEGEND_KEY, setLegend, removeLegend, enqueue, inboxIds, inboxEntries, readInstructions, writeInstructions, profilePath, appendFeedback, openFeedback,
 };

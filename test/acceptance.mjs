@@ -988,7 +988,7 @@ async function main() {
     assert(a.status === 0 && b.stdout === a.stdout && d.status === 0 && d.stdout !== a.stdout, 'show --topic / t/<id>: ' + a.stderr + b.stderr);
     assert(/also in (cells|demo): `show (cells|demo)\//.test(c.stderr), 'no hint about the other topic: ' + c.stderr);
     assert(/^learn: not found: 2099-01-01\.1 in cells/m.test(showErr('--topic', 'cells', '2099-01-01.1').stderr), 'missing id');
-    assert(/show \[--topic t\] <id> · show <topic>\/<id>/.test(learn('help')), 'help lists the topic/id form');
+    assert(/show \[--topic t\] <id>[^·\n]*· show <topic>\/<id>/.test(learn('help')), 'help lists the topic/id form');
   });
   await test('images: bin/learn image keeps a Commons file (fake API) or a local file in the topic; media: shows it with its credit, offline; click zooms', async () => {
     const http = await import('node:http');
@@ -1569,6 +1569,57 @@ async function main() {
     await sleep(2500);
     assert(sessions().length - before === started && started <= 3, `sessions keep starting: ${started} → ${sessions().length - before}`);
     await until(async () => (await api('/api/status')).phase === 'listening', 'tutor listening again', 15000);
+  });
+  await test('corrections in place: post --corrects appends an entry, the message changes where it stands, marked, with the earlier version one click away; CLI readers see the corrected text', async () => {
+    const run = (input, ...a) => spawnSync(process.execPath, [BIN, 'post', '--topic', 'cells', ...a], { env: ENV, input, encoding: 'utf8' });
+    const file = () => { const d = path.join(HOME, 'topics/cells/journal'); return fs.readdirSync(d).sort().map(f => fs.readFileSync(path.join(d, f), 'utf8')).join(''); };
+    const jl = () => file().split('\n').filter(Boolean).map(l => JSON.parse(l));
+    assert(run('Mitosis has FIVEPHASES in this telling.\n\n:::question\nName the FIVEPHASES?\n:::', '--expect', 'old rubric').status === 0, 'post');
+    const m = jl().at(-1);
+    await page.nav(`${BASE}/#/cells/learn`, 1200);
+    const sel = `[id="m-${m.id}"]`;
+    assert(await page.eval(`document.querySelector('${sel} .msg-body').innerText.includes('FIVEPHASES') && !document.querySelector('${sel} .badge-corrected')`), 'the message as posted');
+    // refusals: no note, the same text, the learner's message, a grade entry
+    const mine = JSON.parse(execFileSync(process.execPath, ['-e', `const S = require(${JSON.stringify(path.join(CODE, 'app', 'store.js'))}); console.log(JSON.stringify(S.appendJournal('cells', [{ role: 'user', kind: 'ask', text: 'the learner\\'s own words' }])[0]))`], { env: ENV, encoding: 'utf8' }));
+    const before = file();
+    assert(/say what changed/.test(run('Mitosis has FOURPHASES.', '--corrects', m.id).stderr), 'a correction needs a note');
+    assert(/already has/.test(run(m.text, '--corrects', m.id, '--note', 'x').stderr), 'same text');
+    assert(/only your own messages/.test(run('rewritten', '--corrects', mine.id, '--note', 'x').stderr), 'the learner\'s words are never rewritten');
+    assert(/no --grade/.test(run('x', '--corrects', m.id, '--note', 'x', '--grade', 'correct').stderr), 'no grade with a correction');
+    assert(file() === before, 'a refused correction wrote something');
+    const ok = run('Mitosis has FOURPHASES in this telling.\n\n:::question\nName the FOURPHASES?\n:::', '--corrects', m.id, '--note', 'four phases, not five', '--expect', 'new rubric');
+    assert(ok.status === 0 && ok.stdout.includes(`corrected ${m.id} in place`), ok.stderr + ok.stdout);
+    // append-only: every earlier line is untouched, one "correction" line was added
+    assert(file().startsWith(before) && jl().length === before.split('\n').filter(Boolean).length + 1 && jl().at(-1).kind === 'correction' && jl().at(-1).target === m.id, 'journal not append-only');
+    // the open page: same place, new text, marked, with the note
+    await page.waitFor(`document.querySelector('${sel} .badge-corrected')`);
+    const now = await page.eval(`(() => { const n = document.querySelector('${sel}'); return { body: n.querySelector('.msg-body').innerText, line: n.querySelector('.corrected-line').innerText, n: document.querySelectorAll('.thread .msg').length, box: document.querySelector('#composer .box-q')?.innerText || '' }; })()`);
+    assert(now.body.includes('FOURPHASES') && !now.body.includes('FIVEPHASES') && /four phases, not five/.test(now.line), 'corrected in place: ' + JSON.stringify(now));
+    assert(now.box.includes('FOURPHASES'), 'the question above the answer box is the corrected one: ' + now.box);
+    await page.eval(`document.querySelector('${sel}').scrollIntoView({ block: 'center' })`); await sleep(300);
+    await page.shot('corrected');
+    await page.click(`${sel} .prev-version`);
+    const prev = await page.eval(`(() => { const n = document.querySelector('${sel}'); return { body: n.querySelector('.msg-body').innerText, cls: n.className, line: n.querySelector('.corrected-line').innerText }; })()`);
+    assert(prev.body.includes('FIVEPHASES') && /showing-prev/.test(prev.cls) && /Earlier version/.test(prev.line), 'the earlier version: ' + JSON.stringify(prev));
+    await page.shot('corrected-earlier');
+    await page.click(`${sel} .cur-version`);
+    assert(await page.eval(`document.querySelector('${sel} .msg-body').innerText.includes('FOURPHASES')`), 'back to the corrected version');
+    // a reload gets the same from the server
+    await page.nav(`${BASE}/#/cells/learn`, 1200);
+    assert(await page.eval(`document.querySelector('${sel} .msg-body').innerText.includes('FOURPHASES') && !!document.querySelector('${sel} .badge-corrected') && document.querySelectorAll('.thread .msg').length === ${now.n}`), 'after a reload');
+    // CLI readers: the corrected text, once; the earlier one on request; the new rubric
+    const show = learn('show', '--topic', 'cells', m.id);
+    assert(show.includes('FOURPHASES') && !show.includes('FIVEPHASES') && /corrected .*four phases, not five/.test(show) && show.includes('new rubric'), show);
+    assert(learn('show', '--topic', 'cells', m.id, '--previous').includes('FIVEPHASES'), 'show --previous');
+    assert(learn('grep', 'FOURPHASES', '--topic', 'cells').trim().split('\n').length === 1 && !learn('grep', 'FIVEPHASES', '--topic', 'cells').trim(), 'grep reads the corrected text, once');
+    const pend = learn('pending', 'cells');
+    assert(pend.startsWith(m.id) && pend.includes('FOURPHASES') && pend.includes('new rubric'), 'pending: ' + pend);
+    assert(/\[correction\] of /.test(learn('recent', '3', '--topic', 'cells')), 'recent lists the correction');
+    // a second correction keeps both earlier versions
+    assert(run('Mitosis has FOURPHASES, plus cytokinesis.', '--corrects', m.id, '--note', 'cytokinesis added').status === 0, 'second correction');
+    await page.waitFor(`/Earlier versions \\(2\\)/.test(document.querySelector('${sel} .prev-version')?.innerText || '')`);
+    assert(!learn('pending', 'cells').includes(m.id), 'a correction that drops the :::question takes it out of the open questions');
+    assert(/cells: ok/.test(learn('check', 'cells')), 'check');
   });
   await test('light theme', async () => {
     await page.eval(`localStorage['learn:theme'] = '"light"'`);

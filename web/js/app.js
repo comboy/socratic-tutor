@@ -69,6 +69,7 @@ function ingest(entries) {
   if (fresh.some(e => e.role === 'tutor' && e.kind === 'message') && document.hidden) { unread++; document.title = `(${unread}) ${app.topic.meta.title} · learn`; }
   VIEWS[app.view]?.onEntries?.(fresh);
   if (fresh.some(e => e.kind === 'level' || e.kind === 'grade')) renderLeft();
+  if (fresh.some(e => e.kind === 'correction')) renderDock();   // a pinned or opened message that was just corrected
 }
 let unread = 0;
 document.addEventListener('visibilitychange', () => { if (!document.hidden && app.topic) { unread = 0; document.title = `${app.topic.meta.title} · learn`; } });

@@ -199,8 +199,17 @@ const VERDICT = { correct: '✓ Correct', partial: '◐ Partly right', wrong: '�
 // App talk (e._meta: "About the app", --meta replies, entries the tutor tagged) is dimmed and folded
 // to one line in the conversation. Open: the ones that arrived while the page was open, or opened by hand.
 const openMeta = new Set();
-export function messageNode(e, { compact = false, pinnable = false } = {}) {
+// A message the tutor corrected (`post --corrects`, journal.js applyCorrections) shows its current
+// text where it always stood, says so (a "corrected" badge and a line with what changed), and keeps
+// every earlier version one click away: nothing the learner read disappears without a trace.
+// shownVersion: message id -> index into e.versions of the earlier version on screen.
+const shownVersion = new Map();
+export function messageNode(e, opts = {}) {
+  const { compact = false, pinnable = false } = opts;
   const tutor = e.role === 'tutor';
+  const nV = e.versions?.length || 0;
+  const vi = nV && shownVersion.has(e.id) ? Math.min(shownVersion.get(e.id), nV - 1) : -1;   // -1: the current text
+  const showVersion = i => { if (i < 0 || i >= nV) shownVersion.delete(e.id); else shownVersion.set(e.id, i); art.replaceWith(messageNode(e, opts)); if (!compact) takeAnchor(); };
   const folded = e._meta && !compact && !openMeta.has(e.id);
   const art = h('article', { class: `msg ${tutor ? 'msg-tutor' : 'msg-user'} kind-${e.kind} hl-scope` + (e.imported ? ' imported' : '') + (e._meta ? ' msg-meta' : '') + (folded ? ' folded' : ''),
     id: compact ? null : 'm-' + e.id, 'data-id': e.id });
@@ -215,6 +224,7 @@ export function messageNode(e, { compact = false, pinnable = false } = {}) {
   if (e.track === 'b' && (compact || !curTrack())) head.append(h('span', { class: 'track-chip', title: 'From the second thread', text: 'thread B' }));
   const g = app.d.grades.get(e.id);
   if (g) head.append(h('span', { class: `badge verdict-${g.verdict}`, title: g.note || '', text: VERDICT[g.verdict] || g.verdict }));
+  if (e.corrected) head.append(h('span', { class: 'badge badge-corrected', title: `The tutor corrected this message at ${fmtTime(e.corrected.ts)}${e.corrected.note ? ': ' + e.corrected.note : ''}`, text: 'corrected' }));
   for (const sid of e._meta ? [] : e._skills || []) {   // app talk belongs to no skill
     const s = skillById(app.topic.meta, sid);
     head.append(h('button', { class: 'chip chip-skill ' + lvClass(s ? levelOf(s.node) : 0), text: sid, title: s ? `${s.name} (open skill)` : '', onclick: () => openDock('skill', sid) }));
@@ -236,10 +246,22 @@ export function messageNode(e, { compact = false, pinnable = false } = {}) {
     const q = app.d.byId.get(e.quote);
     if (q) art.append(h('button', { class: 'quote-ref', onclick: () => openDock('msg', q.id) }, icon('link'), 'About ', h('b', { text: shortId(q.id) })));
   }
+  if (e.corrected) {
+    const when = ts => `${ts.slice(0, 10) === e.ts.slice(0, 10) ? '' : fmtDate(ts.slice(0, 10)) + ', '}${fmtTime(ts)}`;
+    art.classList.toggle('showing-prev', vi >= 0);
+    art.append(vi < 0
+      ? h('div', { class: 'corrected-line' }, h('b', { text: `Corrected ${when(e.corrected.ts)}` }), e.corrected.note ? h('span', { class: 'corrected-note', text: e.corrected.note }) : null,
+        h('button', { class: 'btn btn-tiny prev-version', title: 'Show what this message said before the correction', onclick: () => showVersion(nV - 1) }, nV > 1 ? `Earlier versions (${nV})` : 'Earlier version'))
+      : h('div', { class: 'corrected-line prev' }, h('b', { text: nV > 1 ? `Earlier version ${vi + 1} of ${nV}` : 'Earlier version' }),
+        h('span', { class: 'corrected-note', text: `as posted ${when(e.versions[vi].ts)}; the tutor corrected it since${e.corrected.note ? ': ' + e.corrected.note : ''}` }),
+        vi > 0 ? h('button', { class: 'btn btn-tiny', onclick: () => showVersion(vi - 1) }, 'Older') : null,
+        vi < nV - 1 ? h('button', { class: 'btn btn-tiny', onclick: () => showVersion(vi + 1) }, 'Newer') : null,
+        h('button', { class: 'btn btn-tiny btn-primary cur-version', onclick: () => showVersion(-1) }, 'Back to the corrected one')));
+  }
   if (e.kind !== 'action') {
     const body = h('div', { class: 'md msg-body' });
     art.append(body);
-    renderInto(body, e.text || '', { scope: false });
+    renderInto(body, (vi >= 0 ? e.versions[vi].text : e.text) || '', { scope: false });
   }
   if (tutor && e.question && !compact && curPending()?.id === e.id) art.classList.add('pending-q');
   return art;
@@ -309,8 +331,10 @@ export function onEntries(fresh) {
   const nearBottom = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 160;
   const J = app.topic.journal.filter(visible);
   thread.querySelector('.empty')?.remove();
+  let corrected = null;   // a message that just changed in place
   for (const e of fresh) {
     if (e.kind === 'grade') { redrawEntry(e.target); continue; }
+    if (e.kind === 'correction') { shownVersion.delete(e.target); corrected = redrawEntry(e.target) || corrected; continue; }
     if (e.kind === 'tag') { retag(e.ids || []); continue; }
     if (!visible(e)) continue;
     if (e._meta) openMeta.add(e.id);   // app talk arriving now is shown open; folded on a later visit
@@ -333,10 +357,20 @@ export function onEntries(fresh) {
   if (reply && (nearBottom || mine)) scrollToStart(reply.id, true);
   else if (mine) scrollBottom(true);
   else if (reply) showNewPill(reply.id);
+  // a correction never moves the view: the message flashes where it is, and when it's out of sight
+  // a pill says so and leads there
+  if (corrected) {
+    corrected.classList.add('flash');
+    const r = corrected.getBoundingClientRect(), v = sc.getBoundingClientRect();
+    if (!reply && !mine && (r.bottom < v.top + 40 || r.top > v.bottom - 40)) showNewPill(corrected.dataset.id, 'A message was corrected');
+  }
 }
 function redrawEntry(id) {
   const n = thread.querySelector(`[id="m-${CSS.escape(id)}"]`), e = app.d.byId.get(id);
-  if (n && e) n.replaceWith(messageNode(e));
+  if (!n || !e) return null;
+  const fresh = messageNode(e);
+  n.replaceWith(fresh);
+  return fresh;
 }
 // the tutor tagged (or untagged) entries as app talk: dim and fold them, except one the learner is
 // looking at right now (it folds on a later visit)
@@ -421,10 +455,10 @@ function scrollToStart(id, smooth) {
   sc.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' }); hideNewPill();
   if (!smooth) takeAnchor();
 }
-function showNewPill(id) {
+function showNewPill(id, label = 'New message') {
   if ($('.newpill')) return;
   $('.learn').style.setProperty('--composer-h', composer.offsetHeight + 'px');
-  $('.learn').append(h('button', { class: 'newpill btn btn-primary', onclick: () => (id ? scrollToStart(id, true) : scrollBottom(true)) }, icon('down'), 'New message'));
+  $('.learn').append(h('button', { class: 'newpill btn btn-primary', onclick: () => (id ? scrollToStart(id, true) : scrollBottom(true)) }, icon(label === 'New message' ? 'down' : 'link'), label));
 }
 function hideNewPill() { $('.newpill')?.remove(); }
 

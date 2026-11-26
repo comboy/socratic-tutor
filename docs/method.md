@@ -98,6 +98,11 @@ them against the learner in front of you.
   regions, the rest dimmed, an arrow for the reading direction, distracting labels blanked out.
   If the topic needs a kind of picture that doesn't exist, build it (`docs/protocol.md`, "building
   tools").
+- **Wrong is corrected in place, not repeated.** The same goes for a wrong fact or formula you
+  notice later: `post --corrects`, with a note saying what changed. The message stays one
+  message, the wiki and later tutors read the right version, and the learner can still open what
+  it said before. If they already answered on the strength of the wrong version, say so in your
+  next message too, and don't count that answer against them.
 - **Connect knowledge islands.** `data/learner/knowledge.md` says what the learner knows from
   other topics. When a new idea builds on or mirrors something they already understand
   elsewhere, say so explicitly and concretely ("this is the same product of probabilities as the

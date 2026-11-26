@@ -111,6 +111,8 @@ bin/learn resume [t]                     everything needed to pick up a topic, i
 bin/learn wait                           block until the learner sends something
 bin/learn post [--topic t] [--skill ids] [--grade v] [--grade-of msg-id] [--grade-skill id] [--note s] [--expect rubric] [--force]  < markdown
 bin/learn post --meta [--topic t]  < markdown   a reply about the app (to a META message), kept out of the lesson
+bin/learn post --corrects <msg-id> --note "what changed"  < markdown   put right a message you posted, in place: the
+                                         learner sees the new text there, marked "corrected", the earlier version one click away
 bin/learn post --track a|b …             with two threads open: the thread this message belongs to (required then)
 bin/learn track [t] [open "title a" "title b" | close]   two threads (experiment against latency; docs/method.md)
 bin/learn latency [t] [--days n]         how long the learner waited for replies (and how often two threads hid it)
@@ -128,7 +130,7 @@ bin/learn legend [t] [set <key> <#color> "label" [--term name] | rm <key>]   col
 bin/learn log [t] "what happened"        append to today's entry in log.md
 bin/learn feedback "remark"              a note for the builder about the app or the process (not the lesson)
 bin/learn pending [t] · recent [n] [--topic t] · msgs [t] --skill id · status · grep [-i|--case] <regex> [--topic t]
-bin/learn show [--topic t] <id> · show <topic>/<id>   ids repeat across topics (2026-11-21.4 in two topics)
+bin/learn show [--topic t] <id> [--previous] · show <topic>/<id>   ids repeat across topics (2026-11-21.4 in two topics)
                                          (msgs and grep leave out app talk; --all includes it)
 bin/learn image [t] <Commons file/URL | file --author a --license l> · image search "words" · image list [t]
                                          keep a real image in the topic (offline, credited): ![caption](media:<file>)
@@ -456,7 +458,8 @@ Then consider \`bin/learn handoff\` after your next reply: a fresh session is cl
 };
 
 commands.post = async () => {
-  const f = flags(argv, { topic: 'string', skill: 'string', grade: 'string', 'grade-skill': 'string', note: 'string', file: 'string', expect: 'string', force: 'bool', meta: 'bool', track: 'string', 'grade-of': 'string' });
+  const f = flags(argv, { topic: 'string', skill: 'string', grade: 'string', 'grade-skill': 'string', note: 'string', file: 'string', expect: 'string', force: 'bool', meta: 'bool', track: 'string', 'grade-of': 'string', corrects: 'string' });
+  if (f.corrects) return postCorrection(f);
   if (f['grade-of'] && !f.grade) die('--grade-of names the message that --grade grades; pass --grade too');
   if (f.meta && (f.grade || f.skill || f['grade-skill'] || f.expect)) die('--meta is a reply about the app, not the lesson: no --grade, --skill or --expect');
   const text = (f.file ? fs.readFileSync(f.file, 'utf8') : readStdin()).replace(/\s+$/, '');
@@ -546,6 +549,38 @@ commands.post = async () => {
     if (taught.length) console.log(`term pages (after re-arming wait; docs/protocol.md "Term pages"): put what this message taught into the article of ${taught.map(t => `"${t.term}" (${t.page ? 'extend ' + rel(t.path) : 'new: ' + rel(t.path)})`).join(', ')}${miss.length ? ', and of the new terms above' : ''}. Skip a term only if this message added nothing about it.`);
   }
 };
+
+// post --corrects <id>: put a message right where it stands. The journal stays append-only: this
+// appends a "correction" entry, and every reader (the UI, resume, show, grep, the wiki, stats) then
+// sees the corrected text, with the earlier version kept (web/js/journal.js applyCorrections).
+// The learner sees the message change in place, marked "corrected" with the note, and can open
+// what it said before.
+async function postCorrection(f) {
+  for (const k of ['grade', 'grade-of', 'grade-skill', 'skill', 'meta', 'track']) if (f[k]) die(`--corrects replaces the text of a message you posted: no --${k} with it (the message keeps its thread, skills and grade)`);
+  const text = (f.file ? fs.readFileSync(f.file, 'utf8') : readStdin()).replace(/\s+$/, '');
+  if (!text) die('nothing to post: the whole corrected message goes on stdin (it replaces the old text)');
+  const topic = f.topic || defaultTopic();
+  if (!topic || !S.listTopics().includes(topic)) die(topic ? `unknown topic ${topic}` : 'no topic; pass --topic');
+  const id = String(f.corrects).replace(/^msg:|^#/, '').replace(/^[a-z0-9-]+\//, '');
+  const target = S.readJournal(topic).find(e => e.id === id);
+  if (!target) die(`--corrects: no message ${id} in ${topic}`);
+  if (target.role !== 'tutor' || target.kind !== 'message') die(`--corrects: ${id} is ${target.role === 'user' ? 'the learner\'s message' : 'a ' + target.kind + ' entry'}; only your own messages can be corrected`);
+  if (target.text === text) die(`not posted: this is the text ${id} already has`);
+  if (!String(f.note || '').trim()) die('not posted: say what changed with --note "…" (one line the learner sees next to "corrected", so they know whether to re-read: "the arrow pointed the wrong way; nothing else changed")');
+  const C = require('../app/check');
+  const probs = C.linkChecker(topic)(text);
+  for (const p of probs) console.error(`${p.error ? 'error' : 'warning'}: link ${p.type}:${p.id}: ${p.why}`);
+  if (probs.some(p => p.error) && !f.force) die('not posted: fix the links above (or pass --force).');
+  const viz = C.vizProblems(text);
+  for (const p of viz) console.error(`error: viz ${p.type} (line ${p.line} of the message): ${p.why}`);
+  if (viz.length && !f.force) die('not posted: fix the viz block(s) above (or pass --force).');
+  const question = !target.meta && S.hasQuestion(text);
+  if (target.meta && S.hasQuestion(text)) die('not posted: an app-talk message can\'t carry a :::question');
+  if (!!target.question !== question) console.error(`note: ${id} ${question ? 'now has a :::question (it becomes a tracked question, where it stands)' : 'no longer has a :::question (it stops being a tracked question)'}`);
+  const entry = { role: 'tutor', kind: 'correction', target: id, newText: text, note: String(f.note).trim(), question, ...(f.expect && question ? { expect: f.expect } : {}) };
+  const [saved] = await viaServer('POST', '/api/append', { topic, entries: [entry] }, () => S.appendJournal(topic, [entry]));
+  console.log(`corrected ${id} in place (${saved.id}): the learner sees the new version where the message stands, marked "corrected: ${entry.note}", with the earlier version one click away. \`bin/learn show ${id} --previous\` prints the earlier text.`);
+}
 
 // ---------------------------------------------------------------- state commands
 commands.level = async () => {
@@ -939,6 +974,7 @@ commands.recent = () => {
     if (e.kind === 'level') { console.log(`${e.id} [level] ${e.skill}: ${e.from} → ${e.to} ${e.reason || ''}`); continue; }
     if (e.kind === 'grade') { console.log(`${e.id} [grade] ${e.verdict} on ${e.target} (${e.skill || '-'}) ${e.note || ''}`); continue; }
     if (e.kind === 'tag') { console.log(`${e.id} [tag ${e.tag}${e.off ? ' off' : ''}] ${(e.ids || []).join(', ')}`); continue; }
+    if (e.kind === 'correction') { console.log(`${e.id} [correction] of ${e.target}: ${e.note || ''}`); continue; }
     if (e.kind === 'tracks') { console.log(`${e.id} [threads] ${e.open ? `two open: a = ${e.titles?.a || '-'}, b = ${e.titles?.b || '-'}` : 'back to one'}`); continue; }
     if (typeof e.text !== 'string') { console.log(`${e.id} [${e.kind}]`); continue; }
     const tag = (e.role === 'tutor' ? `tutor${e.question ? ' ?' : ''}` : `${e.kind}${e.replyTo ? ' → ' + e.replyTo : ''}`) + (e.track ? `, thread ${e.track}` : '') + (meta.has(e.id) && e.kind !== 'meta' ? ', app talk' : '');
@@ -965,7 +1001,7 @@ commands.status = async () => {
 };
 
 commands.show = () => {
-  const f = noStrayFlags(flags(argv, { topic: 'string' }), { topic: 1 }, 'show [--topic t] <id>  ·  show <topic>/<id>');
+  const f = noStrayFlags(flags(argv, { topic: 'string', previous: 'bool' }), { topic: 1, previous: 1 }, 'show [--topic t] <id> [--previous]  ·  show <topic>/<id>');
   const id = f._[0];
   if (!id) die('usage: show [--topic t] <id>  ·  show <topic>/<id>');
   if (f.topic && !S.listTopics().includes(f.topic)) die(`unknown topic ${f.topic}`);
@@ -977,7 +1013,13 @@ commands.show = () => {
     if (also.length) console.error(`(${id} is in ${e.topic}; also in ${also.join(', ')}: \`show ${also[0]}/${id}\`)`);
   }
   const app = e.kind !== 'meta' && S.metaIds(S.readJournal(e.topic)).has(e.id) ? ' (app talk)' : '';
-  console.log(`${e.id} ${e.role} ${e.kind}${app} ${e.ts}\n\n${e.text || JSON.stringify(e, null, 2)}${e.expect ? `\n\n(rubric: ${e.expect})` : ''}`);
+  if (f.previous) {
+    if (!e.versions?.length) die(`${e.id} was never corrected`);
+    e.versions.forEach((v, i) => console.log(`── ${e.id}, version ${i + 1} of ${e.versions.length + 1} (as posted ${v.ts}) ──\n\n${v.text}\n`));
+    return;
+  }
+  const corr = e.corrected ? `\n(corrected ${e.corrected.ts}${e.corrected.note ? ': ' + e.corrected.note : ''}; this is the current text, \`show ${e.id} --previous\` prints the earlier one)` : '';
+  console.log(`${e.id} ${e.role} ${e.kind}${app} ${e.ts}${corr}\n\n${e.text || (e.kind === 'correction' ? `corrects ${e.target}: ${e.note || ''}\n\n${e.newText}` : JSON.stringify(e, null, 2))}${e.expect ? `\n\n(rubric: ${e.expect})` : ''}`);
 };
 
 commands.grep = () => {
