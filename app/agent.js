@@ -44,7 +44,10 @@ const claude = {
     return ['-p', prompt, ...perms(c.jobPermissionMode || 'auto', c.jobTools),
       ...(c.agentMcp ? [] : ['--strict-mcp-config'])];
   },
-  env: () => ({ ENABLE_CLAUDEAI_MCP_SERVERS: S.config().agentMcp ? undefined : 'false' }),
+  // CLAUDECODE / CLAUDE_CODE_ENTRYPOINT: set inside a Claude Code session. Inherited (bin/learn run
+  // from an agent's shell, as docs/setup.md suggests), they make the tutor's `claude` refuse to
+  // start as a "nested session"; the tutor is a session of its own, in its own terminal or headless.
+  env: () => ({ ENABLE_CLAUDEAI_MCP_SERVERS: S.config().agentMcp ? undefined : 'false', CLAUDECODE: undefined, CLAUDE_CODE_ENTRYPOINT: undefined }),
   contextTokens,
 };
 
@@ -69,7 +72,7 @@ function agent() {
 }
 function agentEnv(extra = {}) {
   const env = { ...process.env, ...agent().env(), ...extra };
-  for (const k of Object.keys(env)) if (env[k] === undefined) delete env[k];
+  for (const k of Object.keys(env)) if (env[k] === undefined) delete env[k];   // undefined: not passed on
   return env;
 }
 
