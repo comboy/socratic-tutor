@@ -23,7 +23,7 @@ never contains any. Layout:
 | `learner/profile.md` | who the learner is, how they like to be taught (all topics) | tutors, reviewer job, the learner |
 | `learner/knowledge.md` | knowledge across topics: islands, shaky foundations, connections, suggested topics | tutors, reviewer job |
 | `learner/pills/<slug>.md` | the knowledge pill: what the learner knows in a topic as one portable file | generated: `bin/learn pill --all` (the reviewer job) |
-| `feedback.md` | queue of remarks about the app and process, for the builder job | UI feedback box, `bin/learn feedback`, builder |
+| `feedback.md` | queue of remarks about the app and process, for the builder job | UI "Change the app" page, `bin/learn feedback`, builder |
 | `reports/*.md` | reports from background jobs (`bin/learn away`) | the jobs |
 | `config.json` | optional settings (below) | the learner |
 | `state/` | runtime only (inbox, session, jobs), gitignored | the app |

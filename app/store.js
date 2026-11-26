@@ -119,6 +119,8 @@ of a session; edit it freely. Keep it short.
 
 Written by the learner. Agents: never edit or paraphrase this section; propose changes instead.
 
+> Crocker's rules.
+
 ## Background
 
 ## Observations so far (derived, could be wrong: use judgement)

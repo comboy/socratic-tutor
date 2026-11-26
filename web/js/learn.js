@@ -502,7 +502,11 @@ function drawComposer(keepFocus) {
       : mode === 'ask'
         ? h('button', { class: 'btn btn-ask send-btn', onclick: sendIt, title: 'Send the side question  ⌘↵' }, 'Ask ', h('kbd', { text: '⌘↵' }))
         : h('button', { class: 'btn btn-primary send-btn', onclick: sendIt, title: pend ? 'Closes the question; the tutor grades it  ⌘↵' : 'Send  ⌘↵' }, pend ? 'Send answer ' : 'Send ', h('kbd', { text: '⌘↵' }))));
-  composer.replaceChildren(grip(), h('div', { class: 'composer-inner' }, welcomeBack(), box));
+  // the grip stays the same element: a redraw (a reply arriving) during a drag must not end it
+  const g = composer.querySelector(':scope > .composer-grip') || grip();
+  for (const c of [...composer.children]) if (c !== g) c.remove();
+  if (g.parentNode !== composer) composer.prepend(g);
+  composer.append(h('div', { class: 'composer-inner' }, welcomeBack(), box));
   if (keepFocus && active) {
     const n = document.getElementById(active);
     n?.focus();

@@ -31,10 +31,13 @@ a minimalist "modern web" page.
   with an Answer / Ask switch (its colour says which; each mode keeps its own draft), the quick
   buttons sit in its footer (icons only when narrow), and Esc or the chevron hides it to two
   buttons in the corner; `a` / `q` or those buttons bring it back.
-- **The learner thinks about the topic, not the tool.** Anything about the tool goes into the
-  feedback box (toolbar): saved for the builder, who works through it while they're away, or with
-  "Tell the tutor now" also sent to the tutor, who answers in the conversation. One place for app
-  remarks: an "About the app" button next to Ask was confusing next to a separate feedback box.
+- **The learner thinks about the topic, not the tool.** Anything about the tool goes to one page
+  (the toolbar's speech bubble, `web/js/tell.js`): "Change the app" saves it for the builder, who
+  works through it while they're away, or with "Tell the tutor now" also sends it to the tutor, who
+  answers in the conversation (the UI goes there). Its other tab, "How to teach me", is the
+  learner's instructions to every tutor. A full page, not a popover: the learner asked for room to
+  write (2026-11-26). One place for app remarks: an "About the app" button next to Ask was
+  confusing next to a separate feedback box.
   Don't make them configure things; pick good defaults. App talk in the conversation (those
   remarks, the tutor's `--meta` replies, tagged entries) is shown dimmed and folded to one line, and
   kept out of the learning record (wiki, sessions, stats).

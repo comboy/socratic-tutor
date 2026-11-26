@@ -34,10 +34,14 @@ humans.
   open task. The popover shows the plan as it runs; the reports appear there too.
 - The UI picks up code changes by itself when you're idle, or shows an "Updated · reload" button,
   so it never blinks while you read.
-- **Tell it how you learn:** Wiki → You, "Your instructions to every tutor" (also linked from the
-  tutor status, top right). It's the "In my own words" section of `data/learner/profile.md`:
-  yours alone (the agents never edit it, and it overrides what they derive), committed when you
-  save, and a running tutor gets the new version with your next message. The rest of that file, and Wiki → You,
+- **Tell it how you learn, and what to change in the app:** the speech-bubble button in the
+  toolbar opens a page with two tabs. "How to teach me" is your instructions to every tutor, the
+  "In my own words" section of `data/learner/profile.md` in your data repo: yours alone (the
+  agents never edit it, and it overrides what they derive), committed when you save, and a running
+  tutor gets the new version with your next message. A new profile starts with "Crocker's rules."
+  "Change the app" saves remarks to `feedback.md` for the builder without interrupting the tutor,
+  or with "Tell the tutor now" sends them to it as well; what's still open is listed below. The
+  rest of the profile, and Wiki → You,
   is what the tutors have noticed; the knowledge pill there is what you know in a topic, as one
   file you can hand to any other tool.
 

@@ -6,7 +6,6 @@ import { icon, hydrateIcons } from './icons.js';
 import { openDock, renderDock, setDock, hoverCard, group } from './panels.js';
 import { openSearch } from './search.js';
 import { renderStatus, togglePopover } from './tutor.js';
-import { toggleFeedback } from './feedback.js';
 import { toggleAway, onJobs } from './away.js';
 import { renderNewTopic } from './newtopic.js';
 import * as learn from './learn.js';
@@ -14,12 +13,13 @@ import * as mapView from './map.js';
 import * as tree from './tree.js';
 import * as wiki from './wiki.js';
 import * as stats from './stats.js';
+import * as tell from './tell.js';
 
 export const app = {
   topics: [], topic: null, d: null, status: { phase: 'offline', queued: 0 },
   view: 'learn', args: [], dockStack: [], learner: null,
 };
-const VIEWS = { learn, map: mapView, tree, wiki, stats };
+const VIEWS = { learn, map: mapView, tree, wiki, stats, tell };
 const VIEW_KEYS = { '1': 'learn', '2': 'map', '3': 'tree', '4': 'wiki', '5': 'stats' };
 
 // ---------------------------------------------------------------- data
@@ -136,6 +136,7 @@ async function route() {
   const prev = app.view;
   app.view = view; app.args = args;
   $$('.views button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
+  $('#feedbackBtn')?.classList.toggle('on', view === 'tell');
   document.body.dataset.view = view;
   if (switched || prev !== view || !$('#center').firstChild || VIEWS[view].routeAlways) VIEWS[view].render($('#center'), app, args);
   else VIEWS[view].update?.(args);
@@ -263,7 +264,13 @@ async function boot() {
   $$('.views button').forEach(b => b.addEventListener('click', () => go(b.dataset.view)));
   $('#searchBtn').addEventListener('click', openSearch);
   $('#status').addEventListener('click', togglePopover);
-  $('#feedbackBtn')?.addEventListener('click', toggleFeedback);
+  // a page, not a popover: your instructions to the tutors, and changes to the app (tell.js); again = back
+  let beforeTell = null;
+  $('#feedbackBtn')?.addEventListener('click', () => {
+    if (app.view === 'tell') { if (beforeTell && !/\/tell(\/|$)/.test(beforeTell)) location.hash = beforeTell; else go('learn'); return; }
+    beforeTell = location.hash;
+    go('tell', store.get('tellTab', 'instructions'));
+  });
   $('#awayBtn')?.addEventListener('click', toggleAway);
   $('#reloadBtn')?.addEventListener('click', reloadKeepingPlace);
   $('#dockBtn').addEventListener('click', () => { setDock(!document.body.classList.contains('dock-open')); renderDock(); });

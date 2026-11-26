@@ -444,17 +444,16 @@ async function main() {
   await test('"Tell the tutor now" in the feedback box: journaled as meta, delivered as META, added to feedback.md; the --meta reply is dimmed; kept out of msgs, grep, resume', async () => {
     const pendBefore = learn('pending', 'demo').split('\n')[0];
     assert(await page.eval(`!document.querySelector('#metaBtn')`), 'the input box should no longer have its own "About the app" button');
-    await page.click('#feedbackBtn');
+    await page.nav(`${BASE}/#/demo/tell/app`, 900);
     await page.waitFor(`document.activeElement?.id === 'feedbackBox'`, { timeout: 2000 });
     await page.click('#feedbackLive');
-    await page.waitFor(`/Send to the tutor/.test(document.querySelector('.fb-pop .btn-primary').textContent)`, { timeout: 2000 });
+    await page.waitFor(`/Send to the tutor/.test(document.querySelector('#feedbackSave').textContent)`, { timeout: 2000 });
     await page.click('#feedbackBox');
     await page.type('The hover cards could open faster (meta test)');
     await page.key('Enter', { meta: true });
-    await page.waitFor(`document.querySelector('.fb-pop .pop-note.ok') && /Sent/.test(document.querySelector('.fb-pop .pop-note').textContent)`, { timeout: 3000 });
-    assert(await page.eval(`document.querySelector('#feedbackBox').value === ''`), 'feedback box not cleared');
+    await page.waitFor(`location.hash === '#/demo/learn'`, { timeout: 3000 });   // the reply comes in the conversation: taken there
+    assert(await page.eval(`localStorage['learn:draft:feedback'] === '""'`), 'feedback draft not cleared');
     await page.eval(`localStorage['learn:feedbackLive'] = 'false'`);
-    await page.key('Escape');
     const sent = await until(() => journal().find(e => e.kind === 'meta' && /meta test/.test(e.text)), 'meta entry');
     assert(sent.role === 'user' && sent.meta === true, JSON.stringify(sent));
     const fb = fs.readFileSync(path.join(HOME, 'feedback.md'), 'utf8');
@@ -676,18 +675,21 @@ async function main() {
     await page.eval(`document.querySelector('.pill-text').scrollIntoView()`);
     await page.shot('wiki-you-pill');
   });
-  await test('your instructions to every tutor: edited on the You page, saved into profile.md "In my own words" (rest kept), the running tutor is told once, with its next message', async () => {
+  await test('your instructions to every tutor: edited on the Tell page, saved into profile.md "In my own words" (rest kept), shown on the You page, the running tutor is told once, with its next message', async () => {
     const env = { ...ENV, LEARN_SESSION: 'instr-test-session' };
     const node = code => execFileSync(process.execPath, ['-e', code], { env, cwd: CODE, encoding: 'utf8' });
     node(`require('./app/session').markInstructionsSeen('instr-test-session')`);
     await page.nav(`${BASE}/#/demo/wiki/you`, 900);
     await page.waitFor(`document.querySelector('#instrEdit')`, { timeout: 4000 });
     await page.click('#instrEdit');
+    await page.waitFor(`location.hash === '#/demo/tell/instructions' && document.querySelector('#instrBox') && document.querySelector('#instrSave').disabled`, { timeout: 4000 });
     await page.eval(`document.querySelector('#instrBox').value = ''`);
     await page.click('#instrBox'); await page.type('Be direct.\n\nNo softening.');
     await page.click('#instrSave');
-    await page.waitFor(`!document.querySelector('#instrBox') && /No softening/.test(document.querySelector('.instr').innerText)`, { timeout: 4000 });
-    await page.shot('wiki-you-instructions');
+    await page.waitFor(`/Saved/.test(document.querySelector('.tell-note.ok')?.textContent || '') && document.querySelector('#instrSave').disabled`, { timeout: 4000 });
+    await page.shot('tell-instructions');
+    await page.nav(`${BASE}/#/demo/wiki/you`, 900);
+    await page.waitFor(`/No softening/.test(document.querySelector('.instr')?.innerText || '')`, { timeout: 4000 });
     const prof = fs.readFileSync(path.join(HOME, 'learner/profile.md'), 'utf8');
     assert(/## In my own words \(authoritative\)\n\nWritten by the learner\.[^\n]*\n\n> Be direct\.\n>\n> No softening\.\n/.test(prof), prof);
     assert(prof.startsWith('# Learner profile') && /## Background[\s\S]*## How I like to learn[\s\S]*Dark theme/.test(prof), 'rest of the profile lost: ' + prof);
@@ -695,12 +697,14 @@ async function main() {
     const told = node(`process.stdout.write(String(require('./app/session').instructionsChanged('instr-test-session')))`);
     assert(/Be direct\.\n\nNo softening\./.test(told), 'not told: ' + told);
     assert(node(`process.stdout.write(String(require('./app/session').instructionsChanged('instr-test-session')))`) === 'null', 'told twice');
-    // a draft survives a reload; cancel drops it
-    await page.click('#instrEdit'); await page.type(' DRAFT');
-    await page.nav(`${BASE}/#/demo/wiki/you`, 900);
-    await page.waitFor(`/DRAFT/.test(document.querySelector('#instrBox')?.value || '')`, { timeout: 4000 });
-    await page.eval(`[...document.querySelectorAll('.instr-actions .btn')].find(b => b.textContent === 'Cancel').click()`);
-    assert(!/DRAFT/.test(fs.readFileSync(path.join(HOME, 'learner/profile.md'), 'utf8')), 'cancelled draft saved');
+    // a draft survives a reload; Revert drops it
+    await page.nav(`${BASE}/#/demo/tell/instructions`, 900);
+    await page.click('#instrBox'); await page.type(' DRAFT');
+    await page.nav(`${BASE}/#/demo/tell/instructions`, 900);
+    await page.waitFor(`/DRAFT/.test(document.querySelector('#instrBox')?.value || '') && !document.querySelector('#instrSave').disabled`, { timeout: 4000 });
+    await page.click('#instrRevert');
+    assert(await page.eval(`!/DRAFT/.test(document.querySelector('#instrBox').value) && localStorage['learn:draft:instructions'] === 'null'`), 'revert');
+    assert(!/DRAFT/.test(fs.readFileSync(path.join(HOME, 'learner/profile.md'), 'utf8')), 'reverted draft saved');
   });
   await test('viz residual: steps through, maths from the weights, edits recompute', async () => {
     await page.nav(`${BASE}/#/demo/wiki/page/residual-stream`, 900);
@@ -1182,23 +1186,27 @@ async function main() {
     await page.click('.sheet .gl-sort [data-sort="alpha"]');
     assert(await page.eval(`document.querySelector('.sheet .gl-letter').textContent`) === 'A', 'back to A–Z');
   });
-  await test('feedback box in the toolbar: saves, confirms, stays out of the conversation', async () => {
+  await test('the toolbar button opens a page with two tabs: instructions, and changes to the app (saved for the builder, the tutor not interrupted, open items listed); again goes back', async () => {
     const jl = journal().length;
-    await page.nav(`${BASE}/#/demo/learn`, 1000);   // (also leaves the URL where the light-theme test reloads it)
+    await page.nav(`${BASE}/#/demo/learn`, 1000);
+    await page.eval(`localStorage['learn:tellTab'] = '"instructions"'`);
     await page.click('#feedbackBtn');
-    await page.waitFor(`document.activeElement?.id === 'feedbackBox'`, { timeout: 2000 });
+    await page.waitFor(`location.hash === '#/demo/tell/instructions' && document.activeElement?.id === 'instrBox' && document.querySelector('#feedbackBtn.on')`, { timeout: 3000 });
+    await page.click('#tellTab-app');
+    await page.waitFor(`document.activeElement?.id === 'feedbackBox' && /Save for the builder/.test(document.querySelector('#feedbackSave').textContent)`, { timeout: 3000 });
     await page.type('UI feedback from the box');
     await page.key('Enter', { meta: true });
-    await page.waitFor(`document.querySelector('.fb-pop .pop-note.ok')`, { timeout: 3000 });
+    await page.waitFor(`document.querySelector('.tell-note.ok')`, { timeout: 3000 });
+    await page.waitFor(`[...document.querySelectorAll('.tell-item')].some(i => /UI feedback from the box/.test(i.innerText))`, { timeout: 3000 });
     await page.shot('feedback');
     const box = await page.eval(`(() => { const r = document.querySelector('#feedbackBox').getBoundingClientRect(); return { w: r.width, h: r.height }; })()`);
     assert(box.w >= 600 && box.h >= 160, 'the feedback box is a real writing surface: ' + JSON.stringify(box));
     const f = fs.readFileSync(path.join(HOME, 'feedback.md'), 'utf8');
-    assert(/^- \[ \] \d{4}-\d{2}-\d{2} \(learner, demo · learn\): UI feedback from the box$/m.test(f), f);
+    assert(/^- \[ \] \d{4}-\d{2}-\d{2} \(learner, demo · tell\): UI feedback from the box$/m.test(f), f);
     assert(await page.eval(`document.querySelector('#feedbackBox').value === '' && localStorage['learn:draft:feedback'] === '""'`), 'box/draft not cleared');
     assert(journal().length === jl, 'journaled');
-    await page.key('Escape'); await sleep(100);
-    assert(await page.eval(`!document.querySelector('.fb-pop')`), 'Escape closes');
+    await page.click('#feedbackBtn');
+    await page.waitFor(`location.hash === '#/demo/learn'`, { timeout: 3000 });   // back where it came from (and where the light-theme test reloads)
   });
   await test('formulas: keyed parts are coloured without hovering; tables are centred', async () => {
     await page.nav(`${BASE}/#/demo/learn`, 1000);

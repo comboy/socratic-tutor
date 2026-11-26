@@ -1027,3 +1027,18 @@ body.no-topics #leftToggle, body.no-topics #dockBtn, body.no-topics #searchBtn {
 .instr-actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .instr-msg:empty { display: none; }
 .instr-msg { margin-top: 8px; }
+
+/* Tell (toolbar): your instructions to the tutors, and changes to the app */
+.tell-page { max-width: 860px; margin: 0 auto; padding: 22px 26px 40px; }
+.tell-desc { margin: 0 0 12px; color: var(--muted); font-size: 13.5px; line-height: 1.55; }
+.tell .tell-box { min-height: 280px; resize: vertical; font: 14.5px/1.55 var(--sans); padding: 10px 12px; }
+.tell-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.tell-actions .fb-live { margin-top: 0; }
+.tell-note { margin-top: 10px; font-size: 13px; }
+.tell-note:empty { display: none; }
+.tell-note.ok { color: var(--good); }
+.tell-open { margin-top: 28px; border-top: 1px solid var(--line); padding-top: 14px; }
+.tell-open-h { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+.tell-item { padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); margin-bottom: 6px; font-size: 13px; }
+.tell-item-meta { display: block; font-size: 11.5px; color: var(--muted); margin-bottom: 3px; }
+.tell-item .wiki-md p { margin: 0; }
