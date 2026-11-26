@@ -7,6 +7,7 @@ const { spawn, execFileSync } = require('child_process');
 const S = require('./store');
 const T = require('./session');
 const J = require('./jobs');
+const A = require('./access');
 
 const WEB = path.join(S.CODE, 'web');
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -129,7 +130,8 @@ function readBody(req) {
 const sentByCid = new Map();   // client id -> saved entry (recent sends)
 const routes = {
   // home: which data this server serves, so a launcher never adopts a server of another data home
-  'GET /api/ping': () => ({ ok: true, home: S.realish(S.ROOT), pid: process.pid }),
+  // host/open: where it listens and whether other machines can reach it (bin/learn status prints the link)
+  'GET /api/ping': () => ({ ok: true, home: S.realish(S.ROOT), pid: process.pid, host: S.HOST, open: A.OPEN }),
   'GET /api/topics': () => S.listTopics().map(slug => {
     const m = S.loadTopicMeta(slug);
     const files = S.journalFiles(slug);
@@ -268,22 +270,32 @@ const routes = {
 // must be localhost (a DNS-rebinding page would carry its own name), and a request that changes
 // something must come from the app's own origin (browsers always send Origin on a cross-site POST;
 // the CLI sends none) and carry JSON (a cross-site form or no-cors fetch can't set that type).
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'].map(h => `${h}:${S.PORT}`));
+// Bound to a network address (bin/learn --host), a request from another machine must also carry the
+// access token (app/access.js): its cookie is what a rebinding page can't have, so the Host can be
+// any name the server is reached by; a browser's change must still come from that same origin.
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', ...(A.isLoopback(S.HOST) ? [S.HOST] : [])].map(h => `${h}:${S.PORT}`));
+// -> null (go ahead), or [status, why]
 function refused(req) {
-  if (!LOCAL_HOSTS.has(String(req.headers.host || '').toLowerCase())) return 'unexpected Host';
+  const local = A.fromThisMachine(req);
+  const via = local ? 'local' : A.OPEN && A.credential(req);
+  if (!via) return [A.OPEN ? 401 : 403, A.OPEN ? 'access token required' : 'not from this machine'];
+  const host = String(req.headers.host || '').toLowerCase();
+  if (local && !LOCAL_HOSTS.has(host)) return [403, 'unexpected Host'];
   if (req.method === 'GET' || req.method === 'HEAD') return null;
-  const origin = req.headers.origin;
-  if (origin && !LOCAL_HOSTS.has(origin.replace(/^http:\/\//, '').toLowerCase())) return 'cross-origin request';
+  const origin = req.headers.origin ? String(req.headers.origin).replace(/^https?:\/\//, '').toLowerCase() : null;
+  if (local ? origin && !LOCAL_HOSTS.has(origin) : origin ? origin !== host : via === 'cookie') return [403, 'cross-origin request'];
   const type = req.headers['content-type'];
-  if ((type || Number(req.headers['content-length']) > 0 || req.headers['transfer-encoding']) && !/^application\/json\b/i.test(type || '')) return 'expected application/json';
+  if ((type || Number(req.headers['content-length']) > 0 || req.headers['transfer-encoding']) && !/^application\/json\b/i.test(type || '')) return [403, 'expected application/json'];
   return null;
 }
 
 async function handle(req, res) {
   const url = new URL(req.url, 'http://x');
   const p = decodeURIComponent(url.pathname);
+  if (A.tokenVisit(req, res, url)) return;
   const no = refused(req);
-  if (no) return send(res, 403, { error: `refused: ${no}` });
+  if (no?.[0] === 401) return A.denied(res);
+  if (no) return send(res, no[0], { error: `refused: ${no[1]}` });
   try {
     if (p === '/api/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
@@ -394,7 +406,12 @@ function start() {
   S.ensureDir(S.INBOX);
   server = http.createServer(handle);
   let tries = 0;
-  const listen = () => server.listen(S.PORT, '127.0.0.1', () => log(`learn: http://localhost:${S.PORT} (pid ${process.pid}, data ${S.realish(S.ROOT)})`));
+  if (A.OPEN) A.token(true);
+  const listen = () => server.listen(S.PORT, S.HOST, () => {
+    A.record();
+    log(`learn: ${A.localUrl()} (pid ${process.pid}, data ${S.realish(S.ROOT)}${S.HOST !== '127.0.0.1' ? `, listening on ${S.HOST}` : ''})`);
+    if (A.OPEN) for (const l of A.remoteLines()) log(l);
+  });
   // a bug in a watcher or a timer must not take the server down mid-lesson: log it and carry on
   process.on('uncaughtException', e => log('uncaught:', e.stack || e.message));
   process.on('unhandledRejection', e => log('unhandled rejection:', e?.stack || e));

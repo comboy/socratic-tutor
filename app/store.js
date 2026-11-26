@@ -22,6 +22,10 @@ const CONFIG = path.join(ROOT, 'config.json');      // optional: agent choice, l
 const STATE = path.join(ROOT, 'state');             // runtime only, gitignored
 const INBOX = path.join(STATE, 'inbox');
 const PORT = Number(process.env.LEARN_PORT || 4747);
+// Where the server listens: 127.0.0.1 (this machine only) unless asked otherwise, by `--host` on
+// bin/learn (it sets LEARN_HOST for everything it starts) or config.json "host". Anything else
+// needs the access token (app/access.js; docs/setup.md, "Running on a server").
+const HOST = String(process.env.LEARN_HOST || config().host || '127.0.0.1').trim();
 
 function ensureDir(d) { fs.mkdirSync(d, { recursive: true }); }
 function readText(p, dflt = null) { try { return fs.readFileSync(p, 'utf8'); } catch { return dflt; } }
@@ -585,7 +589,7 @@ function setLevelUnlocked(slug, skillId, level, reason) {
 }
 
 module.exports = {
-  CODE, ROOT, TOPICS, LEARNER, LEARNER_OUTSIDE, REPORTS, FEEDBACK, CONFIG, STATE, INBOX, PORT, realish, dataRepo, shown,
+  CODE, ROOT, TOPICS, LEARNER, LEARNER_OUTSIDE, REPORTS, FEEDBACK, CONFIG, STATE, INBOX, PORT, HOST, realish, dataRepo, shown,
   ensureDir, readText, readJSON, writeJSON, withLock, localDate, config, ensureHome, commitData, dataPath,
   listTopics, topicDir, slugify, createTopic, readPages, PAGE_NAME, readTermPages, termPagePath, termPagesDir, termSlug, TERM_PAGE, pageForTerm, MEDIA_NAME, mediaDir, readMedia, loadTopicMeta, saveTopicMeta,
   walkSkills, findSkill, leafSkills, parseGlossary, readGlossary, addTerm, META_KEYS,

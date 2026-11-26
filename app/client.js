@@ -2,12 +2,16 @@
 'use strict';
 const http = require('http');
 const S = require('./store');
+const A = require('./access');
 
 function api(method, p, body, timeout = 1500) {
   return new Promise((resolve, reject) => {
     const data = body ? Buffer.from(JSON.stringify(body)) : null;
-    const req = http.request({ host: '127.0.0.1', port: S.PORT, path: p, method, timeout,
-      headers: data ? { 'content-type': 'application/json', 'content-length': data.length } : {} }, res => {
+    // 127.0.0.1, or the address the server was bound to (--host); the token when that isn't
+    // loopback, as the server then sees this request come from the network (app/access.js)
+    const host = A.connectHost();
+    const headers = { host: `localhost:${S.PORT}`, ...A.clientHeaders(host), ...(data ? { 'content-type': 'application/json', 'content-length': data.length } : {}) };
+    const req = http.request({ host, port: S.PORT, path: p, method, timeout, headers }, res => {
       let buf = ''; res.on('data', c => buf += c);
       res.on('end', () => {
         if (res.statusCode >= 400) { let m = buf; try { m = JSON.parse(buf).error || buf; } catch {} return reject(new Error(m || res.statusCode)); }
