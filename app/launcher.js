@@ -15,6 +15,7 @@ const S = require('./store');
 const T = require('./session');
 const { agent, agentEnv } = require('./agent');
 const { api, serverInfo, serverUp, openBrowser } = require('./client');
+const Acc = require('./access');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const BIN = path.join(S.CODE, 'bin', 'learn');
@@ -89,7 +90,10 @@ async function stop(child) {
 async function start({ topic: openTopic, resume, open = true, claudeArgs = [] }) {
   S.ensureHome();
   const startedServer = await ensureServer();
-  const url = `http://localhost:${S.PORT}/${openTopic ? '#/' + openTopic : ''}`;
+  const url = `${Acc.localUrl()}/${openTopic ? '#/' + openTopic : ''}`;
+  // reachable from other machines (--host): this is likely a server with no screen, and the link
+  // that works from elsewhere is the one with the token, so print it instead of opening a browser
+  if (Acc.OPEN) open = false;
   // the tutor starts idle and adopts a topic when a message arrives (`-c` keeps the old session's)
   let topic = resume ? (T.readSession()?.topic || null) : null;
   // Open a tab only if the app isn't open already. Each `bin/learn` used to open one, and stacked
@@ -97,6 +101,7 @@ async function start({ topic: openTopic, resume, open = true, claudeArgs = [] })
   // After a fresh server start, open tabs need a moment to reconnect.
   const already = open && await browserConnected(startedServer ? 2500 : 0);
   console.log(`learn: ${url}${already ? '  (already open in your browser)' : open && !openBrowser(url) ? '  (open it in your browser)' : ''}`);
+  if (Acc.OPEN) for (const l of Acc.remoteLines()) console.log('learn: ' + l);
   // messages a tutor picked up but never answered (it was stopped, it crashed) go back in the
   // queue, so the new tutor answers them instead of them sitting unanswered in the thread
   // (a `wait` left over from a killed tutor would claim them for nobody: stop it first)

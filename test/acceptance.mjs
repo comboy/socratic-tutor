@@ -138,6 +138,54 @@ async function main() {
     assert((await req('GET', '/api/topics', { host: `127.0.0.1:${PORT}` })).status === 200, 'own GET');
     assert((await req('POST', '/api/ping', { host, origin: `http://localhost:${PORT}`, 'content-type': 'application/json' }, '{}')).status !== 403, 'own POST');
   });
+  // bin/learn --host: other machines need the access token. Binding a real network address here
+  // would ask the learner's firewall, so LEARN_TEST_REMOTE makes every request count as remote.
+  await test('reachable from other machines (--host): no token 401, ?token sets a cookie, a cross-origin POST is refused, the CLI uses the token', async () => {
+    const rhome = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-remote-'));
+    fs.cpSync(path.join(CODE, 'test', 'fixture', 'topics'), path.join(rhome, 'topics'), { recursive: true });
+    const rport = String(Number(PORT) + 150), renv = { ...ENV, LEARN_HOME: rhome, LEARN_PORT: rport, LEARN_TEST_REMOTE: '1' };
+    const srv = spawn(process.execPath, [BIN, 'serve'], { env: renv, stdio: 'ignore' });
+    const req = (method, p, headers = {}, body) => new Promise((resolve, reject) => {
+      const r = http.request({ host: '127.0.0.1', port: rport, path: p, method, headers: { host: `tutor.lan:${rport}`, ...headers } }, res => { let b = ''; res.on('data', c => b += c); res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: b })); });
+      r.on('error', reject); if (body) r.write(body); r.end();
+    });
+    try {
+      await until(() => req('GET', '/api/ping').then(r => r.status === 401).catch(() => false), 'remote server');
+      const tokenFile = path.join(rhome, '.access-token');
+      const tok = fs.readFileSync(tokenFile, 'utf8').trim();
+      assert(tok.length >= 32, 'token: ' + tok);
+      assert((fs.statSync(tokenFile).mode & 0o077) === 0, 'token file readable by others');
+      assert(/^\.access-token$/m.test(fs.readFileSync(path.join(rhome, '.gitignore'), 'utf8')), 'token not gitignored');
+      const no = await req('GET', '/');
+      assert(no.status === 401 && /bin\/learn status/.test(no.body) && !no.body.includes(tok), 'no token: ' + no.status + ' ' + no.body);
+      assert((await req('GET', '/api/topics')).status === 401, 'API without token');
+      assert((await req('GET', '/?token=wrong' + tok.slice(5))).status === 401, 'wrong token in the link');
+      assert((await req('GET', '/api/topics', { cookie: `learn-${rport}=nope` })).status === 401, 'wrong cookie');
+      assert((await req('GET', '/api/topics', { authorization: 'Bearer nope' })).status === 401, 'wrong bearer');
+      const visit = await req('GET', `/?token=${tok}&x=1`);
+      const sc = String(visit.headers['set-cookie'] || '');
+      assert(visit.status === 302 && visit.headers.location === '/?x=1', 'redirect strips the token: ' + visit.status + ' ' + visit.headers.location);
+      assert(/HttpOnly/.test(sc) && /SameSite=Strict/.test(sc) && sc.startsWith(`learn-${rport}=`), 'cookie: ' + sc);
+      const cookie = sc.split(';')[0];
+      const ok = await req('GET', '/api/topics', { cookie });
+      assert(ok.status === 200 && JSON.parse(ok.body).length === 2, 'with the cookie: ' + ok.status);
+      assert((await req('GET', '/', { cookie })).status === 200, 'page with the cookie');
+      const fb = () => { try { return fs.readFileSync(path.join(rhome, 'feedback.md'), 'utf8'); } catch { return ''; } };
+      const body = JSON.stringify({ text: 'remote feedback' }), json = { cookie, 'content-type': 'application/json' };
+      assert((await req('POST', '/api/feedback', json, body)).status === 403, 'cookie POST without Origin');
+      assert((await req('POST', '/api/feedback', { ...json, origin: 'http://evil.example' }, body)).status === 403, 'cookie POST from another origin');
+      assert((await req('POST', '/api/feedback', { cookie, origin: `http://tutor.lan:${rport}`, 'content-type': 'text/plain' }, body)).status === 403, 'text/plain POST');
+      assert((await req('POST', '/api/feedback', { 'content-type': 'application/json', origin: `http://tutor.lan:${rport}` }, body)).status === 401, 'POST without token');
+      assert(!fb().includes('remote feedback'), 'a refused POST got through');
+      assert((await req('POST', '/api/feedback', { ...json, origin: `http://tutor.lan:${rport}` }, body)).status === 200, 'same-origin POST with the cookie');
+      assert(fb().includes('remote feedback'), 'feedback not saved');
+      // the CLI isn't on loopback either (here: counts as remote): it sends the token, and status prints the link
+      const st = execFileSync(process.execPath, [BIN, 'status'], { env: renv, encoding: 'utf8' });
+      assert(/server: up/.test(st) && st.includes(`?token=${tok}`) && /SSH tunnel|ssh -L/.test(st), 'status: ' + st);
+      const bad = spawnSync(process.execPath, [BIN, 'status', '--host', 'not-an-ip'], { env: renv, encoding: 'utf8' });
+      assert(bad.status === 1 && /--host needs an IP/.test(bad.stderr), '--host validation: ' + bad.stderr);
+    } finally { srv.kill(); fs.rmSync(rhome, { recursive: true, force: true }); }
+  });
   await test('feedback endpoint appends to feedback.md (data home) and never reaches the tutor', async () => {
     const real = realFeedback();
     const jl = journal().length;

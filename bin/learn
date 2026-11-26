@@ -8,6 +8,20 @@ if (Number(process.versions.node.split('.')[0]) < 22) {
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+// --host <ip>, with any command (before a `--`): where the server listens, for this run and all it
+// starts (the server, its restarts, the tutor's commands): an env var, so it's read before the store
+// loads. config.json "host" makes it lasting. Not loopback: other machines need the access token
+// (app/access.js; docs/setup.md, "Running on a server").
+{
+  const a = process.argv, end = a.indexOf('--') < 0 ? a.length : a.indexOf('--');
+  const i = a.findIndex((x, k) => k >= 2 && k < end && (x === '--host' || x.startsWith('--host=')));
+  if (i >= 0) {
+    const v = a[i].includes('=') ? a[i].slice(7) : a[i + 1];
+    if (!v || !(require('net').isIP(v) || v === 'localhost')) { console.error(`learn: --host needs an IP address to listen on (0.0.0.0 for all, or one of this machine's), got ${v || 'nothing'}`); process.exit(1); }
+    process.env.LEARN_HOST = v;
+    a.splice(i, a[i].includes('=') ? 1 : 2);
+  }
+}
 const S = require('../app/store');
 const T = require('../app/session');
 const { serverUp, viaServer } = require('../app/client');
@@ -77,11 +91,13 @@ const firstLine = (text, n = 110) => {
 const commands = {};
 
 commands.help = () => {
-  console.log(`bin/learn [topic] [-c] [--no-open] [-- agent args]   web UI + idle tutor + browser; the only command
-                                         the learner needs (already running? it just opens the browser).
+  console.log(`bin/learn [topic] [-c] [--no-open] [--host ip] [-- agent args]   web UI + idle tutor + browser; the only
+                                         command the learner needs (already running? it just opens the browser).
                                          -c continues the last agent session instead of a fresh one
+                                         --host 0.0.0.0 (all addresses) or one IP: reachable from other machines, with an
+                                         access token (bin/learn status prints the link; docs/setup.md, "Running on a server")
 bin/learn doctor                         check this machine has what's needed (Node, git, the agent and its login, Chrome)
-bin/learn serve                          web server only (http://localhost:${S.PORT})
+bin/learn serve [--host ip]              web server only (http://localhost:${S.PORT})
 bin/learn demo [--empty|--real] [--port n] [--no-open] [--keep]   the UI on a throwaway copy of the demo data
                                          (--empty: the first-run screen; --real: your topics), with a fake tutor
 bin/learn test [--only text] [--headed] [--keep] [--real]   acceptance tests (fixture data, fake tutor,
@@ -195,11 +211,13 @@ commands.start = async () => {
   };
   if (T.launcherAlive() || !takeLock()) {
     if (!T.launcherAlive()) { console.log(`learn is starting already (pid ${S.readText(lock, '?').trim()}); give it a few seconds.`); return; }
-    const url = `http://localhost:${S.PORT}/${f._[0] ? '#/' + f._[0] : ''}`;
+    const url = `${require('../app/access').localUrl()}/${f._[0] ? '#/' + f._[0] : ''}`;
     const C = require('../app/client');
     const st = await C.api('GET', '/api/status').catch(() => null);
-    const open = !f['no-open'] && !(st?.clients > 0);
+    const ping = await C.serverInfo();
+    const open = !f['no-open'] && !(st?.clients > 0) && !ping?.open;
     console.log(`learn is already running (tutor launcher pid ${T.readSession().launcherPid}): ${url}${st?.clients > 0 && !f['no-open'] ? '  (already open in your browser)' : ''}`);
+    if (ping?.open) for (const l of require('../app/access').remoteLines(ping.host)) console.log('learn: ' + l);
     if (open) C.openBrowser(url);
     return;
   }
@@ -894,8 +912,10 @@ commands.recent = () => {
 };
 
 commands.status = async () => {
-  const up = await serverUp();
-  console.log(`server: ${up ? 'up at http://localhost:' + S.PORT : 'down'} · data: ${S.shown(S.ROOT)}${S.ROOT !== S.realish(S.ROOT) ? ` (→ ${S.realish(S.ROOT)})` : ''} · learner: ${S.shown(S.LEARNER)}`);
+  const info = await require('../app/client').serverInfo();
+  const up = !!info && !info.foreign;
+  console.log(`server: ${up ? `up at ${require('../app/access').localUrl(info.host || S.HOST)}${info.host && info.host !== '127.0.0.1' ? ` (listening on ${info.host})` : ''}` : 'down'} · data: ${S.shown(S.ROOT)}${S.ROOT !== S.realish(S.ROOT) ? ` (→ ${S.realish(S.ROOT)})` : ''} · learner: ${S.shown(S.LEARNER)}`);
+  if (up && info.open) for (const l of require('../app/access').remoteLines(info.host)) console.log(l);
   const inbox = fs.existsSync(S.INBOX) ? fs.readdirSync(S.INBOX).filter(f => f.endsWith('.json')) : [];
   console.log(`inbox: ${inbox.length} pending · feedback: ${S.openFeedback().length} open`);
   for (const slug of S.listTopics()) {
