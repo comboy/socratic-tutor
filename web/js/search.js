@@ -22,7 +22,7 @@ export function openSearch() {
     items = [];
     if (words.length) {
       const has = s => words.every(w => String(s).toLowerCase().includes(w));
-      for (const t of app.topic.glossary) if (has(t.term + ' ' + t.aliases.join(' ') + ' ' + plain(t.full || '', 200)) || has(t.short) || has(pageForTerm(t, app.topic.termPages)?.text || '')) items.push({ type: 'term', id: t.term, title: t.term, sub: plain(t.short, 120), score: has(t.term) ? 3 : 1 });
+      for (const t of app.topic.glossary) if (has(t.term + ' ' + t.aliases.join(' ') + ' ' + plain(t.full || '', 200)) || has(t.short) || has(pageForTerm(t, app.topic.termPages)?.text || '')) items.push({ type: 'term', id: t.term, title: t.term, sub: plain(t.short, 120), score: t.term.toLowerCase().startsWith(words.join(' ')) ? 3.5 : has(t.term) ? 3 : 1 });
       for (const s of flatSkills(app.topic.meta.skills)) if (has(s.name) || has(s.summary || '')) items.push({ type: 'skill', id: s.id, title: `${s.id} ${s.name}`, sub: `level ${fmtLevel(levelOf(s.node))}`, score: has(s.name) ? 2.5 : 1 });
       for (const pg of app.topic.pages || []) if (has(pg.title) || has(pg.text)) items.push({ type: 'page', id: pg.name, title: pg.title, sub: `wiki page · pages/${pg.name}.md`, score: has(pg.title) ? 2.8 : 1.2 });
       for (const n of app.topic.map?.nodes || []) if (has(n.label) || has(n.desc || '')) items.push({ type: 'node', id: n.id, title: n.label, sub: n.sub || '', score: 2 });

@@ -4,7 +4,7 @@ import { rich, legendEntries } from './rich.js';
 import { plain, md } from './md.js';
 import { icon } from './icons.js';
 import { app, go, learner, getJSON } from './app.js';
-import { termPanel, skillPanel, occurrences, group, sortedGlossary, sortToggle, termText, introOf, noteRow, NOTE_KIND, dependencies, openDock, termEntry } from './panels.js';
+import { termPanel, skillPanel, occurrences, group, sortedGlossary, filteredGlossary, sortToggle, introOf, noteRow, NOTE_KIND, dependencies, openDock, termEntry } from './panels.js';
 import { pageForTerm } from './terms.js';
 import * as learnView from './learn.js';
 import { messageNode } from './learn.js';
@@ -96,8 +96,7 @@ const P = {
     const q = h('input', { class: 'input', type: 'search', placeholder: `Filter ${app.topic.glossary.length} terms…` });
     const list = h('div');
     const draw = () => {
-      const f = q.value.trim().toLowerCase();
-      const items = sortedGlossary().filter(({ t }) => !f || termText(t).includes(f));
+      const items = filteredGlossary(q.value);
       let section = null;
       list.replaceChildren();
       for (const { t, section: S } of items) {
@@ -112,8 +111,10 @@ const P = {
             rich(t.short, 'gl-def hl-scope', { terms: false })),
           h('div', { class: 'gl-meta' }, t.size ? h('span', { class: 'chip', text: t.size }) : null, h('span', { class: 'muted small', text: n ? `${n} msg` : '' }))));
       }
+      if (!items.length) list.append(h('div', { class: 'empty-row', text: 'No matching terms.' }));
     };
     q.addEventListener('input', draw);
+    q.addEventListener('keydown', ev => { if (ev.key === 'Enter' && q.value.trim()) list.querySelector('.gl-name')?.click(); });
     el.append(sheet(group(['Glossary', h('span', { class: 'count', text: String(app.topic.glossary.length) }), sortToggle(draw), h('span', { class: 'spacer' }), h('span', { class: 'group-note', text: 'the coloured chip is your level on the skill the term belongs to' })]),
       h('div', { class: 'group-b' }, q), list));
     draw(); q.focus();

@@ -2,7 +2,7 @@
 // message, map node. The same panels render full-width in the wiki. Also: hover-card content.
 import { h, $, store, levelOf, skillById, descendants, lvChip, meter, fmtLevel, LEVEL_NAMES, fmtDate, shortId } from './util.js';
 import { rich, legendEntries } from './rich.js';
-import { termMatcher, pageForTerm } from './terms.js';
+import { termMatcher, pageForTerm, rankTerms, TERM_TIERS } from './terms.js';
 import { plain, md, previewSource } from './md.js';
 import { icon } from './icons.js';
 import { app, go, renderLeft } from './app.js';
@@ -52,12 +52,11 @@ function dockGlossary(body) {
   const list = h('div', { class: 'gl-list' });
   const draw = () => {
     dockFilter = q.value;
-    const f = q.value.trim().toLowerCase();
-    const items = sortedGlossary().filter(({ t }) => !f || termText(t).includes(f));
+    const items = filteredGlossary(q.value);
     list.replaceChildren();
     let section = null;
     for (const { t, section: S } of items) {
-      if (S !== section && !f) { section = S; list.append(h('div', { class: 'gl-letter', text: S })); }
+      if (S !== section) { section = S; list.append(h('div', { class: 'gl-letter', text: S })); }
       const sk = t.skill ? skillById(app.topic.meta, t.skill) : null;
       const lv = sk ? levelOf(sk.node) : 0;
       list.append(h('button', { class: 'gl-item', onclick: () => openDock('term', t.term) },
@@ -68,6 +67,7 @@ function dockGlossary(body) {
     if (!items.length) list.append(h('div', { class: 'empty-row', text: 'No matching terms.' }));
   };
   q.addEventListener('input', draw);
+  q.addEventListener('keydown', ev => { if (ev.key === 'Enter') list.querySelector('.gl-item')?.click(); });
   body.append(h('div', { class: 'dock-search' }, q, sortToggle(draw)), list);
   draw();
 }
@@ -77,7 +77,6 @@ function dockGlossary(body) {
 // introduced) or 'recent' (most recently mentioned first, sectioned by that day). Shared by the
 // dock and the wiki glossary; remembered in localStorage.
 const alpha = (a, b) => a.term.localeCompare(b.term, undefined, { sensitivity: 'base' });
-export const termText = t => [t.term, ...t.aliases, plain(t.full || '', 400), t.short].join(' ').toLowerCase();
 // When a term was introduced: the first tutor message mentioning it (or an alias), or the
 // earliest of its refs if that is earlier. No metadata needed. Returns { id, day, ts } or null.
 export function introOf(t) {
@@ -99,6 +98,16 @@ export function sortedGlossary(mode = store.get('glossarySort', 'alpha')) {
   return app.topic.glossary.map(t => ({ t, intro: when(t) }))
     .sort((a, b) => (!a.intro || !b.intro ? !a.intro - !b.intro : b.intro.ts.localeCompare(a.intro.ts)) || alpha(a.t, b.t))
     .map(x => ({ ...x, section: x.intro ? fmtDate(x.intro.day, { weekday: 'short', month: 'short', day: 'numeric' }) : 'Not in a message yet' }));
+}
+// The glossary as a filter box shows it: everything in the chosen order, or, while something is
+// typed, the matches ranked (terms.js rankTerms: name from its start, inside the name, the
+// description, similar spelling) with the tier as the section title. The ranking leads because
+// with A–Z leading, "RNA" listed "A site" (a description match) first; the chosen order still
+// decides inside a tier.
+export function filteredGlossary(query) {
+  const all = sortedGlossary();
+  if (!String(query || '').trim()) return all;
+  return rankTerms(all.map(x => x.t), query, t => plain(t.full || '', 400) + ' ' + plain(t.short || '', 2000)).map(({ t, tier }) => ({ t, tier, section: TERM_TIERS[tier] }));
 }
 const SORTS = [['alpha', 'A–Z', 'Alphabetical'], ['new', 'Newest', 'Newest first: by the first message that used the term'],
   ['recent', 'Recent', 'Most recently mentioned first: by the latest message that used the term']];

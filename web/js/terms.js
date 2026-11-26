@@ -89,3 +89,71 @@ export function pageForTerm(entry, pages) {
   for (const f of [entry.term, ...(entry.aliases || [])]) { const n = termSlug(f), p = pages.find(x => x.name === n); if (p) return p; }
   return null;
 }
+
+// ---------------------------------------------------------------- glossary filter
+// Ranks glossary entries for what the learner typed in a filter box. What they expect (their
+// words, 2026-11-26): the name from its beginning first, then inside the name, then the
+// description; a typo should still find the term. So four tiers, in this order:
+//   0 a name (the term or an alias) starts with the query        "RNA" -> RNA, RNA polymerase
+//   1 the query is inside a name or the expansion                "RNA" -> mRNA, tRNA
+//   2 every word of the query is somewhere in the description
+//   3 similar spelling of a name ("ribsome" -> ribosome), only when no name matched at all:
+//     next to real hits it would be noise
+// Inside a tier: the term's own name before an alias, a word's beginning before its middle, and
+// otherwise the order the entries came in (so the list's A–Z / Newest choice still holds).
+// -> [{ t, tier }]; with an empty query, every entry with tier -1. desc(t): the text of tier 2.
+export const TERM_TIERS = ['Name starts with it', 'In the name', 'In the description', 'Similar spelling'];
+const fold = s => String(s || '').normalize('NFKD').replace(/\p{M}+/gu, '').toLowerCase().replace(/\s+/g, ' ').trim();
+// edit distance with swaps of neighbours counted as one (optimal string alignment)
+export function editDistance(a, b) {
+  let prev2 = null, prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      const c = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + c);
+      if (prev2 && i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) cur[j] = Math.min(cur[j], prev2[j - 2] + 1);
+    }
+    prev2 = prev; prev = cur;
+  }
+  return prev[b.length];
+}
+// is q a misspelling of s, or of the beginning of s (the learner may still be typing)?
+function near(q, s, lim) {
+  for (let n = q.length - lim; n <= q.length + lim; n++) {
+    if (n < 2 || n > s.length) continue;
+    if (editDistance(q, s.slice(0, n)) <= lim) return true;
+  }
+  return false;
+}
+export function rankTerms(entries, query, desc = t => t.short || '') {
+  const q = fold(query);
+  if (!q) return (entries || []).map(t => ({ t, tier: -1 }));
+  const words = q.split(' ');
+  const wordStart = (s, i) => i === 0 || !/[\p{L}\p{N}]/u.test(s[i - 1]);
+  const scored = [];
+  (entries || []).forEach((t, order) => {
+    const forms = [t.term, ...(t.aliases || [])].map(fold).filter(Boolean);
+    let tier = 9, sub = 9;
+    const take = (T, S) => { if (T < tier || (T === tier && S < sub)) { tier = T; sub = S; } };
+    forms.forEach((f, i) => {
+      const at = f.indexOf(q), alias = i ? 1 : 0;
+      if (f === q) take(0, alias);
+      else if (at === 0) take(0, 2 + alias);
+      else if (at > 0) take(1, (wordStart(f, at) ? 0 : 2) + alias);
+    });
+    const full = fold(t.full).replace(/[*_`]/g, '');
+    if (tier > 1 && (full.includes(q) || (words.length > 1 && words.every(w => forms.some(f => f.includes(w)) || full.includes(w))))) take(1, 4);
+    if (tier > 2) { const d = fold(desc(t)) + ' ' + full + ' ' + forms.join(' '); if (words.every(w => d.includes(w))) take(2, 0); }
+    if (tier < 9) scored.push({ t, tier, sub, order });
+  });
+  if (!scored.some(x => x.tier < 2) && q.length >= 4) {
+    const lim = q.length >= 8 ? 2 : 1, have = new Set(scored.map(x => x.t));
+    (entries || []).forEach((t, order) => {
+      if (have.has(t)) return;
+      const forms = [t.term, ...(t.aliases || [])].map(fold).filter(Boolean);
+      if (forms.some(f => near(q, f, lim) || f.split(/[^\p{L}\p{N}]+/u).some(w => near(q, w, lim)))) scored.push({ t, tier: 3, sub: 0, order });
+    });
+  }
+  return scored.sort((a, b) => a.tier - b.tier || a.sub - b.sub || a.order - b.order).map(({ t, tier }) => ({ t, tier }));
+}
