@@ -107,13 +107,15 @@ function makeCtx(box) {
 // Every occurrence of a glossary term (or alias, plural, other capitalisation: terms.js) gets a
 // hover card. The first one in a rendered block is underlined clearly, repeats more faintly
 // (.term-again), so a term-heavy message doesn't turn into a wall of underlines.
-function buildTermIndex(entries) { cfg.matcher = termMatcher(entries); }
+function buildTermIndex(entries) { cfg.matcher = termMatcher(entries); cfg.looseMatcher = termMatcher(entries, { loose: true }); }
 // Never inside code, formulas, links/buttons, highlight spans, viz drawings (an HTML span inside
 // SVG <text> doesn't render, and chart labels aren't prose; captions and step text are rendered
 // with ctx.md and get their own links), page titles, callout labels and <summary> (clickable).
 const SKIP = 'code, pre, a, button, .katex, .term, .tipref, .lk, h1, .viz, .mx, .tok, .callout-label, summary, .no-terms, input, textarea, svg';
 export function linkTerms(root) {
   if (!cfg.matcher) return;
+  // in the learner's own messages capitals don't count (terms.js, "loose")
+  const matcher = (root.closest?.('.msg-user') && cfg.looseMatcher) || cfg.matcher;
   const seen = new Set();
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode: n => (n.nodeValue.trim() && !n.parentElement.closest(SKIP) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
@@ -121,7 +123,7 @@ export function linkTerms(root) {
   const nodes = []; while (walker.nextNode()) nodes.push(walker.currentNode);
   for (const node of nodes) {
     const text = node.nodeValue;
-    const hits = cfg.matcher.find(text);
+    const hits = matcher.find(text);
     if (!hits.length) continue;
     const frag = document.createDocumentFragment();
     let last = 0;

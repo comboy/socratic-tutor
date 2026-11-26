@@ -36,11 +36,26 @@ function caseOK(form, text) {
   return true;
 }
 
-const cache = new WeakMap();
+// The learner's own messages are typed fast, mostly in lower case ("the golgi", "dna polymerase"),
+// and the terms in them should still open their cards. So `loose` drops the capitals rule where
+// that is safe, measured on real messages (2026-11-26): names with only word-initial capitals
+// ("Golgi apparatus") and plain acronyms of 3+ letters ("DNA", and only without a plural ending:
+// "TIM" + "es" is the word "times"). Not mixed-case names ("ZeRO" is not "zero"), nor forms
+// beginning with a single letter ("A site" is not "a site").
+function looseOK(form, plural) {
+  const words = spaced(form).split(' ');
+  if (words[0].length < 2 || spaced(form).length < 3) return false;
+  const acronym = w => /^\p{Lu}{3,}$/u.test(w);
+  if (plural && acronym(words.at(-1))) return false;
+  return words.every(w => acronym(w) || !/[\p{Lu}_]/u.test(w.slice(1)));
+}
+
+const cache = new WeakMap(), looseCache = new WeakMap();
 // -> { find(text) -> [{ index, end, text, entry, form }], lookup(phrase) -> entry | null }
 // entries: [{ term, aliases }]. Cached per array, so pass the same glossary array to reuse it.
-export function termMatcher(entries) {
-  if (entries && cache.has(entries)) return cache.get(entries);
+export function termMatcher(entries, { loose = false } = {}) {
+  const cache_ = loose ? looseCache : cache;
+  if (entries && cache_.has(entries)) return cache_.get(entries);
   const byKey = new Map();
   const add = (form, entry) => { const k = key(form); if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push({ form, entry }); };
   const forms = [];
@@ -52,14 +67,14 @@ export function termMatcher(entries) {
   for (const [form, entry] of forms) for (const v of variants(form)) if (!byKey.has(key(v))) add(v, entry);
   const keys = [...byKey.keys()].sort((a, b) => b.length - a.length);
   const re = keys.length ? new RegExp(`(?<![${W}\\-])(${keys.map(k => k.split(' ').map(reEsc).join(SEP)).join('|')})(?:e?s)?(?![${W}])`, 'giu') : null;
-  const pick = text => (byKey.get(key(text)) || []).find(f => caseOK(f.form, text)) || null;
+  const pick = (text, plural) => { const fs = byKey.get(key(text)) || []; return fs.find(f => caseOK(f.form, text)) || (loose && fs.find(f => looseOK(f.form, plural))) || null; };
   function find(text) {
     const out = [];
     if (!re || !text) return out;
     re.lastIndex = 0;
     let m;
     while ((m = re.exec(text))) {
-      const f = pick(m[1]);
+      const f = pick(m[1], m[0].length > m[1].length);
       // a form with capitals didn't match this text's case: try shorter forms further on
       if (!f) { re.lastIndex = m.index + 1; continue; }
       out.push({ index: m.index, end: m.index + m[0].length, text: m[0], entry: f.entry, form: f.form });
@@ -73,7 +88,7 @@ export function termMatcher(entries) {
     return hits.length === 1 && hits[0].index === 0 && hits[0].end === t.length ? hits[0].entry : null;
   }
   const api = { find, lookup };
-  if (entries) cache.set(entries, api);
+  if (entries) cache_.set(entries, api);
   return api;
 }
 
