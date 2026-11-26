@@ -1420,6 +1420,20 @@ async function main() {
       const pend = learn('pending', 'cells');
       assert(pend.includes(qa.id) && !pend.includes(qb.id) && /thread b[^\n]*──\n\(no pending question\)/.test(pend), 'b\'s question closed, a\'s open again: ' + pend);
     } finally { learn('track', 'cells', 'close'); }
+    // the learner's own messages: terms typed in lower case still open their cards
+    const low = say({ kind: 'ask', text: 'so dna polymerase works inside the nucleus' });
+    await page.nav(`${BASE}/#/cells/learn`, 1200);
+    const terms = await page.waitFor(`(() => { const t = [...document.querySelectorAll('[id="m-${low.id}"] .term')].map(x => x.dataset.term); return t.length ? t : null; })()`, { timeout: 6000 });
+    assert(terms.includes('DNA polymerase') && terms.includes('nucleus'), 'lower-case term in the learner\'s message: ' + terms);
+    assert(run('Noted.').status === 0, 'reply, so no unanswered message is left behind in this topic');
+  });
+  await test('terms in the learner\'s messages: capitals don\'t count where that is safe (names, plain acronyms), and do where a word would match', async () => {
+    const { termMatcher } = await import(path.join(CODE, 'web/js/terms.js'));
+    const G = ['DNA', 'Golgi apparatus', 'TIM', 'ZeRO', 'A site', 'W_K'].map(term => ({ term, aliases: term === 'Golgi apparatus' ? ['Golgi'] : [] }));
+    const found = (text, o) => termMatcher(G, o).find(text).map(h => h.text).join();
+    assert(found('the golgi and dna, DNAs too') === 'DNAs', 'strict (the tutor\'s text): ' + found('the golgi and dna, DNAs too'));
+    assert(found('the golgi and dna, DNAs too', { loose: true }) === 'golgi,dna,DNAs', 'loose: ' + found('the golgi and dna, DNAs too', { loose: true }));
+    assert(found('three times zero on a site with w_k', { loose: true }) === '', 'words that only look like terms: ' + found('three times zero on a site with w_k', { loose: true }));
   });
   await test('post refuses links to grade entries and unknown skills; --expect stores the rubric', async () => {
     const grade = journal().find(e => e.kind === 'grade');
@@ -1543,6 +1557,18 @@ async function main() {
     // switching topic while staying on the learn view redraws the thread
     await page.eval(`location.hash = '#/demo/learn'`);
     await page.waitFor(`!document.querySelector('.msg.kind-start') && document.querySelectorAll('.thread .msg').length > 5`, { timeout: 3000 });
+  });
+  await test('messages waiting in two topics at once: each is answered, the sessions don\'t hand off to each other forever', async () => {
+    const before = sessions().length;
+    const jt = t => fs.readdirSync(path.join(HOME, 'topics', t, 'journal')).flatMap(f => fs.readFileSync(path.join(HOME, 'topics', t, 'journal', f), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)));
+    await api('/api/send', { topic: 'demo', kind: 'ask', text: 'two topics, first' });
+    await api('/api/send', { topic: 'cells', kind: 'ask', text: 'two topics, second' });
+    await until(() => jt('demo').some(e => e.role === 'tutor' && /Echo \(ask\): two topics, first/.test(e.text || '')) && jt('cells').some(e => e.role === 'tutor' && /Echo \(ask\): two topics, second/.test(e.text || '')), 'both topics answered', 40000);
+    await sleep(2500);   // a ping-pong would keep starting sessions
+    const started = sessions().length - before;
+    await sleep(2500);
+    assert(sessions().length - before === started && started <= 3, `sessions keep starting: ${started} → ${sessions().length - before}`);
+    await until(async () => (await api('/api/status')).phase === 'listening', 'tutor listening again', 15000);
   });
   await test('light theme', async () => {
     await page.eval(`localStorage['learn:theme'] = '"light"'`);

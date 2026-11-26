@@ -27,7 +27,8 @@ you need when you need it.
    on this): levels, notes, glossary, summary, log (commands below). Hand anything bigger than a
    few commands to a subagent, so you're free when the next message comes.
 5. When `wait` output ends with a `── HANDOFF ──` or `── TOPIC SWITCH ──` block, follow it
-   instead of re-arming the listener. An `── INSTRUCTIONS CHANGED ──` block means the learner
+   instead of re-arming the listener. (`── TOPIC SWITCH AFTER REPLY ──`: messages wait in another
+   topic as well as yours; answer yours, then switch as it says.) An `── INSTRUCTIONS CHANGED ──` block means the learner
    just edited their instructions to every tutor (the toolbar's "How to teach me"; the "In my own
    words" section of the profile): they override what you've derived, so follow them from this reply on.
 

@@ -112,6 +112,9 @@ async function main() {
       post(`Echo (${m.kind}): ${m.text.slice(0, 300)}\n\n:::question\nFake follow-up question after ${m.id}?\n:::`, ['--topic', m.topic, ...grade, ...(tr ? ['--track', tr] : [])]);
       log({ event: 'replied', id: m.id, head: m.extra });
     }
+    // messages waited in another topic too: this topic's are answered (above), now switch
+    const then = out.match(/── TOPIC SWITCH AFTER REPLY ──.*?handoff --topic (\S+)/s);
+    if (then) { log({ event: 'topic-switch-after-reply', to: then[1] }); run(['handoff', '--topic', then[1], '--reason', 'topic switch']); await hang(); }
     if (handoff) { log({ event: 'handoff' }); run(['handoff', '--reason', 'fake tutor handoff']); await hang(); }
   }
 }

@@ -379,8 +379,19 @@ commands.wait = async () => {
   }
   // tell the server the messages were picked up (UI shows "thinking")
   await viaServer('POST', '/api/picked', { ids: msgs.map(m => `${m.topic}/${m.id}`) }, () => null).catch(() => {});
+  // which topic is this session for? A message for another topic means a topic switch.
+  const sess = T.readSession();
+  const mineSess = sess && (!mine || sess.id === mine) ? sess : null;
+  // Messages can wait in two topics at once (the learner wrote here, then in another topic before
+  // the reply; or a handoff requeued an unanswered message of another topic). This session answers
+  // its own topic's first and switches after: switching at once, with its own still unanswered,
+  // made the next session switch straight back, and so on without end (2026-11-26).
+  const elsewhere = mineSess && mineSess.topic ? msgs.filter(m => m.topic && m.topic !== mineSess.topic) : [];
+  const own = msgs.filter(m => !elsewhere.includes(m));
+  const other = own.length ? null : elsewhere.at(-1);
+  const after = own.length ? elsewhere.at(-1) : null;
   let handoff = false;
-  for (const m of msgs) {
+  for (const m of own) {
     const bits = [`id=${m.id}`, `topic=${m.topic}`];
     if (m.replyTo) bits.push(`replying-to=${m.replyTo}`);
     if (m.quote) bits.push(`quote=${m.quote}`);
@@ -393,10 +404,6 @@ commands.wait = async () => {
   }
   const instr = T.instructionsChanged(mine);
   if (instr != null) console.log(`── INSTRUCTIONS CHANGED ── The learner just edited their instructions to every tutor (the "In my own words" section of the profile). They override everything derived; follow them from this reply on:\n${instr ? instr.replace(/^/gm, '  ') : '  (now empty)'}\n`);
-  // which topic is this session for? A message for another topic means a topic switch.
-  const sess = T.readSession();
-  const mineSess = sess && (!mine || sess.id === mine) ? sess : null;
-  const other = msgs.find(m => m.topic && mineSess && mineSess.topic && m.topic !== mineSess.topic);
   if (mineSess && !mineSess.topic && msgs[0]?.topic) {
     T.writeSession({ ...mineSess, topic: msgs[0].topic });
     const at = new Date(Date.parse(msgs[0].ts || new Date().toISOString()) - 1).toISOString();
@@ -411,7 +418,10 @@ commands.wait = async () => {
   }
   const ctx = mine && T.contextTokens(mine);
   const turns = !ctx && mineSess ? S.readJournal(mineSess.topic || msgs[0].topic).filter(e => e.role === 'tutor' && e.kind === 'message' && e.ts > mineSess.startedAt).length : 0;
-  if (handoff) console.log(HANDOFF_STEPS('The learner asked for a fresh tutor.'));
+  if (after) console.log(`── TOPIC SWITCH AFTER REPLY ── The learner also wrote in topic "${after.topic}"${after.kind === 'start' ? ' (a NEW topic)' : ''} (${elsewhere.map(m => m.id).join(', ')}; not shown here). Reply to the above first. Then, instead of re-arming wait:
+  1. Update "Resume here" in ${mineSess.topic}'s progress.md, and \`bin/learn commit "…"\`.
+  2. Run \`bin/learn handoff --topic ${after.topic} --reason "topic switch"\`. A fresh tutor picks up ${after.topic} with those messages queued for it.`);
+  else if (handoff) console.log(HANDOFF_STEPS('The learner asked for a fresh tutor.'));
   else if (ctx && ctx.tokens >= T.HANDOFF_TOKENS)
     console.log(HANDOFF_STEPS(`Your context is at ~${Math.round(ctx.tokens / 1000)}k tokens (handoff threshold ${Math.round(T.HANDOFF_TOKENS / 1000)}k). Reply to the message above first.`));
   else if (!ctx && turns >= T.HANDOFF_MESSAGES)
