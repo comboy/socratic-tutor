@@ -2,7 +2,7 @@
 // Always appended to feedback.md in the data home, for the builder job ("I'm away"). With "Tell
 // the tutor now" ticked it is also sent to the tutor as META (journaled as app talk, answered in the
 // conversation, folded): POST /api/send kind "meta", which adds the feedback.md item itself.
-import { h, $, store } from './util.js';
+import { h, $, store, MOD } from './util.js';
 import { icon } from './icons.js';
 import { app, send } from './app.js';
 
@@ -21,7 +21,7 @@ export function toggleFeedback() {
   const ta = h('textarea', { class: 'input fb-text', id: 'feedbackBox', placeholder: 'Something awkward, missing or broken in the app, or in how the sessions run…' });
   ta.value = store.get('draft:feedback', '');
   const note = h('div', { class: 'fb-note' });
-  const save = h('button', { class: 'btn btn-primary btn-small', title: 'Save  ⌘↵' });
+  const save = h('button', { class: 'btn btn-primary btn-small', title: `Save  ${MOD}↵` });
   const live = h('input', { type: 'checkbox', id: 'feedbackLive' });
   live.checked = !!app.topic && store.get('feedbackLive', false);
   live.disabled = !app.topic;
@@ -69,7 +69,7 @@ export function toggleFeedback() {
       h('label', { class: 'fb-live', title: app.topic ? 'The tutor reads it now and replies in the conversation (dimmed and folded, kept out of the lesson record)' : 'Open a topic first' },
         live, h('span', { text: 'Tell the tutor now' }), h('span', { class: 'muted', text: '(it replies in the conversation; otherwise only saved for later)' })),
       note),
-    h('div', { class: 'pop-f' }, h('span', { class: 'pop-hint' }, h('kbd', { text: '⌘↵' }), ' saves'), h('span', { class: 'spacer' }), save));
+    h('div', { class: 'pop-f' }, h('span', { class: 'pop-hint' }, h('kbd', { text: MOD + '↵' }), ' saves'), h('span', { class: 'spacer' }), save));
   document.body.append(pop);
   const r = $('#feedbackBtn').getBoundingClientRect();
   pop.style.top = r.bottom + 6 + 'px';

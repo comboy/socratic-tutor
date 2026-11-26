@@ -1,7 +1,7 @@
 // Learn view: the conversation thread + the input box (answer / ask), which can hide in a corner.
 // With two threads open (an experiment against reply latency, journal.js), a bar on top switches
 // between them and sending in one takes the learner to the other when its reply is waiting.
-import { h, $, $$, store, skillById, levelOf, lvClass, fmtDate, fmtTime, shortId } from './util.js';
+import { MOD, h, $, $$, store, skillById, levelOf, lvClass, fmtDate, fmtTime, shortId } from './util.js';
 import { renderInto, rich, linkTerms } from './rich.js';
 import { questionText, plain } from './md.js';
 import { icon } from './icons.js';
@@ -616,8 +616,8 @@ function drawComposer(keepFocus) {
           title: 'Experiment: the tutor opens a second, closely related thread. When you answer in one, you are taken to the other, where its reply is usually ready, so you don’t wait while the tutor writes.' }, icon('threads'), h('span', { class: 'lbl', text: 'Two threads' }))),
       busy ? h('button', { class: 'btn send-btn', disabled: true }, h('span', { class: 'dots' }, h('i'), h('i'), h('i')), 'Sending…')
       : mode === 'ask'
-        ? h('button', { class: 'btn btn-ask send-btn', onclick: sendIt, title: 'Send the side question  ⌘↵' }, 'Ask ', h('kbd', { text: '⌘↵' }))
-        : h('button', { class: 'btn btn-primary send-btn', onclick: sendIt, title: pend ? 'Closes the question; the tutor grades it  ⌘↵' : 'Send  ⌘↵' }, pend ? 'Send answer ' : 'Send ', h('kbd', { text: '⌘↵' }))));
+        ? h('button', { class: 'btn btn-ask send-btn', onclick: sendIt, title: `Send the side question  ${MOD}↵` }, 'Ask ', h('kbd', { text: MOD + '↵' }))
+        : h('button', { class: 'btn btn-primary send-btn', onclick: sendIt, title: (pend ? 'Closes the question; the tutor grades it  ' : 'Send  ') + MOD + '↵' }, pend ? 'Send answer ' : 'Send ', h('kbd', { text: MOD + '↵' }))));
   // the grip stays the same element: a redraw (a reply arriving) during a drag must not end it
   const g = composer.querySelector(':scope > .composer-grip') || grip();
   for (const c of [...composer.children]) if (c !== g) c.remove();

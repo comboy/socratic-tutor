@@ -7,7 +7,7 @@
 //    builder job (POST /api/feedback). "Tell the tutor now" also sends it to the tutor as META
 //    (POST /api/send kind "meta", which adds the feedback.md item itself). Below: what's still open.
 // Drafts live in localStorage, so a reload, a redraw or a wrong click never loses text.
-import { h, store } from './util.js';
+import { h, store, MOD } from './util.js';
 import { icon } from './icons.js';
 import { app, go, learner, postJSON, send } from './app.js';
 import { rich } from './rich.js';
@@ -38,12 +38,12 @@ async function instructionsTab(body) {
   const ta = h('textarea', { class: 'input tell-box', id: 'instrBox', spellcheck: 'true',
     placeholder: 'How should the tutors work with you? Tone, pace, how direct the feedback, what to avoid…' });
   const note = h('div', { class: 'tell-note', role: 'status' });
-  const save = h('button', { class: 'btn btn-primary', id: 'instrSave', title: 'Save  ⌘↵' }, 'Save');
+  const save = h('button', { class: 'btn btn-primary', id: 'instrSave', title: `Save  ${MOD}↵` }, 'Save');
   const revert = h('button', { class: 'btn', id: 'instrRevert', title: 'Back to the saved version' }, 'Revert');
   body.append(page(
     h('p', { class: 'tell-desc' }, 'How every tutor should work with you. They read this first, and it overrides whatever they work out about you themselves. A tutor that is running now gets the new version with your next message.'),
     ta,
-    h('div', { class: 'tell-actions' }, save, revert, h('span', { class: 'muted small' }, h('kbd', { text: '⌘↵' }), ' saves · Markdown'), h('span', { class: 'spacer' }),
+    h('div', { class: 'tell-actions' }, save, revert, h('span', { class: 'muted small' }, h('kbd', { text: MOD + '↵' }), ' saves · Markdown'), h('span', { class: 'spacer' }),
       h('span', { class: 'muted small', title: 'Section "In my own words". The tutors never edit it. Committed to your data repo on every save.' }, 'Kept in your data folder: ', h('code', { text: 'learner/profile.md' }))),
     note));
   let saved = '';
@@ -77,7 +77,7 @@ function appTab(body) {
     placeholder: 'Something awkward, missing or broken in the app, or in how the sessions run…' });
   ta.value = store.get('draft:feedback', '');
   const note = h('div', { class: 'tell-note', role: 'status' });
-  const save = h('button', { class: 'btn btn-primary', id: 'feedbackSave', title: 'Save  ⌘↵' });
+  const save = h('button', { class: 'btn btn-primary', id: 'feedbackSave', title: `Save  ${MOD}↵` });
   const live = h('input', { type: 'checkbox', id: 'feedbackLive' });
   live.checked = store.get('feedbackLive', false);
   const label = () => { save.textContent = live.checked ? 'Send to the tutor' : 'Save for the builder'; };
@@ -112,7 +112,7 @@ function appTab(body) {
     h('div', { class: 'tell-actions' }, save,
       h('label', { class: 'fb-live', title: 'The tutor reads it now and replies in the conversation (dimmed and folded, kept out of the lesson record)' },
         live, h('span', { text: 'Tell the tutor now' }), h('span', { class: 'muted', text: '(it replies in the conversation)' })),
-      h('span', { class: 'spacer' }), h('span', { class: 'muted small' }, h('kbd', { text: '⌘↵' }), ' saves')),
+      h('span', { class: 'spacer' }), h('span', { class: 'muted small' }, h('kbd', { text: MOD + '↵' }), ' saves')),
     note,
     openList));
   fillOpen(openList);

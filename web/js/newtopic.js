@@ -1,7 +1,7 @@
 // New topic page (#/new, and the first screen when there are no topics): the learner says what they
 // want to learn; the server scaffolds the topic and queues a START message; the tutor maps the topic
 // and starts a short diagnostic (docs/bootstrap.md).
-import { h, $, store } from './util.js';
+import { h, $, store, MOD } from './util.js';
 import { icon } from './icons.js';
 import { app, refreshTopics } from './app.js';
 
@@ -38,7 +38,7 @@ export function renderNewTopic(center, goal0 = '') {
     field('What do you want to learn?', 'in your own words, as broad or as narrow as you like', goal),
     field('What for, and how deep?', 'optional', why),
     field('What do you already know about it?', 'optional; the tutor also knows your other topics', know),
-    h('div', { class: 'nt-actions' }, btn, h('kbd', { text: '⌘↵' }), h('span', { class: 'spacer' }),
+    h('div', { class: 'nt-actions' }, btn, h('kbd', { text: MOD + '↵' }), h('span', { class: 'spacer' }),
       !first ? h('button', { class: 'btn', type: 'button', onclick: () => history.back() }, 'Cancel') : null),
     note);
   const steps = h('ol', { class: 'nt-steps' },

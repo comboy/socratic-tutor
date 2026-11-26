@@ -4,6 +4,8 @@ import { h } from '../viz/core.js';
 import { metaIds, pendingQuestion, tracksState, applyCorrections, openQueue, trackOf } from './journal.js';
 
 export const $ = (s, r = document) => r.querySelector(s);
+// the key that sends and saves with Enter, as this keyboard calls it (both work everywhere)
+export const MOD = /Mac|iPhone|iPad/.test(navigator.platform || '') ? '⌘' : 'Ctrl+';
 export const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 export const store = {
   get(k, d) { try { const v = localStorage.getItem('learn:' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
