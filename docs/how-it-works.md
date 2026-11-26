@@ -56,7 +56,10 @@ on your own Claude Code subscription or API usage. To keep the agents on a short
 to trust the folder in the terminal.
 
 The web server listens on 127.0.0.1 only and answers only pages it served itself (requests from
-other sites are refused), since what you type there reaches agents that run commands.
+other sites are refused), since what you type there reaches agents that run commands. On a server
+(`bin/learn --host <ip>`, see `docs/setup.md`, "Running on a server"), requests from other machines
+must also carry an access token (a cookie set by the link `bin/learn status` prints); requests from
+the machine itself, an SSH tunnel included, work as before. `app/access.js` has the details.
 
 ### Long sessions
 

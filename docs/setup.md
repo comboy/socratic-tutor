@@ -35,6 +35,28 @@ before it starts. Start there.
   `docs/formats.md`. Check that it can run shell commands non-interactively; the tutor's whole loop
   is shell commands (`docs/protocol.md`).
 
+## Running on a server
+
+By default the server listens on 127.0.0.1, so only that machine can open it. On a server you
+reach from your laptop there are three ways in; the first is the one to use unless there's a
+reason not to:
+
+1. **SSH tunnel** (nothing to configure): run `bin/learn` on the server as usual, and on the laptop
+   `ssh -L 4747:localhost:4747 <server>`, then open http://localhost:4747. The tunnel arrives on the
+   server's loopback, so it works like a local browser, and SSH encrypts it.
+2. **A VPN address** (Tailscale, WireGuard): `bin/learn --host 100.x.y.z` (the server's VPN IP), or
+   `"host": "100.x.y.z"` in `data/config.json` to keep it. Only machines on the VPN can reach it.
+3. **All addresses** (`--host 0.0.0.0`): only on a network you trust, since it's plain HTTP.
+
+With 2 and 3 other machines need the access token: the server creates one in
+`data/.access-token` (gitignored, mode 600), and `bin/learn status` (and the startup log)
+prints the link to open, `http://<address>:4747/?token=…`. Opening it once sets a cookie in that
+browser. Without the token the server answers 401. Why: what's typed in the browser reaches agents
+that run shell commands, so anyone who could reach an open port could get commands run. To change
+the token, delete the file; the next request makes a new one (and old links stop working). The
+launcher doesn't open a browser then (it prints the link). A reverse proxy on the same machine looks
+local to the server (its requests come from 127.0.0.1), so it must do its own authentication.
+
 ## Before you hand back
 
 Run `bin/learn doctor` until it's all ✓, and if you like, `bin/learn demo --empty --no-open` to see

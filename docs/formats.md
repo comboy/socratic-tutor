@@ -317,6 +317,10 @@ A checklist: `- [ ] 2026-11-21 (learner, llms · learn): text`. The builder job 
   shared with other tools, e.g. a learning repo with `learner/` at its top and this app's data in
   `tutor/`. The app links `<data home>/learner` to it (gitignored).
 
+- `host`: the address the server listens on. Default `127.0.0.1` (this machine only); an IP such
+  as a VPN address or `0.0.0.0` makes it reachable from other machines, with an access token
+  (`docs/setup.md`, "Running on a server"). `bin/learn --host <ip>` and `LEARN_HOST` override it.
+
 - `agent`: `"claude"` (default) or `{ "cmd": "codex", "interactive": ["{prompt}"], "headless":
   ["exec", "{prompt}"] }` for any other CLI agent (see `app/agent.js`).
 - `handoffTokens`: context size at which the tutor hands over to a fresh session (Claude only).
