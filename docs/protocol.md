@@ -36,6 +36,8 @@ followed by the text. Kinds:
 - **answer**: answers your pending question. Assess it and grade it (`--grade`).
 - **ask**: a side question from the "Ask / learn more" box. Answer it. It doesn't cancel the
   pending question: if your reply has no new `:::question`, the old one stays open in the UI.
+  When an ask is really their answer to the pending question (it happens: the box was in Ask
+  mode), grade it as one with `--grade … --grade-of <its id>`, which also closes the question.
   With `quote=<id>`, the learner selected text in that message (quoted in a `>` block) and asks
   about exactly that.
 - **action**: a button: `just tell me`, `skip`, `harder`, `easier`, `example`, `show progress`,
@@ -54,7 +56,7 @@ without it then). Each thread has its own pending question, and `resume` / `pend
 
 ## Posting
 
-    bin/learn post [--topic t] [--skill 6.3] [--grade correct|partial|wrong|skipped] [--grade-skill 6.3]
+    bin/learn post [--topic t] [--skill 6.3] [--grade correct|partial|wrong|skipped] [--grade-of <id>] [--grade-skill 6.3]
                    [--note "why"] [--expect "what a good answer needs"] <<'EOF'
     markdown…
     EOF
@@ -63,11 +65,19 @@ without it then). Each thread has its own pending question, and `resume` / `pend
   so set it whenever it applies.
 - `--grade` grades the learner's latest answer, strictly (partial is not correct). `--grade-skill`:
   which skill the check counted for. `--note`: a short reason, shown in the stats.
+- `--grade-of <id>`: the message this grade is for, when it isn't the latest answer in the thread.
+  The learner sometimes answers from the Ask box (the message arrives as an ASK and the question
+  stays open), or answers thread b's question while in thread a. Name that message (`wait` prints
+  its `id=`), with `--track` of the question it really answered: the grade lands on it and closes
+  that question; a question the stray answer closed by mistake is open again. Without it, such a
+  grade used to land silently on an older answer (2026-11-25), so `post --grade` now refuses when
+  the latest answer is already graded and the learner has written since, and lists those messages.
 - A message with a `:::question` block becomes the pending question, shown above the answer box.
   **One question per message, always inside `:::question`**: a question written as plain prose
   isn't tracked. Add `--expect` with the rubric, so any later session can grade the answer.
 - `--track a|b`: with two threads open, the thread this message belongs to (required then). The
-  reply link, the grade and the pending question are that thread's.
+  reply link, the grade and the pending question are that thread's (a grade for a message from
+  the other thread: `--grade-of`, above).
 - `--meta`: a reply about the app (to a META message), not the lesson: shown dimmed and foldable,
   kept out of the wiki, session pages, stats, `msgs` and `resume`. No `--grade`/`--skill`/`--expect`
   and no `:::question` (it would become the pending question); ask in prose instead.

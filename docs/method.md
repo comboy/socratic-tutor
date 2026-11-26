@@ -172,7 +172,8 @@ What one evening showed (2026-11-25, `bin/learn latency`): before the switch the
 median 28 s per reply; with two threads all 18 replies were ready before they switched back. b as a
 review thread found recall gaps quickly (things taught once, days earlier, mostly failed). Costs:
 answers crossing threads (an answer for b sent in a, an answer sent from the ask box), so grades can
-land on the wrong message; an empty thread read as a bug. The learner wants it kept, and suggested b
+land on the wrong message (since then: `post --grade-of <id>`, `docs/protocol.md`); an empty thread
+read as a bug (since then the UI says "nothing waiting"). The learner wants it kept, and suggested b
 hold several review questions prepared ahead.
 Avoid making b depend on the latest step of a: they will read b while you write a, so b shouldn't
 need a's next message. Watch for signs it's costing more than it saves (they ask "where were we",

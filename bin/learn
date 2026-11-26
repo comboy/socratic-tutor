@@ -109,7 +109,7 @@ bin/learn away [jobs…] | --list | --snapshot   learner is away: a planner pick
 Tutor commands (docs/protocol.md). [t] = optional topic, defaults to the current one:
 bin/learn resume [t]                     everything needed to pick up a topic, in one compact print
 bin/learn wait                           block until the learner sends something
-bin/learn post [--topic t] [--skill ids] [--grade v] [--grade-skill id] [--note s] [--expect rubric] [--force]  < markdown
+bin/learn post [--topic t] [--skill ids] [--grade v] [--grade-of msg-id] [--grade-skill id] [--note s] [--expect rubric] [--force]  < markdown
 bin/learn post --meta [--topic t]  < markdown   a reply about the app (to a META message), kept out of the lesson
 bin/learn post --track a|b …             with two threads open: the thread this message belongs to (required then)
 bin/learn track [t] [open "title a" "title b" | close]   two threads (experiment against latency; docs/method.md)
@@ -446,7 +446,8 @@ Then consider \`bin/learn handoff\` after your next reply: a fresh session is cl
 };
 
 commands.post = async () => {
-  const f = flags(argv, { topic: 'string', skill: 'string', grade: 'string', 'grade-skill': 'string', note: 'string', file: 'string', expect: 'string', force: 'bool', meta: 'bool', track: 'string' });
+  const f = flags(argv, { topic: 'string', skill: 'string', grade: 'string', 'grade-skill': 'string', note: 'string', file: 'string', expect: 'string', force: 'bool', meta: 'bool', track: 'string', 'grade-of': 'string' });
+  if (f['grade-of'] && !f.grade) die('--grade-of names the message that --grade grades; pass --grade too');
   if (f.meta && (f.grade || f.skill || f['grade-skill'] || f.expect)) die('--meta is a reply about the app, not the lesson: no --grade, --skill or --expect');
   const text = (f.file ? fs.readFileSync(f.file, 'utf8') : readStdin()).replace(/\s+$/, '');
   if (f.meta && !text) die('nothing to post (markdown on stdin)');
@@ -489,9 +490,36 @@ commands.post = async () => {
   // a lesson message replies to the learner's last lesson message; a --meta one to their last message
   const lastUser = S.lastEntry(e => e.topic === topic && e.role === 'user' && !e.imported && (f.meta || e.kind !== 'meta') && (f.meta || inTrack(e)), [topic]);
   if (f.grade) {
-    const target = S.lastEntry(e => e.topic === topic && e.role === 'user' && e.kind === 'answer' && inTrack(e), [topic]);
-    if (!target) die('no answer to grade');
-    entries.push({ role: 'tutor', kind: 'grade', target: target.id, questionId: target.replyTo || null,
+    // What gets graded: by default the learner's latest answer (in this thread). The learner
+    // sometimes answers from the Ask box, or in the other thread; then the latest "answer" is an
+    // older one, and the grade used to land on it silently (2026-11-25). So: --grade-of <id> names
+    // the graded message, whatever its kind or thread, and the default refuses an answer that
+    // already has a grade when the learner has written since.
+    const J = S.readJournal(topic);
+    let target, questionId;
+    if (f['grade-of']) {
+      const id = String(f['grade-of']).replace(/^m?sg:|^#/, '');
+      target = J.find(e => e.id === id);
+      if (!target) die(`--grade-of: no message ${id} in ${topic}`);
+      if (target.role !== 'user' || !['answer', 'ask', 'action'].includes(target.kind) || target.imported) die(`--grade-of: ${id} is not a message from the learner (it is ${target.role === 'user' ? 'a ' + target.kind : 'the tutor\'s ' + target.kind})`);
+      // the question it answered: its own, when it was sent as an answer in this thread; otherwise
+      // the open question of the thread being graded (--track), which this grade then closes
+      const own = target.kind === 'answer' && target.replyTo && (!track || S.trackOf(target) === track);
+      const pend = S.pendingQuestion(J, track);
+      questionId = own ? target.replyTo : pend ? pend.id : null;
+      if (!own && !pend) console.error(`note: no open question${track ? ` in thread ${track}` : ''} for this grade to close; it is stored on ${id} only`);
+    } else {
+      target = S.lastEntry(e => e.topic === topic && e.role === 'user' && e.kind === 'answer' && inTrack(e), [topic]);
+      if (!target) die('no answer to grade' + (track ? ` in thread ${track}` : '') + ' (an answer sent from the Ask box or in the other thread: name it with --grade-of <its id>)');
+      const prior = J.filter(e => e.kind === 'grade' && e.target === target.id).pop();
+      // graded already, and the learner has written since: the grade is most likely meant for one
+      // of those messages. (Graded already and nothing since: the tutor is correcting its verdict.)
+      const later = prior ? J.filter(e => e.role === 'user' && !e.imported && !e.meta && ['answer', 'ask'].includes(e.kind) && e.ts > target.ts).map(e => `${e.id} [${e.kind}${tracks.open ? ', thread ' + S.trackOf(e) : ''}]`) : [];
+      if (later.length) die(`not posted: the latest answer${track ? ` in thread ${track}` : ''} (${target.id}) already has a grade (${prior.verdict}), and the learner has written since: ${later.slice(-4).join(', ')}. ` +
+        `If one of those is the answer (sent from the Ask box, or in the other thread), name it: --grade-of <id>. To grade ${target.id} again: --grade-of ${target.id}.`);
+      questionId = target.replyTo || null;
+    }
+    entries.push({ role: 'tutor', kind: 'grade', target: target.id, questionId,
       verdict: f.grade, skill: f['grade-skill'] || skills[0] || null, note: f.note || '', ...(track ? { track } : {}) });
   }
   if (text) entries.push({ role: 'tutor', kind: 'message', text, skills, question,

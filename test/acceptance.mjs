@@ -1366,6 +1366,40 @@ async function main() {
       return { marker: mk.id, ref: v.querySelector('line').getAttribute('marker-end'), uid: v.dataset.uid }; })`);
     assert(ids[0].marker !== ids[1].marker && ids.every(x => x.ref === `url(#${x.marker})` && x.uid === x.marker && /^ah-/.test(x.marker)), 'marker ids: ' + JSON.stringify(ids));
   });
+  await test('grading names its message: --grade-of grades an answer sent from the Ask box or in the other thread and closes the right question; a graded answer is not silently graded again', async () => {
+    // the learner's messages, written straight into the journal (no tutor listens on this topic)
+    const say = entry => JSON.parse(execFileSync(process.execPath, ['-e', `const S = require(${JSON.stringify(path.join(CODE, 'app', 'store.js'))}); console.log(JSON.stringify(S.appendJournal('cells', [JSON.parse(process.argv[1])])[0]))`, JSON.stringify({ role: 'user', ...entry })], { env: ENV, encoding: 'utf8' }));
+    const run = (input, ...a) => spawnSync(process.execPath, [BIN, 'post', '--topic', 'cells', ...a], { env: ENV, input, encoding: 'utf8' });
+    const jl = () => fs.readdirSync(path.join(HOME, 'topics/cells/journal')).sort().flatMap(f => fs.readFileSync(path.join(HOME, 'topics/cells/journal', f), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)));
+    const q = text => { const r = run(`${text}\n\n:::question\n${text} question?\n:::`); assert(r.status === 0, r.stderr); return jl().filter(e => e.role === 'tutor' && e.question).at(-1); };
+    // one thread: answered properly, graded; then the next question is answered from the Ask box
+    const q0 = q('Grade test zero');
+    const a0 = say({ kind: 'answer', text: 'a proper answer', replyTo: q0.id });
+    assert(run('', '--grade', 'wrong').status === 0 && jl().at(-1).target === a0.id, 'plain --grade grades the latest answer');
+    assert(run('', '--grade', 'partial').status === 0 && jl().at(-1).target === a0.id, 'nothing from the learner since: the tutor can correct its verdict');
+    const q1 = q('Grade test one');
+    const ask = say({ kind: 'ask', text: 'my answer, typed in the Ask box' });
+    assert(learn('pending', 'cells').startsWith(q1.id), 'an ask leaves the question open');
+    const again = run('Right.', '--grade', 'correct');
+    assert(again.status === 1 && /already has a grade \(partial\)/.test(again.stderr) && again.stderr.includes(`${ask.id} [ask]`) && /--grade-of/.test(again.stderr), 'a graded answer was graded again: ' + again.stderr + again.stdout);
+    assert(/not a message from the learner/.test(run('', '--grade', 'correct', '--grade-of', q1.id).stderr) && /no message/.test(run('', '--grade', 'correct', '--grade-of', '2020-01-01.1').stderr), '--grade-of takes only the learner\'s messages');
+    const ok = run('Right.', '--grade', 'correct', '--grade-of', ask.id);
+    const g1 = jl().find(e => e.kind === 'grade' && e.target === ask.id);
+    assert(ok.status === 0 && g1?.questionId === q1.id && ok.stdout.includes(`correct → ${ask.id}`), ok.stderr + ok.stdout);
+    assert(/no pending question/.test(learn('pending', 'cells')), 'the grade of an ask closes the question it answered: ' + learn('pending', 'cells'));
+    // two threads: an answer sent in thread a that was for thread b's question
+    learn('track', 'cells', 'open', 'Thread one', 'Thread two');
+    try {
+      const mk = (t, text) => { const r = run(`${text}\n\n:::question\n${text}?\n:::`, '--track', t); assert(r.status === 0, r.stderr); return jl().filter(e => e.question).at(-1); };
+      const qa = mk('a', 'Question of thread a'), qb = mk('b', 'Question of thread b');
+      const stray = say({ kind: 'answer', text: 'this answers b', track: 'a', replyTo: qa.id });
+      assert(/no answer to grade in thread b.*--grade-of/s.test(run('', '--grade', 'wrong', '--track', 'b').stderr), 'hint for an answer in the other thread');
+      const r = run('', '--grade', 'wrong', '--grade-of', stray.id, '--track', 'b');
+      assert(r.status === 0 && jl().at(-1).questionId === qb.id && jl().at(-1).track === 'b', r.stderr + JSON.stringify(jl().at(-1)));
+      const pend = learn('pending', 'cells');
+      assert(pend.includes(qa.id) && !pend.includes(qb.id) && /thread b[^\n]*──\n\(no pending question\)/.test(pend), 'b\'s question closed, a\'s open again: ' + pend);
+    } finally { learn('track', 'cells', 'close'); }
+  });
   await test('post refuses links to grade entries and unknown skills; --expect stores the rubric', async () => {
     const grade = journal().find(e => e.kind === 'grade');
     const bad = (() => { try { execFileSync(process.execPath, [BIN, 'post', '--topic', 'demo'], { env: ENV, input: `see [this](msg:${grade.id})`, encoding: 'utf8' }); return ''; } catch (e) { return String(e.stderr); } })();

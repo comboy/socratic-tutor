@@ -51,10 +51,19 @@ export function awaitingReply(J, track = null) {
 
 // The open question: the last tutor question not followed by an answer to it (app talk never is
 // one). With a track: that thread's open question.
+// A grade that names its question (questionId) has the last word on which question a message
+// answered: an answer typed in the Ask box, or sent in the other thread, is graded with
+// `post --grade-of <id>`, and that grade closes the question it was for, and not the one the UI
+// attached the message to (which stays, or becomes, open). For an answer sent the usual way the
+// grade names the same question the answer did, so nothing changes.
 export function pendingQuestion(J, track = null, meta = metaIds(J)) {
+  const answered = new Map();   // learner message -> the question its grade says it answered
+  for (const e of J) if (e.kind === 'grade' && e.questionId && e.target) answered.set(e.target, e.questionId);
   let pending = null;
   for (const e of J) {
-    if (meta.has(e.id) || (track && trackOf(e) !== track)) continue;
+    if (meta.has(e.id)) continue;
+    if (e.role === 'user' && answered.has(e.id)) { if (pending && answered.get(e.id) === pending.id) pending = null; continue; }
+    if (track && trackOf(e) !== track) continue;
     if (e.role === 'tutor' && e.kind === 'message' && e.question) pending = e;
     else if (e.role === 'user' && e.kind === 'answer' && pending && (!e.replyTo || e.replyTo === pending.id)) pending = null;
   }
