@@ -335,28 +335,41 @@ async function handle(req, res) {
   }
 }
 
-// fs.watch alone isn't enough. On Linux a recursive watch follows every file by inode, so a file
+// A recursive fs.watch isn't enough on Linux: there it follows every file by inode, so a file
 // replaced by an atomic write (tmp + rename: every JSON this app saves, a git checkout, most
 // editors) is reported once and never again: levels, notes and UI reloads silently stopped
-// arriving after the first change (seen 2026-11-26, Node 24). So next to the watch a slow scan
-// compares mtime and size of the files in list() (paths relative to root); whichever notices a
-// change first reports it, and the other finds the signature already known.
+// arriving after the first change (seen 2026-11-26, Node 24). A watch on a folder does report its
+// entries by name, so on Linux each folder in list() gets its own watch. Everywhere, a slow scan
+// compares mtime and size of the files in list() (paths relative to root) as the safety net;
+// whichever notices a change first reports it, and the other finds the signature already known.
 function watchTree(root, list, onChange, every = 2000) {
-  const sigs = new Map();
+  const perDir = process.platform === 'linux';
+  const sigs = new Map(), dirs = new Map();
   const sig = rel => { try { const st = fs.statSync(path.join(root, rel)); return st.isDirectory() ? 'dir' : `${st.mtimeMs}:${st.size}`; } catch { return null; } };
-  const note = (rel, fire) => {
-    const s = sig(rel);
-    if ((sigs.get(rel) ?? null) === s) return;
-    if (s === null) sigs.delete(rel); else sigs.set(rel, s);
-    if (fire) onChange(rel);
+  const watchDir = d => {
+    if (!perDir || dirs.has(d)) return;
+    try {
+      const w = fs.watch(path.join(root, d), (_ev, name) => { if (name) note(path.join(d, String(name)), true); });
+      w.on('error', () => { try { w.close(); } catch {} dirs.delete(d); });
+      dirs.set(d, w);
+    } catch {}
   };
-  const scan = fire => {
+  let soon = null;
+  function note(rel, fire) {
+    const s = sig(rel);
+    if (s === 'dir' && !dirs.has(rel)) { watchDir(rel); if (perDir && fire && !soon) soon = setTimeout(() => { soon = null; scan(true); }, 60); }   // files written right after the mkdir
+    if ((sigs.get(rel) ?? null) === s) return;
+    if (s === null) { sigs.delete(rel); const w = dirs.get(rel); if (w) { try { w.close(); } catch {} dirs.delete(rel); } } else sigs.set(rel, s);
+    if (fire) onChange(rel);
+  }
+  function scan(fire) {
     const now = new Set(list());
     for (const rel of now) note(rel, fire);
     for (const rel of [...sigs.keys()]) if (!now.has(rel)) note(rel, fire);
-  };
+  }
+  watchDir('');
   try { scan(false); } catch {}
-  try { fs.watch(root, { recursive: true }, (_ev, rel) => { if (rel) note(rel, true); }); } catch (e) { console.error('watch failed', e.message); }
+  if (!perDir) try { fs.watch(root, { recursive: true }, (_ev, rel) => { if (rel) note(rel, true); }); } catch (e) { console.error('watch failed', e.message); }
   setInterval(() => { try { scan(true); } catch (e) { console.error('scan failed', e.message); } }, every).unref();
 }
 // files under root, as relative paths, down to `depth` levels; skip(rel) leaves a file or folder out
@@ -384,7 +397,7 @@ function watch() {
     else if (/\.(json|md)$/.test(rel) && !rel.endsWith('.tmp')) debounce('t:' + slug + parts[1], () => broadcast({ type: 'topic', topic: slug, part: parts[1] }));
   });
   // learner files, feedback, reports, job state: tell browsers (the Away popover, the "You" page)
-  watchTree(S.ROOT, () => ['feedback.md', path.join('state', 'jobs.json'), ...walk(S.ROOT, 3, r => !/^(learner|reports)(\/|\\|$)/.test(r))], rel => {
+  watchTree(S.ROOT, () => ['feedback.md', 'state', path.join('state', 'jobs.json'), ...walk(S.ROOT, 3, r => !/^(learner|reports)(\/|\\|$)/.test(r))], rel => {
     if (rel === path.join('state', 'jobs.json')) debounce('jobs', () => broadcast({ type: 'jobs' }), 150);
     else if (rel.startsWith('learner') || rel === 'feedback.md' || rel.startsWith('reports')) debounce('learner', () => broadcast({ type: 'learner' }), 200);
   });
