@@ -67,6 +67,10 @@ fixed `fill="black"` (use `var(--fg)` / `var(--muted)`), text placed past the vi
 - `core.js`: matrix, vector, bars, tokens, flow, plot, steps, js (see docs/formats.md).
 - `llm.js`: `softmax` (editable logits + temperature).
 - `residual.js`: `residual`, described below.
+- `visual.js`: `visual`, a drawing or animation prepared ahead and kept in the topic
+  (`topics/<slug>/visuals/<name>.js`), embedded as `![caption](visual:name?step=2)`; `scene.js` is
+  its stage: steps with captions, one draw function of time, the player controls, label and arrow
+  helpers. `docs/visuals.md` has the format, the API and how one is checked.
 - `figure.js`: `figure`, a real image (a `media:` file) with focus regions (the rest dimmed,
   numbered, listed below with linked hover), arrows and blanked-out patches; click for full size.
   Example in `docs/formats.md`.

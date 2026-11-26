@@ -27,6 +27,7 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8">
 <style>html, body { height: auto; overflow: visible; } body { display: block; } .thread { margin: 0; }</style></head>
 <body><div class="thread"><article class="msg msg-tutor kind-message hl-scope"><div class="md msg-body" id="body"></div></article></div>
 <script type="module">
+  window.__vizStill = true;   // scenes (web/viz/scene.js) draw the one moment asked for and never run
   const theme = new URLSearchParams(location.search).get('theme');
   if (theme) document.documentElement.dataset.theme = theme;
   try {
@@ -34,6 +35,7 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8">
     const d = await (await fetch('/__data')).json();
     configure({ terms: d.glossary, media: { slug: d.slug || 'x', index: d.media || {} }, legend: d.legend || [] });
     renderInto(document.getElementById('body'), d.text, { scope: false });
+    for (let i = 0; i < 400 && window.__vizLoading; i++) await new Promise(r => setTimeout(r, 25));   // prepared visuals are fetched
     await Promise.all([...document.images].map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; })));
     await document.fonts?.ready;
   } catch (e) { window.__failed = String(e.stack || e); }
@@ -151,7 +153,11 @@ function analyse() {
 const LABEL = { error: 'error box', empty: 'empty', wide: 'too wide', tiny: 'tiny text', cut: 'text cut off', covered: 'hidden text', faint: 'unreadable text', overlap: 'overlapping text' };
 
 async function check({ text, topic = null, label = 'check', outDir = null, width = 900, log = () => {} }) {
-  const blocks = [...String(text).matchAll(FENCE)].map(m => ({ type: m[2].toLowerCase(), line: text.slice(0, m.index).split('\n').length }));
+  // (a prepared visual, ![…](visual:name?step=2), is a drawing too; outside code fences)
+  const fenced = [...String(text).matchAll(FENCE)];
+  const blocks = [...fenced.map(m => ({ at: m.index, type: m[2].toLowerCase() })),
+    ...[...String(text).matchAll(/!\[[^\]\n]*\]\(visual:([a-z0-9][a-z0-9-]*)[^)\s]*\)/g)].filter(m => !fenced.some(f => m.index > f.index && m.index < f.index + f[0].length)).map(m => ({ at: m.index, type: 'visual ' + m[1] }))]
+    .sort((a, b) => a.at - b.at).map(b => ({ type: b.type, line: text.slice(0, b.at).split('\n').length }));
   if (!blocks.length) return { drawings: [], errors: [], dir: null, none: true };
   const { launch, chromePath } = await import(path.join(S.CODE, 'test', 'lib', 'chrome.mjs'));
   if (!chromePath()) throw new Error('viz-check needs Chrome or Chromium to draw with, and found none (install one, or set CHROME=/path/to/it; `bin/learn doctor` shows where it looks)');
@@ -162,6 +168,7 @@ async function check({ text, topic = null, label = 'check', outDir = null, width
     const send = (code, body, type) => { res.writeHead(code, { 'content-type': type, 'cache-control': 'no-store' }); res.end(body); };
     if (p === '/__check.html') return send(200, PAGE, MIME['.html']);
     if (p === '/__data') return send(200, JSON.stringify(data), MIME['.json']);
+    if (p.startsWith('/visuals/')) { const src = require('./visuals').serve(p); return src == null ? send(404, 'not found', 'text/plain') : send(200, src, MIME['.js']); }
     const mm = p.match(/^\/media\/([a-z0-9][a-z0-9-]*)\/([^/]+)$/);
     let file = mm ? (topic && mm[1] === topic && S.MEDIA_NAME.test(mm[2]) ? path.join(S.mediaDir(topic), mm[2]) : null) : path.normalize(path.join(WEB, p));
     if (!file || (!mm && !file.startsWith(WEB + path.sep)) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return send(404, 'not found', 'text/plain');
@@ -175,6 +182,7 @@ async function check({ text, topic = null, label = 'check', outDir = null, width
   let page;
   const drawings = blocks.map((b, i) => ({ n: i + 1, ...b, problems: [], notes: [], png: {} }));
   const errors = [];
+  let scenes = [];
   try {
     page = await launch({ width, height: 900 });
     for (const theme of ['light', 'dark']) {
@@ -195,6 +203,7 @@ async function check({ text, topic = null, label = 'check', outDir = null, width
       await page.size(width, height);
       await new Promise(r => setTimeout(r, 150));
       const found = await page.eval(`(${analyse.toString()})()`);
+      try { scenes = await page.eval('window.__scenes || []'); } catch {}
       for (const e of page.errors) if (!errors.some(x => x.text === e)) errors.push({ text: e, themes: [theme] }); else errors.find(x => x.text === e).themes.push(theme);
       fs.writeFileSync(path.join(dir, `message-${theme}.png`), await page.png());
       found.forEach((f, i) => {
@@ -218,7 +227,7 @@ async function check({ text, topic = null, label = 'check', outDir = null, width
     server.close();
   }
   pruneOld(path.dirname(dir), dir);
-  return { drawings, errors, dir, width };
+  return { drawings, errors, dir, width, scenes };
 }
 // state/viz-check keeps the last few checks; older folders go
 function pruneOld(root, keep, n = 12) {

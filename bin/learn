@@ -138,6 +138,9 @@ bin/learn image [t] <Commons file/URL | file --author a --license l> · image se
                                          keep a real image in the topic (offline, credited): ![caption](media:<file>)
 bin/learn viz-check [t] <msg-id | file.md | ->   draw the viz blocks headless (light + dark): JS errors, hidden,
                                          overlapping, cut-off or tiny text, and PNGs to look at; run it right after posting a drawing
+bin/learn visuals [t] [find <words> | show <name>]   drawings and animations prepared ahead: ![caption](visual:<name>?step=2)
+bin/learn visuals [t] want "what, and why" [--skill id] [--ref msg-id]   ask for one (the visuals job builds it)
+bin/learn visuals [t] check <name>|--all [--mid] · ready <name> --reviewed "…"   render every step to PNGs · mark it reviewed
 bin/learn check [t]                      validate topic files (JSON, skill ids, links, map) after editing
 bin/learn commit "message" [-- path…]    commit the learning data (the data home and learner/, in whichever repo holds
                                          them); with paths, only those (relative to the data home), so a job and a
@@ -342,6 +345,8 @@ commands.resume = () => {
   if (pages.length) sec('Wiki pages (wiki:page/<name>)', pages.map(p => `${p.name}: ${p.title}`).join('\n'));
   sec('Visual language: draw these things in these colours, always (ctx.color(key), {{text|key}}, ctx.legend([keys]); add with `bin/learn legend set`)',
     legendLines(meta) || '(no legend yet: when a drawing introduces something that will recur, give it a colour with `bin/learn legend set <key> <#hex> "label"`)');
+  // drawings and animations made ahead (app/visuals.js): the ones for where the lesson is, with the line that embeds each
+  try { sec('Prepared visuals: checked drawings and animations, one line to embed (on its own line; works in term and wiki pages too)', require('../app/visuals').resumeSection(slug, meta)); } catch (e) { sec('Prepared visuals', `(could not be listed: ${e.message})`); }
   const fb = S.openFeedback().length;
   if (fb) out.push(`\n(${fb} open feedback item(s) in data/feedback.md for the builder: not your job mid-lesson)`);
 
@@ -1018,6 +1023,13 @@ commands.msgs = () => {
     if (want.size && !sk.some(x => want.has(x))) continue;
     console.log(`${e.id}${sk.length ? ` [${[...new Set(sk)].join(',')}]` : ''}${e.question ? ' ?' : ''}${meta.has(e.id) ? ' (app talk)' : ''} ${firstLine(e.text)}`);
   }
+};
+
+// Prepared visuals (app/visuals.js, docs/visuals.md): drawings and animations made ahead of the
+// lesson, kept in topics/<t>/visuals/, embedded with ![caption](visual:<name>?step=2).
+commands.visuals = async () => {
+  const f = flags(argv, { topic: 'string', skill: 'string', ref: 'string', reviewed: 'string', despite: 'string', width: 'string', with: 'string', mid: 'bool', all: 'bool' });
+  await require('../app/visuals').cli(f, x => topicOf(x), die);
 };
 
 // Draw a message's viz blocks headless, measure what can be measured, save PNGs to look at

@@ -372,6 +372,11 @@ async function handle(req, res) {
         ...(file.endsWith('.svg') ? { 'content-security-policy': "script-src 'none'" } : {}) });
       return fs.createReadStream(file).pipe(res);
     }
+    // a topic's prepared visuals (app/visuals.js): the source web/viz/visual.js runs
+    if (p.startsWith('/visuals/') && req.method === 'GET') {
+      const src = require('./visuals').serve(p);
+      return src == null ? send(res, 404, 'no such visual', 'text/plain') : send(res, 200, src, 'text/javascript; charset=utf-8');
+    }
     if (p.startsWith('/api/')) return send(res, 404, { error: 'not found' });
     // static
     let file = path.normalize(path.join(WEB, p === '/' ? 'index.html' : p));

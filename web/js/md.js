@@ -8,6 +8,7 @@
 //   [x](msg:ID) [x](term:T) [x](skill:ID) [x](map:NODE) [x](wiki:PAGE) internal links (spaces allowed)
 //   [x](tip:a note for this message) per-message hover note (spaces and one level of (…) allowed)
 //   ![caption](media:file.png) a downloaded image from the topic's media/ folder, with its credit
+//   ![caption](visual:name?step=3) a drawing or animation prepared ahead (topics/<slug>/visuals/, web/viz/visual.js)
 /* global marked, katex */
 import { commonsName } from './commons.js';
 
@@ -85,8 +86,21 @@ function localImage(href) {
   return file ? { src: `/media/${media.slug}/${encodeURIComponent(file)}`, info: media.index[file] || null } : null;
 }
 
+export const topicSlug = () => media.slug;
+
 let vizSeq = 0;
 export const vizSpecs = new Map(); // id -> {type, src}
+// ![caption](visual:name?step=3&hl=lumen): a prepared visual with this embed's parameters, mounted
+// like a ```viz visual``` block. Numbers become numbers; everything else stays a string.
+const VISUAL = /^visual:([a-z0-9][a-z0-9-]*)(?:\?(.*))?$/;
+function visualSpec(href, caption) {
+  const m = decodeURIComponentSafe(String(href || '').replace(/&amp;/g, '&')).match(VISUAL);
+  if (!m) return null;
+  const spec = { name: m[1] };
+  for (const kv of (m[2] || '').split('&')) { const [k, v = '1'] = kv.split('='); if (k && k !== 'name') spec[k] = v !== '' && Number.isFinite(Number(v)) ? Number(v) : v; }
+  if (caption) spec.caption = caption;
+  return spec;
+}
 
 function makeRenderer() {
   const r = new marked.Renderer();
@@ -102,6 +116,12 @@ function makeRenderer() {
   };
   // marked has already escaped the alt text and title
   r.image = (href, title, text) => {
+    const vs = visualSpec(href, text || title || '');
+    if (vs) {
+      const id = 'v' + (++vizSeq);
+      vizSpecs.set(id, { type: 'visual', src: JSON.stringify(vs) });
+      return `<div class="viz viz-visual" data-viz="${id}"></div>`;
+    }
     const loc = localImage(String(href || ''));
     if (!loc) return marked.Renderer.prototype.image.call(r, href, title, text);
     const i = loc.info, cap = text || title || '';
@@ -142,7 +162,8 @@ export function md(src, { inline = false } = {}) {
   if (!inline) src = containers(src);
   let html = inline ? marked.parseInline(src, { renderer, gfm: true }) : marked.parse(src, { renderer, gfm: true });
   // restore slots (may be wrapped in <p> when display math stood alone — unwrap)
-  html = html.replace(/<p>\s*\u0001(\d+)\u0002\s*<\/p>/g, (_, i) => slots[+i])
+  html = html.replace(/<p>\s*(<div class="viz viz-visual" data-viz="v\d+"><\/div>)\s*<\/p>/g, '$1')   // a visual on its own line is a block
+             .replace(/<p>\s*\u0001(\d+)\u0002\s*<\/p>/g, (_, i) => slots[+i])
              .replace(/\u0001(\d+)\u0002/g, (_, i) => slots[+i]);
   return html;
 }
@@ -158,7 +179,8 @@ export function questionText(src) {
 // display maths, so the preview can't show a half-parsed block.
 const VIZ_FENCE = /^ {0,3}(`{3,}|~{3,})[ \t]*viz[ \t]+([A-Za-z0-9_-]+)[^\n]*\n[\s\S]*?^ {0,3}\1[ \t]*$/gm;
 export function previewSource(src, max = 1400) {
-  let t = String(src || '').replace(VIZ_FENCE, (_, f, type) => `\n<div class="viz-ph">${type.toLowerCase() === 'js' ? 'Drawing' : `Diagram (${esc(type.toLowerCase())})`} · open the message to see it</div>\n`);
+  let t = String(src || '').replace(VIZ_FENCE, (_, f, type) => `\n<div class="viz-ph">${type.toLowerCase() === 'js' ? 'Drawing' : `Diagram (${esc(type.toLowerCase())})`} · open the message to see it</div>\n`)
+    .replace(/!\[([^\]\n]*)\]\(visual:[^)\s]+\)/g, (_, cap) => `\n<div class="viz-ph">Animation${cap ? ': ' + esc(cap) : ''} · open the message to see it</div>\n`);
   if (t.length <= max) return t;
   t = t.slice(0, max);
   const para = t.lastIndexOf('\n\n');

@@ -23,6 +23,7 @@ function linkChecker(slug) {
   const J = S.readJournal(slug), byId = new Map(J.map(e => [e.id, e]));
   const days = new Set(J.map(e => e.id.split('.')[0]));
   const media = new Set(Object.keys(S.readMedia(slug)));
+  const visuals = new Map(require('./visuals').list(slug).map(v => [v.name, v]));
   return text => {
     const out = [];
     // a `viz figure` draws a media file: it must be downloaded like a ![…](media:…) image
@@ -34,6 +35,12 @@ function linkChecker(slug) {
     text = String(text || '').replace(/```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`/g, ' ');
     for (const m of text.matchAll(/!\[[^\]\n]*\]\(media:([^)\s]+)\)/g))
       if (!media.has(m[1])) out.push({ type: 'media', id: m[1], why: 'not in media/ (download it first: bin/learn image)', error: true });
+    // a prepared visual: it must exist; one that isn't reviewed yet is said so, not refused
+    for (const m of text.matchAll(/!\[[^\]\n]*\]\(visual:([^)\s?]*)[^)\s]*\)/g)) {
+      const v = visuals.get(m[1]);
+      if (!v) out.push({ type: 'visual', id: m[1], why: `no such prepared visual (have: ${[...visuals.keys()].join(', ') || 'none'}; bin/learn visuals)`, error: true });
+      else if (v.status !== 'ready') out.push({ type: 'visual', id: m[1], why: `it is ${v.status}: ${v.status === 'draft' ? 'not rendered and reviewed yet' : 'no longer to be used'} (bin/learn visuals show ${m[1]})`, error: false });
+    }
     for (const m of text.matchAll(LINK)) {
       const [, type, raw] = m;
       let id = raw.trim(); try { id = decodeURIComponent(id); } catch {}

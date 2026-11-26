@@ -5,3 +5,4 @@ import './core.js';
 import './llm.js';
 import './residual.js';
 import './figure.js';
+import './visual.js';

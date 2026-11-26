@@ -1882,6 +1882,62 @@ async function main() {
     assert(none.status === 0 && /no viz blocks/.test(none.stdout), none.stdout + none.stderr);
     assert(vc('cells', '2020-01-01.1').status === 1, 'an unknown message is an error');
   });
+  await test('prepared visuals: listed, found, asked for; embedded with one line and stepped through in the UI; post refuses an unknown one; check renders every step; ready needs a fresh check', async () => {
+    const run = (...a) => spawnSync(process.execPath, [BIN, ...a], { env: ENV, encoding: 'utf8' });
+    const post = input => spawnSync(process.execPath, [BIN, 'post', '--topic', 'cells'], { env: ENV, input, encoding: 'utf8' });
+    const list = learn('visuals', 'cells');
+    assert(/1 ready/.test(list) && list.includes('ball-crosses  [1.1]') && list.includes('![caption](visual:ball-crosses)') && /use: +a synthetic test fixture/.test(list), list);
+    assert(learn('visuals', 'cells', 'find', 'gate', 'wall').includes('ball-crosses') && /no visual matches/.test(learn('visuals', 'cells', 'find', 'ribosome')), 'find');
+    // the queue: a tutor asks in one line
+    assert(/queued for the visuals job/.test(learn('visuals', 'cells', 'want', 'a gate that opens and closes', '--skill', '1.2', '--ref', '2026-01-01.1')), 'want');
+    const reqs = fs.readFileSync(path.join(HOME, 'topics/cells/visuals/requests.md'), 'utf8');
+    assert(/^- \[ \] \d{4}-\d\d-\d\d \(1\.2 · msg 2026-01-01\.1\): a gate that opens and closes$/m.test(reqs), reqs);
+    assert(learn('visuals', 'cells').includes('a gate that opens and closes'), 'the list shows what is wanted');
+    assert(/- visuals: 1 ready, 0 draft, 1 wanted by tutors/.test(learn('away', '--snapshot')), 'the planner sees it');
+    const res = learn('resume', 'cells');
+    assert(/## Prepared visuals/.test(res) && res.includes('ball-crosses') && res.includes('visuals want'), 'resume lists them');
+    // one line in a message; an unknown name is refused like a missing image
+    const bad = post('Look.\n\n![x](visual:no-such-thing)\n');
+    assert(bad.status !== 0 && /no such prepared visual/.test(bad.stderr + bad.stdout), 'unknown visual refused: ' + bad.stdout + bad.stderr);
+    const ok = post('Watch the ball.\n\n![Where does it end up?](visual:ball-crosses?step=2)\n');
+    const id = (ok.stdout.match(/posted message (\S+)/) || [])[1];
+    assert(ok.status === 0 && id, ok.stdout + ok.stderr);
+    await page.nav(`${BASE}/#/cells/learn`, 1200);
+    const sel = `.msg[data-id="${id}"] .viz-visual`;
+    await page.waitFor(`!!document.querySelector('${sel} .sc-svg circle')`);
+    const state = () => page.eval(`(() => { const v = document.querySelector('${sel}'); return { count: v.querySelector('.sc-count').textContent, cx: Math.round(v.querySelector('circle').getAttribute('cx')), title: v.querySelector('.viz-title')?.textContent,
+      cap: [...v.querySelectorAll('.sc-cap.on')].map(c => c.textContent.trim()).join('|'), note: v.querySelector('.visual-note')?.textContent, kit: v.querySelector('svg').textContent.includes('kit loaded'), btn: v.querySelector('.sc-main').textContent }; })()`);
+    let st = await state();
+    assert(st.count === '2 / 3' && st.cx === 330 && st.title === 'Where does it end up?' && /gate lets it pass/.test(st.cap) && /made-up scene/.test(st.note) && st.kit && /Next/.test(st.btn), 'opens on step 2, as a still: ' + JSON.stringify(st));
+    await page.click(`${sel} .sc-main`, 100);
+    await page.waitFor(`document.querySelector('${sel} .sc-count').textContent === '3 / 3' && /Replay/.test(document.querySelector('${sel} .sc-main').textContent)`);
+    st = await state();
+    assert(st.cx === 480 && /comes to rest/.test(st.cap), 'Next plays the next step and stops: ' + JSON.stringify(st));
+    await page.shot('visual');
+    await page.eval(`document.querySelector('${sel} .sc-bar .btn').click()`);
+    assert((await state()).count === '2 / 3', 'Back');
+    assert(page.errors.length === 0, 'no JS errors: ' + page.errors.join('\n'));
+    // check: every step rendered and measured; ready only for a file that was checked as it is
+    const stale = run('visuals', 'cells', 'ready', 'ball-crosses', '--reviewed', 'test');
+    assert(stale.status !== 0 && /never rendered/.test(stale.stderr), 'ready needs a check: ' + stale.stderr + stale.stdout);
+    const chk = run('visuals', 'cells', 'check', 'ball-crosses');
+    assert(chk.status === 0 && /3 step\(s\), 4 frame\(s\)/.test(chk.stdout) && /#3 step 2: It squeezes through: ok/.test(chk.stdout) && /nothing measurable is wrong/.test(chk.stdout), chk.stdout + chk.stderr);
+    const dir = path.join(HOME, 'state', 'viz-check', 'visual-cells-ball-crosses');
+    for (const f of ['1-dark.png', '4-light.png', 'message-dark.png']) assert(fs.statSync(path.join(dir, f)).size > 1000, 'no PNG ' + f);
+    fs.copyFileSync(path.join(dir, '3-dark.png'), path.join(OUT, 'visual-check-step2-dark.png'));
+    assert(learn('visuals', 'cells', 'show', 'ball-crosses').includes('steps: 1 The ball reaches the wall · 2 It squeezes through · 3 It settles'), 'the check records the steps');
+    assert(run('visuals', 'cells', 'ready', 'ball-crosses').status !== 0, 'ready without --reviewed is refused');
+    const rdy = run('visuals', 'cells', 'ready', 'ball-crosses', '--reviewed', 'frames looked at by the test');
+    assert(rdy.status === 0 && /reviewed: \d{4}-\d\d-\d\d frames looked at by the test/.test(fs.readFileSync(path.join(HOME, 'topics/cells/visuals/ball-crosses.js'), 'utf8')), rdy.stdout + rdy.stderr);
+    // a draft: still usable, but post says so; a broken one is caught by the check
+    fs.writeFileSync(path.join(HOME, 'topics/cells/visuals/half-done.js'), '/* visual\ntitle: Half done\nskills: 1.2\nstatus: draft\n*/\nconst sc = ctx.scene({ w: 300, h: 80, steps: [] });\nsc.label(sc.svg, 150, 40, "a");\nsc.label(sc.svg, 152, 42, "b");\nnope();\n');
+    const draft = post('![x](visual:half-done)\n');
+    assert(draft.status === 0 && /not rendered and reviewed yet/.test(draft.stdout + draft.stderr), 'a draft is flagged: ' + draft.stdout + draft.stderr);
+    const broken = run('visuals', 'cells', 'check', 'half-done');
+    assert(broken.status === 1 && /error box/.test(broken.stdout) && /nope is not defined/.test(broken.stdout), broken.stdout + broken.stderr);
+    assert(run('visuals', 'cells', 'ready', 'half-done', '--reviewed', 'x').status !== 0 && /status: draft/.test(fs.readFileSync(path.join(HOME, 'topics/cells/visuals/half-done.js'), 'utf8')), 'a visual with problems is not marked ready');
+    assert(/cells: ok/.test(learn('check', 'cells')), 'check: ' + learn('check', 'cells'));
+  });
   await test('light theme', async () => {
     await page.eval(`localStorage['learn:theme'] = '"light"'`);
     await page.nav(`${BASE}/?t=light#/demo/learn`, 1200);

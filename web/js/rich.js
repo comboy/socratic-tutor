@@ -40,7 +40,7 @@ export function mountAll(root) {
       const parsed = spec.type === 'js' ? null : new Function(`return (${spec.src}\n)`)();
       comp(box, parsed, ctx, spec.src);
       for (const r of box.__legends || []) if (!r.parentNode) box.append(r);
-      if (spec.type === 'js') scopeIds(box);
+      if (spec.type === 'js' || spec.type === 'visual') scopeIds(box);   // a visual draws later (it is fetched): the observer follows
     } catch (e) {
       box.classList.add('viz-error');
       box.append(h('div', { class: 'viz-err-msg', text: `viz ${spec.type}: ${e.message}` }), h('details', {}, h('summary', { text: 'source' }), h('pre', { text: spec.src })));
