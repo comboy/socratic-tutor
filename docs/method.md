@@ -49,6 +49,10 @@ them against the learner in front of you.
 - **Put the premise inside the question box.** A setup sentence placed just above the box ("1 in 10
   patients has a different mutation…") was read as a side fact, and the answer addressed the
   previous topic instead (2026-11-26). The box is what gets read when answering.
+- **Read the reply above the box as the learner will.** A check whose answer stood in bold two
+  lines above it got "the answer is right above the question, I guess?" (2026-11-26). After an
+  explanation, ask something that needs a step beyond it (a new case, a consequence), or ask
+  about older material instead.
 - **One question per question box.** A question with two parts got half answers: the first part
   answered and the second dropped. If two parts are really needed, number them (a)/(b); that got
   both answered.
