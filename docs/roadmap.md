@@ -36,6 +36,55 @@ worth keeping, roughly in order of how soon they'd pay off.
 - Measure what helps: time to level-up per skill, review failure rate, which message styles
   (viz vs prose, length) precede correct answers.
 
+## Reliability of the message path
+
+A review of the whole path (browser → server → inbox → `wait` → the agent → `post` → journal →
+browser) on 2026-11-26, after a learner's message was taken from the queue by a `wait` that ended
+with exit code 0 and no output. What was fixed is in `docs/how-it-works.md` ("What keeps a message
+from getting lost"). What that incident was is not known: the server did not restart at that
+moment (same process before and after, per `state/server.log`), `wait`'s code was not being
+edited, and a stress run (140 deliveries, under load, with `--host`) lost nothing. One way to get
+exactly that symptom was found and closed (a server answer cut off after its headers left a
+promise that never settled, and node then exits with 0), but nothing shows it happened then. So
+the fixes don't rest on the cause: whatever makes a delivery vanish, the message comes back.
+
+Still open, most worth doing first:
+
+- **The server runs old code for as long as background jobs run.** It restarts on a change in
+  `app/` only when no job is running (jobs are its children), and jobs ran for over two hours
+  during a lesson that day, with a dozen commits to `app/` waiting. A fix to the server is then
+  not live when one thinks it is, and the tutor's CLI (fresh code on every call) talks to a server
+  several versions behind. Worth making the job runner independent of the server process, so the
+  server can restart at once; until then `server.log` shows the last "restarting" line.
+- **A live lesson runs on the working tree.** Every `bin/learn` call of the tutor loads whatever
+  is on disk, so an agent editing `bin/learn` or `app/` in several steps can hand the tutor a
+  half-state (a syntax error is loud and harmless: the command fails and the tutor retries; a
+  file that loads but is half-changed is not). `wait` now loads what it needs before it blocks
+  and prints the message before anything else, which covers the worst case. The real cure is to
+  run the tutor's commands and the server from the last commit (a `git worktree` of HEAD that the
+  launcher updates when a commit passes `node --check`, or when the tests pass), so only finished
+  work reaches a lesson. It changes how developers see their change live, so it needs a decision.
+- **An agent that crashes takes everything down.** When the agent process exits, the launcher
+  exits too and stops the server it started: the browser says "No connection". Restarting the
+  agent after a crash (non-zero exit after it ran for a while) would be the same recovery as the
+  watchdog's; not done because an exit the learner asked for (quitting the agent in its
+  terminal) may also be non-zero, and that needs checking per agent.
+- **The watchdog reads "idle" from the transcript.** A single foreground command that runs for
+  more than five minutes with no `wait` armed, while a message waits, looks idle and gets the
+  tutor replaced. That is the price of not leaving the learner waiting on a dead session; if it
+  bites, look at the agent's child processes as a second signal (`config.json`
+  `watchdogSeconds` tunes or disables it). The same session can't be woken from outside (Claude
+  Code has no way in except a background task ending); a nudge would keep the context that a
+  restart loses.
+- **`post` is not idempotent.** If the server saves a reply and dies before answering, `post` now
+  fails loudly (it used to end silently) and the tutor may post again: the reply shows twice.
+  The browser's sends carry a client id for this; `post` could carry one too.
+- **A `wait` nobody reads.** A `wait` started outside the tutor (another agent trying things in
+  the live checkout, with or without `LEARN_SESSION` in its environment) takes messages and
+  prints them to nobody. The re-delivery net catches it two minutes later; refusing to listen
+  when the launcher's session isn't one's own parent would be immediate, but an agent harness
+  that doesn't pass environment variables through would then never hear anything.
+
 ## Sharing
 
 The code is shareable as is: all personal data lives in the data home (`data/`, gitignored, its
