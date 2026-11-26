@@ -123,13 +123,15 @@ What makes one good (from the first batch):
 
 ## Checking and marking ready
 
-    bin/learn visuals [t] check <name> [--mid] [--with "upto=2"]    # ~10 s
+    bin/learn visuals [t] check <name> [--mid] [--live 20] [--with "upto=2"]    # ~10 s
     bin/learn visuals [t] ready <name> --reviewed "who looked at what"
 
 `check` draws the visual headless as the app does, in both themes: as embedded with no
 parameters, then at the end of every step (`--mid`: half-way through each too), measures what
 `viz-check` measures (hidden, overlapping, cut-off, unreadable or tiny text, errors), saves a PNG
 per frame and theme, and records the result in `index.json` for the file as it is now. Then
+`--live 20` also presses Play and lets it really run for 20 seconds before one more picture: a
+still can't show an error half-way through the motion or things drifting over each other. Then
 **look at the frames** (Read shows PNGs): the machine can't tell whether step 3 shows what its
 caption says.
 

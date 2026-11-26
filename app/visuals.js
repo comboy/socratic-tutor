@@ -159,7 +159,7 @@ function snapshotLine(slug, meta) {
 }
 
 // ---------- check: render every step headless, measure, save PNGs to look at
-async function check(slug, name, { width, mid = false, extra = [] } = {}) {
+async function check(slug, name, { width, mid = false, extra = [], live = 0 } = {}) {
   const v = get(slug, name);
   if (!v) throw new Error(`no visual ${name} in ${slug} (${S.shown(dir(slug))}/)`);
   const VC = require('./vizcheck');
@@ -172,14 +172,20 @@ async function check(slug, name, { width, mid = false, extra = [] } = {}) {
   for (const q of extra) frames.push({ q: '?' + String(q).replace(/^\?/, ''), label: 'with ' + q });
   let r = first;
   if (frames.length > 1) r = await VC.check({ text: frames.map(f => `![](visual:${name}${f.q})\n`).join('\n'), topic: slug, label: `visual-${slug}-${name}`, outDir, width });
+  // --live N: let it really run for N seconds (Play all pressed), to catch what a still can't: an error
+  // in the middle of the motion, things drifting over each other. One more frame, dark theme.
+  let liveRun = null;
+  if (live) {
+    liveRun = await VC.check({ text: `![](visual:${name}?${extra[0] ? String(extra[0]).replace(/^\?/, '') + '&' : ''}play=1)\n`, topic: slug, label: `visual-${slug}-${name}-live`, outDir: outDir + '-live', width, live });
+  }
   const src = S.readText(v.file, '');
-  const problems = r.drawings.reduce((n, d) => n + d.problems.length, 0) + r.errors.length;
+  const problems = (liveRun ? liveRun.errors.length + liveRun.drawings.reduce((n, d) => n + d.problems.length, 0) : 0) + r.drawings.reduce((n, d) => n + d.problems.length, 0) + r.errors.length;
   const idx = readIndex(slug);
   idx[name] = { hash: hashOf(slug, src), at: new Date().toISOString(), width: r.width, steps, frames: frames.length, problems };
   S.writeJSON(path.join(dir(slug), 'index.json'), Object.fromEntries(Object.entries(idx).filter(([k]) => fs.existsSync(fileOf(slug, k))).sort()));
-  return { v, r, frames, steps, problems };
+  return { v, r, frames, steps, problems, liveRun, live };
 }
-function checkReport({ v, r, frames, steps, problems }) {
+function checkReport({ v, r, frames, steps, problems, liveRun, live }) {
   const LABEL = { error: 'error box', empty: 'empty', wide: 'too wide', tiny: 'tiny text', cut: 'text cut off', covered: 'hidden text', faint: 'unreadable text', overlap: 'overlapping text' };
   const out = [`visuals check ${v.name}: ${steps.length} step(s), ${frames.length} frame(s), light and dark, ${r.width}px wide: ${problems ? problems + ' problem(s)' : 'nothing measurable is wrong'}`];
   for (const e of r.errors) out.push(`  ✗ JS error (${e.themes.join(', ')}): ${String(e.text).split('\n')[0]}`);
@@ -190,6 +196,13 @@ function checkReport({ v, r, frames, steps, problems }) {
     for (const n of d.notes) if (!/^interactive/.test(n)) out.push(`  · ${n}`);
     if (Object.keys(d.png).length) out.push(`  look: ${Object.values(d.png).map(S.shown).join('  ')}`);
   });
+  if (liveRun) {
+    const d = liveRun.drawings[0];
+    out.push(`live, after running ${live} s: ${liveRun.errors.length || d?.problems.length ? '' : 'no errors, nothing measurable is wrong'}`);
+    for (const e of liveRun.errors) out.push(`  ✗ JS error while running: ${String(e.text).split('\n')[0]}`);
+    for (const p of (d?.problems || []).slice(0, 6)) out.push(`  ✗ ${LABEL[p.kind] || p.kind}: ${p.text}`);
+    if (d?.png.dark) out.push(`  look: ${S.shown(d.png.dark)}`);
+  }
   out.push(`all frames on one sheet: ${S.shown(path.join(r.dir, 'message-dark.png'))}  ${S.shown(path.join(r.dir, 'message-light.png'))}`);
   out.push('Now look at the PNGs (Read shows them). The machine measured the text; only eyes can tell whether each step shows what its caption says, things that should touch do, and nothing teaches the wrong thing.');
   if (!problems && v.status !== 'ready') out.push(`When it has been looked at and its science checked: bin/learn visuals ready ${v.name} --reviewed "who checked what"`);
@@ -243,10 +256,10 @@ async function cli(f, topicOf, die) {
     console.log(reqs.length ? reqs.join('\n') : '(nothing wanted)');
   } else if (sub === 'check') {
     const names = f.all ? all.filter(v => v.status !== 'retired').map(v => v.name) : f._;
-    if (!names.length) die('usage: visuals [t] check <name>… | --all  [--mid] [--width 900] [--with "step=2&hl=x"]');
+    if (!names.length) die('usage: visuals [t] check <name>… | --all  [--mid] [--live seconds] [--width 900] [--with "step=2&hl=x"]');
     let bad = 0;
     for (const name of names) {
-      const res = await check(slug, name, { width: Math.max(320, Math.min(2400, Number(f.width) || 900)), mid: !!f.mid, extra: f.with ? [f.with] : [] });
+      const res = await check(slug, name, { width: Math.max(320, Math.min(2400, Number(f.width) || 900)), mid: !!f.mid, extra: f.with ? [f.with] : [], live: Math.max(0, Math.min(60, Number(f.live) || 0)) });
       console.log(checkReport(res) + (names.length > 1 ? '\n' : ''));
       if (res.problems) bad++;
     }

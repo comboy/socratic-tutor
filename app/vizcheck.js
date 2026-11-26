@@ -27,7 +27,7 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8">
 <style>html, body { height: auto; overflow: visible; } body { display: block; } .thread { margin: 0; }</style></head>
 <body><div class="thread"><article class="msg msg-tutor kind-message hl-scope"><div class="md msg-body" id="body"></div></article></div>
 <script type="module">
-  window.__vizStill = true;   // scenes (web/viz/scene.js) draw the one moment asked for and never run
+  window.__vizStill = !new URLSearchParams(location.search).has('live');   // scenes (web/viz/scene.js) draw the one moment asked for and never run (live: they run, to see that the motion itself works)
   const theme = new URLSearchParams(location.search).get('theme');
   if (theme) document.documentElement.dataset.theme = theme;
   try {
@@ -68,12 +68,14 @@ function analyse() {
     if (viz.scrollWidth > viz.clientWidth + 2) bad('wide', `the drawing is ${viz.scrollWidth}px wide in a ${viz.clientWidth}px column: it scrolls or is cut off (use a viewBox with width 100%)`);
     // every piece of text a reader sees: SVG <text>, and text nodes of the HTML parts
     const texts = [];
-    for (const t of viz.querySelectorAll('svg text')) {
+    // (a label of several lines is measured line by line: the box around all of it has empty corners)
+    const svgTexts = [...viz.querySelectorAll('svg text')].flatMap(t => { const ts = [...t.children].filter(c => c.tagName.toLowerCase() === 'tspan'); return ts.length > 1 ? ts : [t]; });
+    for (const t of svgTexts) {
       const s = t.textContent.trim(); if (!s) continue;
       if (!t.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) || opacityOf(t) < 0.05) continue;
       const b = t.getBoundingClientRect(); if (b.width < 1 || b.height < 1) continue;
       const m = t.getScreenCTM(), scale = m ? Math.sqrt(Math.abs(m.a * m.d - m.b * m.c)) : 1;
-      texts.push({ el: t, s, b, px: parseFloat(getComputedStyle(t).fontSize) * scale, svg: t.ownerSVGElement });
+      texts.push({ el: t, s, b, px: parseFloat(getComputedStyle(t).fontSize) * scale, svg: t.ownerSVGElement, line: t.tagName.toLowerCase() === 'tspan' });
     }
     const walker = document.createTreeWalker(viz, NodeFilter.SHOW_TEXT);
     while (walker.nextNode()) {
@@ -136,7 +138,7 @@ function analyse() {
     }
     for (let i = 0; i < texts.length; i++) for (let j = i + 1; j < texts.length; j++) {
       const a = texts[i], c = texts[j];
-      if (a.el === c.el || a.el.contains(c.el) || c.el.contains(a.el)) continue;
+      if (a.el === c.el || a.el.contains(c.el) || c.el.contains(a.el) || (a.line && c.line && a.el.parentNode === c.el.parentNode)) continue;
       if (a.katex && c.katex) continue;   // KaTeX stacks its own boxes
       const A = ink(a), C = ink(c);
       const w = Math.min(A.r, C.r) - Math.max(A.l, C.l), hgt = Math.min(A.b, C.b) - Math.max(A.t, C.t);
@@ -152,7 +154,7 @@ function analyse() {
 
 const LABEL = { error: 'error box', empty: 'empty', wide: 'too wide', tiny: 'tiny text', cut: 'text cut off', covered: 'hidden text', faint: 'unreadable text', overlap: 'overlapping text' };
 
-async function check({ text, topic = null, label = 'check', outDir = null, width = 900, log = () => {} }) {
+async function check({ text, topic = null, label = 'check', outDir = null, width = 900, live = 0, log = () => {} }) {
   // (a prepared visual, ![…](visual:name?step=2), is a drawing too; outside code fences)
   const fenced = [...String(text).matchAll(FENCE)];
   const blocks = [...fenced.map(m => ({ at: m.index, type: m[2].toLowerCase() })),
@@ -185,19 +187,19 @@ async function check({ text, topic = null, label = 'check', outDir = null, width
   let scenes = [];
   try {
     page = await launch({ width, height: 900 });
-    for (const theme of ['light', 'dark']) {
+    for (const theme of live ? ['dark'] : ['light', 'dark']) {
       await page.size(width, 900);
       await page.dark(theme === 'dark');
       page.errors.length = 0;
       // (a load that never finishes was seen once in ~40 runs on a busy machine: try again before giving up)
       for (let attempt = 1; ; attempt++) {
-        await page.nav(`${base}/__check.html?theme=${theme}&try=${attempt}`, 200);
+        await page.nav(`${base}/__check.html?theme=${theme}&try=${attempt}${live ? '&live=1' : ''}`, 200);
         try { await page.waitFor('window.__done', { timeout: 12000 }); break; }
         catch (e) { if (attempt >= 3) throw new Error('the check page did not finish loading in headless Chrome (tried 3 times)'); }
       }
       const failed = await page.eval('window.__failed || null');
       if (failed) throw new Error('the check page did not load: ' + failed);
-      await new Promise(r => setTimeout(r, 900));   // transitions and entry animations settle
+      await new Promise(r => setTimeout(r, live ? live * 1000 : 900));   // transitions and entry animations settle (live: let it run that long)
       // everything in view: hit-testing and screenshots only see the viewport
       const height = Math.min(12000, Math.max(300, await page.eval('Math.ceil(document.documentElement.scrollHeight)')));
       await page.size(width, height);
@@ -220,7 +222,7 @@ async function check({ text, topic = null, label = 'check', outDir = null, width
         d.png[theme] = file;
       }
       // a block the page never drew (inside a fence the renderer treats otherwise): say so, once
-      if (theme === 'light') for (const d of drawings) if (!d.rect) d.notes.push('not found on the page (is the block nested in other markup?)');
+      if (theme === (live ? 'dark' : 'light')) for (const d of drawings) if (!d.rect) d.notes.push('not found on the page (is the block nested in other markup?)');
     }
   } finally {
     try { await page?.close(); } catch {}

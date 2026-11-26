@@ -1028,7 +1028,7 @@ commands.msgs = () => {
 // Prepared visuals (app/visuals.js, docs/visuals.md): drawings and animations made ahead of the
 // lesson, kept in topics/<t>/visuals/, embedded with ![caption](visual:<name>?step=2).
 commands.visuals = async () => {
-  const f = flags(argv, { topic: 'string', skill: 'string', ref: 'string', reviewed: 'string', despite: 'string', width: 'string', with: 'string', mid: 'bool', all: 'bool' });
+  const f = flags(argv, { topic: 'string', skill: 'string', ref: 'string', reviewed: 'string', despite: 'string', width: 'string', with: 'string', live: 'string', mid: 'bool', all: 'bool' });
   await require('../app/visuals').cli(f, x => topicOf(x), die);
 };
 
