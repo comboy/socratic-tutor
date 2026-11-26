@@ -492,6 +492,7 @@ details.callout[open] summary { border-bottom: 1px solid var(--line-soft); }
 .ref-msg::before { content: "↩ "; }
 
 .lk { border-bottom: 2px solid var(--kc, var(--accent)); cursor: default; border-radius: 2px; }
+.lk.term-lk, .lk.term-lk:hover { border-bottom: 2px solid var(--kc, var(--accent)); cursor: help; }   /* a coloured term keeps its colour */
 [data-k] { transition: background-color .1s, box-shadow .1s, opacity .15s; }
 .hl, .pin { background-color: color-mix(in srgb, var(--hc) 28%, transparent) !important; box-shadow: 0 0 0 1.5px var(--hc); border-radius: 3px; }
 .pin { box-shadow: 0 0 0 2px var(--hc); }

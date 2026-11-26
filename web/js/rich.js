@@ -140,6 +140,19 @@ export function linkTerms(root) {
     frag.append(text.slice(last));
     node.replaceWith(frag);
   }
+  // A coloured highlight ({{lactose|lactose}}) that names a glossary term is that term too: it
+  // keeps its colour and gets the hover card. Without this, colouring a word took its card away
+  // (the learner noticed at once). The span itself becomes the term, so nothing nests inside it:
+  // its own text when that is a term, else the term its legend colour stands for.
+  for (const el of root.querySelectorAll('.lk[data-k]:not(.term)')) {
+    if (el.parentElement.closest(SKIP) || el.querySelector('.katex')) continue;
+    const text = el.textContent.trim();
+    const hit = matcher.find(text).find(m => m.index === 0 && m.end === text.length);
+    const key = el.getAttribute('data-k').split(/\s+/)[0];
+    const viaLegend = (cfg.legend || []).find(x => x?.key === key)?.term;
+    const id = hit ? hit.entry.term : (viaLegend && cfg.resolveTerm(viaLegend) ? viaLegend : null);
+    if (id) { el.classList.add('term', 'term-lk'); el.dataset.term = id; }
+  }
 }
 
 // ---------------------------------------------------------------- linked highlighting

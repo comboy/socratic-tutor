@@ -1250,9 +1250,9 @@ async function main() {
         membrane: q('strong .term[data-term="cell membrane"]').length,
         bad: q('code .term, a .term, .lk .term, .viz .term, .katex .term').length,
         colors: [getComputedStyle(pol[0]).borderBottomColor, getComputedStyle(pol[1]).borderBottomColor] }; })()`);
-    assert(r.pol.join('|') === "polymerase|Polymerase|DNA Polymerase|polymerases|polymerase|polymerase|Polymerase", 'every occurrence: ' + JSON.stringify(r));
-    assert(r.again.join() === 'false,true,true,true,true,true,true', 'first clear, repeats faint: ' + r.again);
-    assert(r.where.join() === 'h2,strong,p,p,p,td,p+callout', 'places: ' + r.where);
+    assert(r.pol.join('|') === "polymerase|Polymerase|DNA Polymerase|polymerases|polymerase|polymerase|Polymerase|polymerase", 'every occurrence (the last is a coloured highlight, itself the term): ' + JSON.stringify(r));
+    assert(r.again.join() === 'false,true,true,true,true,true,true,false', 'first clear, repeats faint (a coloured highlight keeps its own underline): ' + r.again);
+    assert(r.where.join() === 'h2,strong,p,p,p,td,p+callout,p', 'places: ' + r.where);
     assert(r.nucleus.join() === 'nucleus,nuclei' && r.organelle.join() === 'organelles' && r.membrane === 1, 'plurals and bold: ' + JSON.stringify(r));
     assert(r.bad === 0, 'linked inside code, links, highlights, viz or maths');
     assert(r.colors[0] !== r.colors[1], 'repeat looks the same as the first: ' + r.colors);
@@ -1446,6 +1446,8 @@ async function main() {
     await page.eval(`document.querySelector('${sel} .viz-legend .vl-item[data-k="dna"]').id = 'zz-lg'`);
     await page.hover('#zz-lg', 300);
     assert(await page.eval(`document.querySelector('${sel} .lk[data-k="dna"]').classList.contains('hl') && document.querySelector('#zz-box').classList.contains('hl')`), 'hovering a legend item lights up its parts');
+    const lkTerm = await page.eval(`(() => { const e = document.querySelector('${sel} .lk[data-k="membrane"]'); return e.classList.contains('term') + ' ' + e.dataset.term + ' ' + e.querySelectorAll('.term').length; })()`);
+    assert(/^true .*membrane 0$/.test(lkTerm), 'a coloured highlight is also its glossary term (hover card): ' + lkTerm);
     await page.shot('legend-message');
     await page.nav(`${BASE}/#/cells/wiki/cheatsheet`, 900);
     const rows = await page.waitFor(`[...document.querySelectorAll('.vlg-row')].map(x => [...x.children].map(c => c.textContent).join('/'))`);
