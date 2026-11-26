@@ -308,7 +308,7 @@ commands.resume = () => {
   for (const t of tracks.open ? ['a', 'b'] : [null]) {
     const pend = S.pendingQuestion(J, t), label = t ? ` (thread ${t})` : '';
     if (!pend) { sec(`Pending question${label}`, 'none'); continue; }
-    const q = (pend.text.match(/^:::question[^\n]*\n([\s\S]*?)^:::\s*$/m) || [])[1] || pend.text.slice(-500);
+    const q = S.questionText(pend.text) || pend.text.slice(-500);
     const answered = J.filter(e => e.role === 'user' && e.ts > pend.ts && !e.imported && !appTalk.has(e.id) && (!t || S.trackOf(e) === t));
     sec(`Pending question${label} ${pend.id}${pend.skills?.length ? ` (skill ${pend.skills.join(',')})` : ''}`, q.trim() +
       (pend.expect ? `\nGood answer needs: ${pend.expect}` : '\n(no rubric stored: post questions with --expect "…")') +
@@ -318,7 +318,7 @@ commands.resume = () => {
   if (tracks.open) {
     const Q = S.openQueue(J);
     sec(`Review queue: ${Q.length} open (questions prepared ahead with \`post --queue\`; docs/method.md "Two threads")`,
-      (Q.map(q => `  ${q.id} (thread ${S.trackOf(q)}${q.skills?.length ? ', skill ' + q.skills.join(',') : ''}) ${firstLine((q.text.match(/^:::question[^\n]*\n([\s\S]*?)^:::\s*$/m) || [])[1] || q.text, 100)}`).join('\n') || '  (empty)') +
+      (Q.map(q => `  ${q.id} (thread ${S.trackOf(q)}${q.skills?.length ? ', skill ' + q.skills.join(',') : ''}) ${firstLine(S.questionText(q.text) || q.text, 100)}`).join('\n') || '  (empty)') +
       (Q.length < 2 ? '\nKeep two or three ready in thread b from the due review notes below, so the learner always has one to answer while you write.' : ''));
   }
   const today = S.localDate();
@@ -447,7 +447,7 @@ commands.wait = async () => {
     const q = m.replyTo && m.kind !== 'meta' ? J.find(e => e.id === m.replyTo) : null;
     if (q?.queue) text += extra(() => {
       const left = S.openQueue(J).filter(e => S.trackOf(e) === S.trackOf(q)).length;
-      return `(${m.kind === 'answer' ? 'answers' : 'about'} review-queue question ${q.id}${q.skills?.length ? ` [skill ${q.skills.join(',')}]` : ''}: ${firstLine((q.text.match(/^:::question[^\n]*\n([\s\S]*?)^:::\s*$/m) || [])[1] || q.text, 160)}
+      return `(${m.kind === 'answer' ? 'answers' : 'about'} review-queue question ${q.id}${q.skills?.length ? ` [skill ${q.skills.join(',')}]` : ''}: ${firstLine(S.questionText(q.text) || q.text, 160)}
  rubric: ${q.expect || '(none stored)'}
  ${m.kind === 'answer' ? `Grade this answer on its own: post --track ${S.trackOf(q)} --grade <verdict> --grade-of ${m.id} --grade-skill <id>, with short feedback. ` : ''}${left} more open in the queue${left < 2 ? ': top it up (post --queue --expect "…", one question per message)' : ''}.)\n`;
     }) || '';

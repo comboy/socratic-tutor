@@ -3,11 +3,11 @@
 // between them and sending in one takes the learner to the other when its reply is waiting.
 import { MOD, h, $, $$, store, skillById, levelOf, lvClass, fmtDate, fmtTime, shortId } from './util.js';
 import { renderInto, rich, linkTerms } from './rich.js';
-import { questionText, plain } from './md.js';
+import { plain } from './md.js';
 import { icon } from './icons.js';
 import { app, send } from './app.js';
 import { openDock, togglePin, isPinned, renderDock } from './panels.js';
-import { trackOf, awaitingReply } from './journal.js';
+import { trackOf, awaitingReply, questionText } from './journal.js';
 import { handoff } from './tutor.js';
 
 const PAGE = 60;

@@ -168,12 +168,6 @@ export function md(src, { inline = false } = {}) {
   return html;
 }
 
-// Extract the text of the :::question block (for the pending-question banner)
-export function questionText(src) {
-  const m = String(src || '').match(/^:::question[^\n]*\n([\s\S]*?)^:::\s*$/m);
-  return m ? m[1].trim() : null;
-}
-
 // Markdown for a short preview (the hover card of a msg: link): drawings become a small
 // placeholder (a preview never runs one), and the cut never lands inside a code block, a viz or
 // display maths, so the preview can't show a half-parsed block.

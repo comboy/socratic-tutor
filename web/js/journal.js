@@ -70,6 +70,13 @@ export function pendingQuestion(J, track = null, meta = metaIds(J)) {
   return pending;
 }
 
+// The text inside a message's :::question block (the banner above the answer box; `resume` and
+// `wait` quote it), or null when it has none.
+export function questionText(md) {
+  const m = String(md || '').match(/^:::question[^\n]*\n([\s\S]*?)^:::\s*$/m);
+  return m ? m[1].trim() : null;
+}
+
 // Corrections in place (`bin/learn post --corrects <id>`): the journal is append-only, so a
 // corrected message is a later entry { kind: "correction", target, newText, note } and never an
 // edit. Everything that reads the journal (the UI, `resume`, `show`, `grep`, stats, the wiki)
