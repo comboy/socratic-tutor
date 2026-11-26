@@ -32,6 +32,23 @@ export function tracksState(J) {
   }
   return st;
 }
+// The learner's last message in a view (a thread, or the whole conversation) if no tutor reply
+// to it has come yet, else null. A reply is a later tutor message that names it (replyTo: an
+// app-talk reply posted with --meta has no thread, so the thread alone can't say) or, for a
+// lesson message, a later lesson message in the same thread.
+const LEARNER_KINDS = ['answer', 'ask', 'action', 'start', 'meta'];
+export function awaitingReply(J, track = null) {
+  let u = null;
+  for (let i = J.length - 1; i >= 0; i--) {
+    const e = J[i];
+    if (e.role === 'user' && !e.imported && LEARNER_KINDS.includes(e.kind) && (!track || trackOf(e) === track)) { u = e; break; }
+  }
+  if (!u) return null;
+  const answered = J.some(e => e.role === 'tutor' && e.kind === 'message' && e.ts >= u.ts && e.id !== u.id
+    && (e.replyTo === u.id || (!e.meta && (!track || trackOf(e) === track))));
+  return answered ? null : u;
+}
+
 // The open question: the last tutor question not followed by an answer to it (app talk never is
 // one). With a track: that thread's open question.
 export function pendingQuestion(J, track = null, meta = metaIds(J)) {

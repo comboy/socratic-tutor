@@ -20,6 +20,7 @@ const LISTENERS = path.join(S.STATE, 'listeners');
 const HANDOFF_TOKENS = Number(process.env.LEARN_HANDOFF_TOKENS || S.config().handoffTokens || 400000);
 const HANDOFF_MESSAGES = Number(process.env.LEARN_HANDOFF_MESSAGES || S.config().handoffMessages || 80);
 
+const mtime = f => { try { return fs.statSync(f).mtimeMs; } catch { return 0; } };
 const alive = pid => { try { return !!pid && process.kill(pid, 0); } catch (e) { return e.code === 'EPERM'; } };
 
 function readSession() { try { return JSON.parse(fs.readFileSync(SESSION_FILE, 'utf8')); } catch { return null; } }
@@ -36,7 +37,7 @@ function listeners() {
   try {
     for (const f of fs.readdirSync(LISTENERS)) {
       const pid = Number(f), file = path.join(LISTENERS, f);
-      if (alive(pid)) out.push({ pid, session: S.readText(file, '').trim() });
+      if (alive(pid)) out.push({ pid, session: S.readText(file, '').trim(), since: mtime(file) });
       else try { fs.unlinkSync(file); } catch {}
     }
   } catch {}
@@ -56,16 +57,33 @@ function killListeners() {
 function contextTokens(id) { return require('./agent').agent().contextTokens(id); }
 
 // ---------- messages the old tutor never answered ----------
-// Learner entries after the tutor's last message that are no longer in the inbox: picked up
-// by a tutor that was then replaced before it replied. Put them back (recent ones only).
+// Learner messages a tutor picked up (they're out of the inbox) but never answered, because it was
+// replaced, stopped or crashed: put them back in the queue (recent ones only). Answered means a
+// later tutor message names it (replyTo; a grade names it as target) or, for a lesson message, a
+// later lesson message in its thread. An action (a button) counts as handled by any later tutor
+// message or thread change: its reply may go anywhere.
+function unanswered(J, since) {
+  const out = [];
+  for (let i = 0; i < J.length; i++) {
+    const u = J[i];
+    if (u.role !== 'user' || u.imported || Date.parse(u.ts) <= since || isFreshTutorAction(u)) continue;
+    if (!['answer', 'ask', 'action', 'start', 'meta'].includes(u.kind)) continue;
+    let done = false;
+    for (let k = i + 1; k < J.length && !done; k++) {
+      const e = J[k];
+      if (e.role !== 'tutor') continue;
+      if (e.kind === 'grade' && e.target === u.id) done = true;
+      else if (e.kind === 'tracks' && u.kind === 'action') done = true;
+      else if (e.kind === 'message') done = e.replyTo === u.id || (!e.meta && (u.kind === 'action' || S.trackOf(e) === S.trackOf(u)));
+    }
+    if (!done) out.push(u);
+  }
+  return out;
+}
 function requeueUnanswered(topic, maxAgeMs = 6 * 3600e3) {
   if (!topic || !S.listTopics().includes(topic)) return [];
-  const J = S.readJournal(topic);
-  let i = J.length;
-  while (i > 0 && !(J[i - 1].role === 'tutor' && J[i - 1].kind === 'message')) i--;
-  const queued = new Set(S.inboxIds()), since = Date.now() - maxAgeMs;
-  const lost = J.slice(i).filter(e => e.role === 'user' && !e.imported && !queued.has(e.id)
-    && Date.parse(e.ts) > since && !isFreshTutorAction(e));
+  const queued = new Set(S.inboxEntries().map(e => `${e.topic}/${e.id}`));
+  const lost = unanswered(S.readJournal(topic), Date.now() - maxAgeMs).filter(e => !queued.has(`${topic}/${e.id}`));
   lost.forEach(S.enqueue);
   return lost;
 }

@@ -49,14 +49,14 @@ export function togglePopover() {
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && pop) closePopover(); });
 
-async function handoff(force) {
+export async function handoff(force) {
   try {
     const r = await fetch('/api/handoff', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ topic: app.topic?.slug, force }) });
     const j = await r.json();
     if (!r.ok) throw new Error(j.error);
     note = j.mode === 'now' ? 'Restarting the tutor now.' : 'Asked the tutor to save its notes and hand off. Takes about a minute.';
-  } catch (e) { note = 'Could not switch: ' + e.message; }
-  fillPopover();
+  } catch (e) { note = 'Could not switch: ' + e.message; if (!pop) alert(note); }
+  if (pop) fillPopover();
 }
 let note = '';
 

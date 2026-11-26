@@ -10,7 +10,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const S = require('../app/store');
 const T = require('../app/session');
-const { api, serverUp } = require('../app/client');
+const { serverUp, viaServer } = require('../app/client');
 
 const argv = process.argv.slice(2);
 let cmd = 'start';   // `bin/learn`, `bin/learn <topic>`, `bin/learn -c` all start
@@ -156,6 +156,9 @@ commands.demo = () => {
 
 commands.test = () => {
   const child = spawn(process.execPath, [path.join(S.CODE, 'test', 'acceptance.mjs'), ...argv], { stdio: 'inherit' });
+  // stopped (a command timeout, a closed terminal): let the tests clean up their Chrome and server
+  for (const sig of ['SIGTERM', 'SIGHUP']) process.on(sig, () => child.kill(sig));
+  process.on('SIGINT', () => {});   // Ctrl+C reaches the test process directly
   child.on('exit', code => process.exit(code ?? 1));
 };
 
@@ -174,10 +177,30 @@ commands.share = () => { try { require('../app/share').cli(argv); } catch (e) { 
 // tutor is already running it just opens the browser.
 commands.start = async () => {
   const f = flags(argv, { c: 'bool', continue: 'bool', 'no-open': 'bool' });
-  if (T.launcherAlive()) {
+  // one launcher per data home, also while the first is still starting (session.json is written
+  // only once the tutor runs, seconds later): two would start two tutors answering everything twice
+  const lock = path.join(S.STATE, 'launcher.lock');
+  const takeLock = () => {
+    S.ensureDir(S.STATE);
+    for (let i = 0; i < 5; i++) {
+      try { fs.writeFileSync(lock, String(process.pid), { flag: 'wx' }); process.on('exit', () => { try { if (S.readText(lock, '') === String(process.pid)) fs.unlinkSync(lock); } catch {} }); return true; }
+      catch (e) {
+        if (e.code !== 'EEXIST') throw e;
+        const pid = Number(S.readText(lock, '')) || 0;
+        if (pid && T.alive(pid)) return false;
+        try { fs.unlinkSync(lock); } catch {}
+      }
+    }
+    return false;
+  };
+  if (T.launcherAlive() || !takeLock()) {
+    if (!T.launcherAlive()) { console.log(`learn is starting already (pid ${S.readText(lock, '?').trim()}); give it a few seconds.`); return; }
     const url = `http://localhost:${S.PORT}/${f._[0] ? '#/' + f._[0] : ''}`;
-    console.log(`learn is already running (tutor launcher pid ${T.readSession().launcherPid}): ${url}`);
-    if (!f['no-open']) require('../app/client').openBrowser(url);
+    const C = require('../app/client');
+    const st = await C.api('GET', '/api/status').catch(() => null);
+    const open = !f['no-open'] && !(st?.clients > 0);
+    console.log(`learn is already running (tutor launcher pid ${T.readSession().launcherPid}): ${url}${st?.clients > 0 && !f['no-open'] ? '  (already open in your browser)' : ''}`);
+    if (open) C.openBrowser(url);
     return;
   }
   if (!await require('../app/doctor').ready()) process.exit(1);
@@ -336,7 +359,7 @@ commands.wait = async () => {
     msgs = claim();
   }
   // tell the server the messages were picked up (UI shows "thinking")
-  try { await api('POST', '/api/picked', { ids: msgs.map(m => m.id) }); } catch {}
+  await viaServer('POST', '/api/picked', { ids: msgs.map(m => `${m.topic}/${m.id}`) }, () => null).catch(() => {});
   let handoff = false;
   for (const m of msgs) {
     const bits = [`id=${m.id}`, `topic=${m.topic}`];
@@ -453,9 +476,7 @@ commands.post = async () => {
   if (text) entries.push({ role: 'tutor', kind: 'message', text, skills, question,
     replyTo: lastUser ? lastUser.id : null, ...(f.expect && question ? { expect: f.expect } : {}), ...(f.meta ? { meta: true } : {}), ...(track ? { track } : {}) });
 
-  let saved;
-  if (await serverUp()) saved = await api('POST', '/api/append', { topic, entries });
-  else saved = S.appendJournal(topic, entries);
+  const saved = await viaServer('POST', '/api/append', { topic, entries }, () => S.appendJournal(topic, entries));
   for (const e of saved) console.log(`posted ${e.meta ? 'meta ' : ''}${e.kind} ${e.id}${e.track ? ` [thread ${e.track}]` : ''}${e.kind === 'grade' ? ` (${e.verdict} → ${e.target})` : ''}${e.question ? ` [question${e.expect ? ' + rubric' : ', no --expect rubric'}]` : ''}`);
   // a reminder for the bookkeeping step: bold phrases (new terms, usually) not in the glossary yet
   if (text && !f.meta) {
@@ -477,9 +498,7 @@ commands.level = async () => {
   const meta = S.loadTopicMeta(topic);
   const fd = (meta.foundations || []).find(x => x.id === skill.replace(/^@/, ''));
   if (fd) { fd.level = Number(lvl); S.saveTopicMeta(topic, meta); console.log(`${topic} foundation ${fd.id}: level ${lvl}`); return; }
-  const e = (await serverUp())
-    ? await api('POST', '/api/level', { topic, skill, level: Number(lvl), reason: reason.join(' ') })
-    : S.setLevel(topic, skill, lvl, reason.join(' '));
+  const e = await viaServer('POST', '/api/level', { topic, skill, level: Number(lvl), reason: reason.join(' ') }, () => S.setLevel(topic, skill, lvl, reason.join(' ')));
   console.log(`${topic} ${skill}: ${e.from} → ${e.to}`);
 };
 
@@ -726,7 +745,7 @@ commands.meta = async () => {
   const todo = ids.filter(id => was.has(id) === !!f.off);
   if (!todo.length) { console.log(`nothing to do: ${ids.join(', ')} ${f.off ? 'not' : 'already'} tagged as app talk`); return; }
   const entries = [{ role: 'tutor', kind: 'tag', tag: 'meta', ids: todo, ...(f.off ? { off: true } : {}) }];
-  const [saved] = (await serverUp()) ? await api('POST', '/api/append', { topic, entries }) : S.appendJournal(topic, entries);
+  const [saved] = await viaServer('POST', '/api/append', { topic, entries }, () => S.appendJournal(topic, entries));
   for (const id of todo) console.log(`${f.off ? 'untagged' : 'tagged'} ${id} [${byId.get(id).role === 'tutor' ? 'tutor' : byId.get(id).kind}] ${firstLine(byId.get(id).text, 80)}`);
   console.log(`(${saved.id}: ${f.off ? 'back in' : 'out of'} the learning record: wiki, session pages, stats, msgs, resume)`);
 };
@@ -768,7 +787,7 @@ commands.track = async () => {
     if (!st.open) die('only one thread is open');
     entry = { role: 'tutor', kind: 'tracks', open: false };
   } else die('usage: track [t] [open "title a" "title b" | close]');
-  const [saved] = (await serverUp()) ? await api('POST', '/api/append', { topic, entries: [entry] }) : S.appendJournal(topic, [entry]);
+  const [saved] = await viaServer('POST', '/api/append', { topic, entries: [entry] }, () => S.appendJournal(topic, [entry]));
   console.log(entry.open ? `two threads open in ${topic} (${saved.id}): a = ${entry.titles.a}, b = ${entry.titles.b}. Post the first thread-b message with --track b; every lesson post now needs --track.`
     : `back to one thread in ${topic} (${saved.id}). Pending questions now: ${S.pendingQuestion(S.readJournal(topic))?.id || 'none'}.`);
 };

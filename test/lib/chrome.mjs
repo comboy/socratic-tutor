@@ -1,5 +1,5 @@
 // Minimal headless Chrome driver over the DevTools protocol. No dependencies (Node 22+ WebSocket).
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,6 +12,26 @@ const CANDIDATES = [
 ].filter(Boolean);
 export const chromePath = () => CANDIDATES.find(p => fs.existsSync(p)) || null;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Chromes left behind by a test run that was killed outright (an agent's command timeout sends
+// SIGKILL, which no handler sees): orphans (parent gone) with one of our throwaway profiles.
+// Left alone, a headless page keeps rendering and burns CPU for days.
+export function reapOrphans() {
+  if (process.platform === 'win32') return 0;
+  let n = 0;
+  try {
+    const ps = spawnSync('ps', ['-axo', 'pid=,ppid=,command='], { encoding: 'utf8' }).stdout || '';
+    const mark = `--user-data-dir=${path.join(os.tmpdir(), 'learn-chrome-')}`;
+    for (const line of ps.split('\n')) {
+      const m = line.match(/^\s*(\d+)\s+(\d+)\s+(.*)$/);
+      if (!m || m[2] !== '1' || !m[3].includes(mark)) continue;
+      try { process.kill(Number(m[1]), 'SIGTERM'); n++; } catch {}
+      const dir = m[3].split(mark)[1]?.split(' ')[0];
+      if (dir && /^[\w]+$/.test(dir)) fs.rmSync(path.join(os.tmpdir(), 'learn-chrome-' + dir), { recursive: true, force: true });
+    }
+  } catch {}
+  return n;
+}
 
 export async function launch({ headed = false, width = 1400, height = 900, outDir } = {}) {
   const bin = chromePath();
@@ -103,6 +123,13 @@ export async function launch({ headed = false, width = 1400, height = 900, outDi
       fs.mkdirSync(outDir, { recursive: true });
       fs.writeFileSync(path.join(outDir, name + '.png'), Buffer.from(r.data, 'base64'));
     },
+    // more tabs of the same browser (not driven; closed with closeTabs)
+    async openTabs(url, n) {
+      const ids = [];
+      for (let i = 0; i < n; i++) ids.push((await (await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`, { method: 'PUT' })).json()).id);
+      return ids;
+    },
+    async closeTabs(ids) { for (const t of ids) await fetch(`http://127.0.0.1:${port}/json/close/${t}`).catch(() => {}); },
     async close() { try { ws.close(); } catch {} proc.kill(); await sleep(200); fs.rmSync(profile, { recursive: true, force: true }); },
   };
   await page.size(width, height);

@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { launch, chromePath } from './lib/chrome.mjs';
+import { launch, chromePath, reapOrphans } from './lib/chrome.mjs';
 
 const CODE = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const BIN = path.join(CODE, 'bin', 'learn');
@@ -69,6 +69,8 @@ const assert = (c, msg) => { if (!c) throw new Error(msg); };
 let launcher;
 async function main() {
   console.log(`learn acceptance · data ${HOME} · ${BASE}`);
+  const reaped = reapOrphans();
+  if (reaped) console.log(`(stopped ${reaped} headless Chrome(s) left behind by an earlier, killed test run)`);
   fs.rmSync(OUT, { recursive: true, force: true });
   const log = fs.openSync(path.join(HOME, 'launcher.log'), 'a');
   launcher = spawn(process.execPath, [BIN, 'start', 'demo', '--no-open'], { env: ENV, stdio: ['ignore', log, log] });
@@ -565,6 +567,69 @@ async function main() {
     assert(sessions().length === before + 1, 'exactly one new session');
     const replies = journal().filter(e => e.role === 'tutor' && e.kind === 'message' && e.replyTo === sent.id);
     assert(replies.length === 1, 'replies: ' + replies.length);
+  });
+  await test('a retried send (same client id) is saved once: the server returns the entry it already has', async () => {
+    const n0 = journal().length;
+    const body = { topic: 'demo', kind: 'ask', text: 'retry me FAKE-NOREPLY', cid: 'test-cid-1' };
+    const a = await api('/api/send', body), b = await api('/api/send', body);
+    assert(a.id === b.id, `two ids: ${a.id} ${b.id}`);
+    assert(journal().filter(e => e.text === body.text).length === 1 && journal().length >= n0 + 1, 'posted twice');
+    await until(() => fakeLog().some(l => l.event === 'noreply' && l.id === a.id), 'picked up');
+  });
+  await test('"thinking" ends when the tutor goes back to listening without a reply (it never sticks)', async () => {
+    const sent = await api('/api/send', { topic: 'demo', kind: 'action', text: 'FAKE-NOREPLY switch threads' });
+    await until(() => fakeLog().some(l => l.event === 'noreply' && l.id === sent.id), 'picked up');
+    await until(async () => (await api('/api/status')).phase === 'listening', 'listening again', 6000);
+  });
+  await test('ping names the data home, status lists the queue by topic/id and the open browser tabs', async () => {
+    const p = await api('/api/ping');
+    assert(p.home === fs.realpathSync(HOME), JSON.stringify(p));
+    const st = await api('/api/status');
+    assert(Array.isArray(st.inbox) && typeof st.clients === 'number' && st.clients >= 1, JSON.stringify(st));
+  });
+  await test('awaitingReply: a reply in the same thread or one naming the message answers it; a reply in the other thread, or app talk about something else, does not', async () => {
+    const { awaitingReply } = await import('../web/js/journal.js');
+    const u = (id, ts, track, kind = 'answer') => ({ id, ts, role: 'user', kind, track });
+    const t = (id, ts, extra) => ({ id, ts, role: 'tutor', kind: 'message', ...extra });
+    // the evening that showed the bug: last message in B, answered by a --meta reply (no thread)
+    const J = [u('1', '01', 'b'), t('2', '02', { meta: true, replyTo: '1' })];
+    assert(!awaitingReply(J, 'b') && !awaitingReply(J), 'meta reply naming it answers it');
+    assert(awaitingReply([u('1', '01', 'b'), t('2', '02', { track: 'a' })], 'b')?.id === '1', 'reply in A does not answer B');
+    assert(!awaitingReply([u('1', '01', 'b'), t('2', '02', { track: 'b' })], 'b'), 'reply in B answers B');
+    assert(awaitingReply([u('1', '01'), t('2', '02', { meta: true, replyTo: '0' })])?.id === '1', 'unrelated app talk is no reply');
+    assert(!awaitingReply([u('1', '01'), t('2', '02', {})]), 'one thread: any later message answers');
+  });
+  await test('many tabs open (each bin/learn start used to open one): one event stream for all of them, sends go through, live updates reach every tab', async () => {
+    await page.nav(`${BASE}/#/demo/learn`, 900);
+    const tabs = await page.openTabs(`${BASE}/#/demo/learn`, 8);
+    try {
+      await sleep(2500);
+      // reload the driven tab: it gives up the stream, another tab takes it, this one follows
+      await page.nav(`${BASE}/#/demo/learn`, 2500);
+      const st = await api('/api/status');
+      assert(st.clients === 1, 'event streams open: ' + st.clients);
+      await page.click('#answerBox'); await page.type('sent with nine tabs open FAKE-NOREPLY');
+      const t0 = Date.now();
+      await page.key('Enter', { meta: true });
+      await page.waitFor(`document.querySelector('#answerBox').value === '' && [...document.querySelectorAll('.thread .msg')].some(m => m.innerText.includes('sent with nine tabs open'))`, { timeout: 8000 });
+      assert(Date.now() - t0 < 3000, 'slow send: ' + (Date.now() - t0) + 'ms');
+      // a follower still gets live updates: a reply posted from the CLI shows up here
+      execFileSync(process.execPath, [BIN, 'post', '--topic', 'demo', '--force'], { env: ENV, input: 'Relayed to every tab', encoding: 'utf8' });
+      await page.waitFor(`[...document.querySelectorAll('.thread .msg')].some(m => m.innerText.includes('Relayed to every tab'))`, { timeout: 5000 });
+    } finally { await page.closeTabs(tabs); }
+  });
+  await test('a send that fails keeps the text, says why next to the box, and works when retried', async () => {
+    await page.nav(`${BASE}/#/demo/learn`, 900);
+    await page.click('#answerBox'); await page.type('kept through a failure');
+    await page.eval(`window.__fetch = window.fetch; window.fetch = (u, o) => String(u).includes('/api/send') ? Promise.resolve(new Response(JSON.stringify({ error: 'simulated refusal' }), { status: 400 })) : window.__fetch(u, o)`);
+    await page.key('Enter', { meta: true });
+    await page.waitFor(`/simulated refusal/.test(document.querySelector('.send-error')?.textContent || '')`, { timeout: 4000 });
+    assert(await page.eval(`document.querySelector('#answerBox').value === 'kept through a failure' && JSON.parse(localStorage['learn:draft:answer:demo']) === 'kept through a failure'`), 'text lost after a failed send');
+    assert(!journal().some(e => e.text === 'kept through a failure'), 'saved although refused');
+    await page.eval(`window.fetch = window.__fetch`);
+    await page.key('Enter', { meta: true });
+    await page.waitFor(`document.querySelector('#answerBox').value === '' && !document.querySelector('.send-error')`, { timeout: 5000 });
+    await until(() => journal().some(e => e.text === 'kept through a failure'), 'sent on retry');
   });
   await test('no stray listeners: exactly one wait process for the current session', async () => {
     const cur = JSON.parse(fs.readFileSync(path.join(HOME, 'state/session.json'), 'utf8')).id;
@@ -1335,5 +1400,7 @@ async function finish(code) {
   console.log(`\n${results.length - bad.length}/${results.length} passed${bad.length ? `, ${bad.length} failed` : ''} · screenshots in test/out/`);
   process.exit(code ?? (bad.length ? 1 : 0));
 }
-process.on('SIGINT', () => finish(130));
+// any way of stopping the run takes Chrome, the launcher and the temp data down with it
+let finishing = false;
+for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) process.on(sig, () => { if (!finishing) { finishing = true; finish(code); } });
 main().then(() => finish()).catch(async e => { console.error(e); await finish(1); });

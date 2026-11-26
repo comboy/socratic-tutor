@@ -7,7 +7,8 @@ import { questionText, plain } from './md.js';
 import { icon } from './icons.js';
 import { app, send } from './app.js';
 import { openDock, togglePin, isPinned, renderDock } from './panels.js';
-import { trackOf } from './journal.js';
+import { trackOf, awaitingReply } from './journal.js';
+import { handoff } from './tutor.js';
 
 const PAGE = 60;
 let thread, composer, trackBar, shownFrom = 0, quote = null, sizes = null, drawnLegend = '';
@@ -222,23 +223,35 @@ function toggleMeta(e, art) {
   takeAnchor();
 }
 
+// What happens to the learner's last message here, from the server's view: still in the queue
+// (status.inbox), picked up and being answered (phase "thinking"), or answered. Nothing is shown
+// once it's answered, or once the tutor took it and went back to listening without a reply here
+// (it answered in the other thread, say): dots that never end read as "lost".
+let queuedSince = new Map();
 function drawTyping() {
   thread.querySelector('.typing')?.remove();
-  const s = app.status, t = curTrack(), J = t ? app.topic.journal.filter(e => trackOf(e) === t) : app.topic.journal;
-  const lastUser = [...J].reverse().find(e => e.role === 'user' && !e.imported);
-  const lastTutor = [...J].reverse().find(e => e.role === 'tutor' && e.kind === 'message');
-  const waiting = lastUser && !(lastTutor && lastTutor.ts > lastUser.ts);
+  const s = app.status, t = curTrack();
+  const waiting = awaitingReply(app.topic.journal, t);
+  const queued = !!waiting && (s.inbox || []).includes(`${app.topic.slug}/${waiting.id}`);
+  if (queued && !queuedSince.has(waiting.id)) queuedSince.set(waiting.id, Date.now());
+  const stuck = queued && Date.now() - queuedSince.get(waiting.id) > 20e3;
+  const firstReply = !app.topic.journal.some(e => e.role === 'tutor' && e.kind === 'message');
   const dots = () => h('span', { class: 'dots' }, h('i'), h('i'), h('i'));
+  const restart = () => h('button', { class: 'btn btn-small', title: 'Stop this tutor session and start a fresh one; your message stays queued for it', onclick: () => handoff(true) }, 'Restart the tutor');
   let node = null;
   if (s.phase === 'handoff') node = h('div', { class: 'typing swap' }, dots(),
     'Switching to a fresh tutor session. The previous one saved its notes; the new one continues from them.' + (waiting ? ' Your message is queued for it.' : ''));
   else if (!waiting) node = null;
-  else if (lastUser.kind === 'start' && !lastTutor && s.launcher) node = h('div', { class: 'typing' }, dots(),
+  else if (s.offline) node = h('div', { class: 'typing offline' }, h('b', { text: 'No connection to the learn server. ' }), 'It reconnects by itself when ', h('code', { text: 'bin/learn' }), ' runs again.');
+  else if (waiting.kind === 'start' && firstReply && s.launcher && (queued || s.phase === 'thinking')) node = h('div', { class: 'typing' }, dots(),
     s.phase === 'thinking' ? 'The tutor is reading your goal. First a question or two to see where you stand; the skill tree and map fill in meanwhile.' : 'A tutor session for this topic is starting…');
-  else if (s.phase === 'thinking') node = h('div', { class: 'typing' }, dots(), 'The tutor is thinking…');
+  else if (!queued && s.phase === 'thinking') node = h('div', { class: 'typing' }, dots(), 'The tutor is thinking…');
+  else if (!queued) node = null;
   else if (s.phase === 'starting') node = h('div', { class: 'typing' }, dots(), 'The tutor is starting up; your message will be picked up in a moment…');
-  else if (s.phase === 'listening') node = h('div', { class: 'typing' }, dots(), 'Delivering…');
-  else if (s.launcher) node = h('div', { class: 'typing offline' }, h('b', { text: 'Queued. ' }), 'The tutor isn’t listening right now. If this lasts more than a minute, open the tutor status (top right) and press ', h('b', { text: 'Restart now' }), '.');
+  else if (s.phase === 'thinking') node = h('div', { class: 'typing' }, dots(), 'The tutor is answering another message; yours is next in line.');
+  else if (s.phase === 'listening' && !stuck) node = h('div', { class: 'typing' }, dots(), 'Delivering…');
+  else if (s.launcher) node = h('div', { class: 'typing offline' }, h('b', { text: 'Queued. ' }),
+    s.phase === 'listening' ? 'The tutor hasn’t picked it up yet. ' : 'The tutor isn’t listening right now. ', 'If this lasts, restart it: ', restart());
   else node = h('div', { class: 'typing offline' }, h('b', { text: 'Queued. ' }), 'No tutor is running. Start one in a terminal with ', h('code', { text: 'bin/learn' }), '; your message will be delivered then.');
   // two threads: while this one is being written, the other may have its reply ready
   if (node && t && waiting && s.phase !== 'handoff' && ['ready', 'turn'].includes(trackState(otherTrack(t)).key))
@@ -296,6 +309,8 @@ function retag(ids) {
   }
 }
 export function onStatus() { if (thread) drawTyping(); }
+// "Delivering…" turns into "not picked up yet" without a status change to trigger it
+setInterval(() => { if (thread?.isConnected && thread.querySelector('.typing')) drawTyping(); }, 5000);
 // Topic files changed (the tutor's bookkeeping): update what the conversation shows of them, in
 // place. A full redraw would restart diagrams and reload images under the reader, so only the
 // rare changes that need one get it (and it keeps the place).
@@ -439,14 +454,17 @@ function drawComposer(keepFocus) {
     placeholder: mode === 'ask' ? 'Ask anything: why…, what was…, show me… (or select text in a message to ask about it)'
       : pend ? 'Type your answer. Thinking out loud is fine.' : 'No open question right now. You can still reply to the tutor here.' });
   ta.value = store.get(key, '');
+  const busy = sending === key;
+  if (busy) { ta.readOnly = true; ta.classList.add('sending'); }
   const fit = () => {
     if (composer.classList.contains('sized')) { ta.style.height = ''; return; }
     ta.style.height = 'auto'; ta.style.height = Math.min(300, Math.max(64, ta.scrollHeight + 2)) + 'px';
   };
-  ta.addEventListener('input', () => { store.set(key, ta.value); fit(); });
+  ta.addEventListener('input', () => { store.set(key, ta.value); fit(); if (sendError) { sendError = ''; composer.querySelector('.send-error')?.remove(); } });
   requestAnimationFrame(fit);
   const sendIt = async () => {
     let text = ta.value.trim();
+    if (sending) return;
     if (mode === 'answer') { if (text) await doSend('answer', text, pend ? { replyTo: pend.id } : {}, ta, key); return; }
     if (!text && !quote) return;
     const extra = {};
@@ -474,12 +492,14 @@ function drawComposer(keepFocus) {
     pend && !qCollapsed ? h('div', { class: 'box-q' }, rich(qtext || plain(pend.text, 400), 'hl-scope')) : null,
     mode === 'ask' && quote ? h('div', { class: 'quote-chip' }, h('span', { class: 'muted small', text: `About ${shortId(quote.id)}:` }), h('span', { class: 'quote-text', text: '“' + plain(quote.text, 140) + '”' }),
       h('button', { class: 'icon-btn', title: 'Remove quote', onclick: () => { quote = null; drawComposer(); } }, icon('close'))) : null,
+    sendError ? h('div', { class: 'send-error pop-warn', role: 'alert', text: sendError }) : null,
     ta,
     h('div', { class: 'box-f' },
       h('div', { class: 'quick' }, ...QUICK.map(q => q ? h('button', { class: 'btn btn-small', title: q[3], onclick: () => quickAction(q[1]) }, icon(q[2]), h('span', { class: 'lbl', text: q[0] })) : h('span', { class: 'sep' })),
         t ? null : h('button', { class: 'btn btn-small btn-exp', id: 'twoThreadsBtn', onclick: () => quickAction(TWO_ON),
           title: 'Experiment: the tutor opens a second, closely related thread. When you answer in one, you are taken to the other, where its reply is usually ready, so you don’t wait while the tutor writes.' }, icon('threads'), h('span', { class: 'lbl', text: 'Two threads' }))),
-      mode === 'ask'
+      busy ? h('button', { class: 'btn send-btn', disabled: true }, h('span', { class: 'dots' }, h('i'), h('i'), h('i')), 'Sending…')
+      : mode === 'ask'
         ? h('button', { class: 'btn btn-ask send-btn', onclick: sendIt, title: 'Send the side question  ⌘↵' }, 'Ask ', h('kbd', { text: '⌘↵' }))
         : h('button', { class: 'btn btn-primary send-btn', onclick: sendIt, title: pend ? 'Closes the question; the tutor grades it  ⌘↵' : 'Send  ⌘↵' }, pend ? 'Send answer ' : 'Send ', h('kbd', { text: '⌘↵' }))));
   composer.replaceChildren(grip(), h('div', { class: 'composer-inner' }, welcomeBack(), box));
@@ -545,18 +565,23 @@ function grip() {
   return g;
 }
 function refit() { for (const t of composer.querySelectorAll('textarea')) t.dispatchEvent(new Event('input')); }
+// While a message is on its way its text stays in the box (read-only, "Sending…"), and the draft
+// stays saved until the server has it: a send that fails or hangs never loses what was written.
+let sending = null, sendError = '';
 async function doSend(kind, text, extra, box, key) {
-  // Clear first: the server echoes the entry over SSE before send() resolves, and that
-  // redraws the composer from the saved draft. Restore the draft only if sending fails.
-  const draft = box.value, t = curTrack();
-  store.set(key, ''); box.value = '';
+  if (sending) return false;
+  const t = curTrack();
+  sending = key; sendError = '';
+  drawComposer(true);
   try { await send(kind, text, { ...extra, ...(t ? { track: t } : {}) }); }
   catch (e) {
-    store.set(key, draft);
-    const cur = document.getElementById(box.id); if (cur) cur.value = draft;
-    alert('Could not send: ' + e.message);
+    sending = null; sendError = `Not sent: ${e.message} Your text is still here; send it again when the server is back.`;
+    drawComposer(true);
     return false;
   }
+  sending = null;
+  store.set(key, '');
+  drawComposer(true);
   afterSend(t);
   return true;
 }
@@ -570,8 +595,9 @@ function afterSend(t) {
 }
 export async function quickAction(text) {
   const t = curTrack(), pend = curPending();
-  try { await send('action', text, { ...(pend ? { replyTo: pend.id } : {}), ...(t ? { track: t } : {}) }); }
-  catch (e) { alert('Could not send: ' + e.message); }
+  try { await send('action', text, { ...(pend ? { replyTo: pend.id } : {}), ...(t ? { track: t } : {}) }); sendError = ''; }
+  catch (e) { sendError = `Not sent (“${text.slice(0, 60)}”): ${e.message}`; }
+  drawComposer(true);
   if (app.view !== 'learn') location.hash = `#/${app.topic.slug}/learn`;
 }
 export function prefillAsk(text) {

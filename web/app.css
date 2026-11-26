@@ -1015,3 +1015,9 @@ body.no-topics #leftToggle, body.no-topics #dockBtn, body.no-topics #searchBtn {
 .fb-live .muted { font-size: 12px; }
 @container (max-width: 720px) { .track-label-t { display: none; } }
 .welcome-back .wb-text { flex: 1 1 220px; min-width: 0; }
+
+/* a message on its way: the text stays in the box, read-only, until the server has it */
+.composer textarea.sending { opacity: .6; cursor: progress; }
+.send-btn .dots { margin-right: 6px; }
+.send-error { margin: 0 0 8px; }
+.typing.offline .btn { margin-left: 6px; vertical-align: baseline; }

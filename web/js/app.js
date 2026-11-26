@@ -24,13 +24,32 @@ const VIEW_KEYS = { '1': 'learn', '2': 'map', '3': 'tree', '4': 'wiki', '5': 'st
 
 // ---------------------------------------------------------------- data
 export async function getJSON(u) { const r = await fetch(u); if (!r.ok) throw new Error((await r.json()).error || r.status); return r.json(); }
+// A learner's message must never vanish. Each try has a deadline (a request can otherwise wait
+// forever, e.g. for a free connection), network failures are retried for a while (the server
+// restarts after code changes), and the client id lets the server recognise a retry of a message
+// it already saved, so nothing is posted twice. A refusal from the server (4xx) is final.
 export async function send(kind, text, extra = {}) {
-  const r = await fetch('/api/send', { method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ topic: app.topic.slug, kind, text, ...extra }) });
-  const j = await r.json();
-  if (!r.ok) throw new Error(j.error);
+  const cid = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const j = await postJSON('/api/send', { topic: app.topic.slug, kind, text, ...extra, cid });
   ingest([j]);
   return j;
+}
+export async function postJSON(url, body, { tries = 5, timeout = 8000 } = {}) {
+  let last = null;
+  for (let i = 0; i < tries; i++) {
+    if (i) await new Promise(r => setTimeout(r, Math.min(4000, 600 * 2 ** (i - 1))));
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), timeout);
+    try {
+      const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: ctl.signal });
+      const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+      if (!r.ok) { const e = new Error(j.error || `HTTP ${r.status}`); e.final = true; throw e; }
+      return j;
+    } catch (e) {
+      if (e.final) throw e;
+      last = e;
+    } finally { clearTimeout(timer); }
+  }
+  throw new Error(`the learn server didn't answer (${last?.name === 'AbortError' ? 'no reply in time' : last?.message || 'unreachable'}). Is bin/learn still running in its terminal?`);
 }
 async function loadTopic(slug, keepJournal = false) {
   const t = await getJSON('/api/topic/' + slug);
@@ -54,20 +73,39 @@ function ingest(entries) {
 let unread = 0;
 document.addEventListener('visibilitychange', () => { if (!document.hidden && app.topic) { unread = 0; document.title = `${app.topic.meta.title} · learn`; } });
 
+// ---------------------------------------------------------------- live updates
+// One event stream per browser, not one per tab. A browser keeps at most 6 connections to a host
+// and each open stream holds one, so with enough tabs of the app open (every `bin/learn` used to
+// open one) a send waited forever for a free connection: the message never left the page. So the
+// tabs elect one (a Web Lock, released when that tab closes) to hold the stream and relay its
+// events to the others (BroadcastChannel).
 function connect() {
+  const bus = typeof BroadcastChannel === 'function' && navigator.locks ? new BroadcastChannel('learn-events') : null;
+  if (!bus) { openStream(onEvent); return; }
+  bus.onmessage = ev => onEvent(ev.data);
+  navigator.locks.request('learn-events', () => new Promise(() => openStream(m => { bus.postMessage(m); onEvent(m); })));
+}
+function openStream(deliver) {
   const es = new EventSource('/api/events');
-  es.onmessage = async ev => {
-    const m = JSON.parse(ev.data);
-    if (m.type === 'status') { app.status = m; renderStatus(); VIEWS[app.view]?.onStatus?.(); }
-    else if (m.type === 'entries' && m.topic === app.topic?.slug) ingest(m.entries);
-    else if (m.type === 'topic' && m.topic === app.topic?.slug) { await loadTopic(m.topic, true); renderLeft(); VIEWS[app.view]?.onTopic?.(m.part); renderDock(); }
-    else if (m.type === 'topics') { app.topics = await getJSON('/api/topics'); renderTopicSel(); }
-    else if (m.type === 'learner') { app.learner = null; VIEWS[app.view]?.onLearner?.(); onJobs(); }
-    else if (m.type === 'jobs') onJobs();
-    else if (m.type === 'reload-ui') uiChanged(m.file);
+  es.onmessage = ev => deliver(JSON.parse(ev.data));
+  es.onopen = () => deliver({ type: 'up' });
+  es.onerror = () => {
+    deliver({ type: 'down' });
+    // the browser retries by itself, except after some failures: then start over
+    if (es.readyState === EventSource.CLOSED) setTimeout(() => openStream(deliver), 2000);
   };
-  es.onerror = () => { app.status = { offline: true }; renderStatus(); };
-  es.onopen = async () => { if (app.topic) { const t = await getJSON('/api/topic/' + app.topic.slug); ingest(t.journal); } };
+}
+async function onEvent(m) {
+  if (m.type === 'status') { app.status = m; renderStatus(); VIEWS[app.view]?.onStatus?.(); }
+  else if (m.type === 'entries' && m.topic === app.topic?.slug) ingest(m.entries);
+  else if (m.type === 'topic' && m.topic === app.topic?.slug) { await loadTopic(m.topic, true); renderLeft(); VIEWS[app.view]?.onTopic?.(m.part); renderDock(); }
+  else if (m.type === 'topics') { app.topics = await getJSON('/api/topics'); renderTopicSel(); }
+  else if (m.type === 'learner') { app.learner = null; VIEWS[app.view]?.onLearner?.(); onJobs(); }
+  else if (m.type === 'jobs') onJobs();
+  else if (m.type === 'reload-ui') uiChanged(m.file);
+  else if (m.type === 'down') { app.status = { offline: true }; renderStatus(); VIEWS[app.view]?.onStatus?.(); }
+  // (re)connected: fetch what was missed while the stream was down
+  else if (m.type === 'up' && app.topic) { const t = await getJSON('/api/topic/' + app.topic.slug).catch(() => null); if (t) ingest(t.journal); }
 }
 
 // ---------------------------------------------------------------- routing

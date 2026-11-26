@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const S = require('./store');
 const T = require('./session');
 const J = require('./jobs');
@@ -13,6 +13,9 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; cha
   '.json': 'application/json', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.png': 'image/png', '.md': 'text/markdown; charset=utf-8',
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
 
+// server.log: one line per event that matters for "where did my message go?", with the time
+const log = (...a) => console.log(new Date().toISOString(), ...a);
+
 const clients = new Set();
 function broadcast(ev) {
   const data = `data: ${JSON.stringify(ev)}\n\n`;
@@ -21,22 +24,28 @@ function broadcast(ev) {
 
 // ---------- tutor status ----------
 // phase: listening | thinking | handoff (old tutor wrapping up / new one booting) | starting | offline
-const status = { phase: 'offline', queued: 0, pickedAt: 0, tutorAt: 0, context: null, launcher: false, kind: null };
+const status = { phase: 'offline', queued: 0, inbox: [], pickedAt: 0, tutorAt: 0, context: null, launcher: false, kind: null };
 let ctxAt = 0, lastSent = '';
 function computeStatus(force) {
   const sess = T.readSession();
   const launcher = T.launcherAlive(sess);
-  const ls = T.listeners();
-  const listening = ls.some(l => !l.session || !sess || l.session === sess.id);
-  const queued = S.inboxIds().length;
+  const ls = T.listeners().filter(l => !l.session || !sess || l.session === sess.id);
+  const listening = ls.length > 0;
+  const inbox = S.inboxEntries().map(e => `${e.topic}/${e.id}`);
+  const queued = inbox.length;
   const handoffReq = !!T.readHandoff();
   const age = sess ? Date.now() - Date.parse(sess.startedAt) : Infinity;
   // "starting" only until this session first listens or picks something up
   if (sess && (listening || status.pickedAt > Date.parse(sess.startedAt))) status.upSession = sess.id;
   const booting = launcher && !listening && age < 4 * 60e3 && status.upSession !== sess?.id;
   let phase;
-  if (handoffReq || (booting && sess.kind === 'handoff')) phase = 'handoff';
-  else if (status.pickedAt > Math.max(status.tutorAt, sess ? Date.parse(sess.startedAt) : 0)) phase = 'thinking';
+  // thinking: a message was picked up and this session hasn't replied since. It ends with the
+  // reply, with a listener started after the pick-up (the tutor handled it without posting a lesson
+  // message, e.g. a thread switch), or when the tutor is gone: never "thinking" forever.
+  const picked = status.pickedAt > Math.max(status.tutorAt, sess ? Date.parse(sess.startedAt) : 0);
+  const relistened = ls.some(l => l.since >= status.pickedAt);
+  if ((handoffReq && launcher) || (booting && sess.kind === 'handoff')) phase = 'handoff';
+  else if (picked && launcher && !relistened) phase = 'thinking';
   else if (listening) phase = 'listening';
   else if (booting) phase = 'starting';
   else phase = 'offline';
@@ -45,14 +54,15 @@ function computeStatus(force) {
     const c = launcher && sess ? T.contextTokens(sess.id) : null;
     status.context = c ? { tokens: c.tokens, model: c.model, limit: T.HANDOFF_TOKENS } : null;
   }
-  Object.assign(status, { phase, queued, launcher, kind: sess?.kind || null });
+  Object.assign(status, { phase, queued, inbox, launcher, kind: sess?.kind || null });
   const pub = JSON.stringify(publicStatus());
   if (pub !== lastSent || force) { lastSent = pub; broadcast({ type: 'status', ...publicStatus() }); }
 }
 function publicStatus() {
-  const { phase, queued, context, launcher, kind } = status;
+  const { phase, queued, inbox, context, launcher, kind } = status;
+  // inbox: "<topic>/<id>" of the messages not picked up yet (the UI says "delivering" only for those).
   // listening/thinking kept for older UI code paths
-  return { phase, queued, context, launcher, kind, listening: phase === 'listening' || phase === 'thinking', thinking: phase === 'thinking' };
+  return { phase, queued, inbox, context, launcher, kind, listening: phase === 'listening' || phase === 'thinking', thinking: phase === 'thinking' };
 }
 
 // ---------- journal change tracking ----------
@@ -115,8 +125,10 @@ function readBody(req) {
   });
 }
 
+const sentByCid = new Map();   // client id -> saved entry (recent sends)
 const routes = {
-  'GET /api/ping': () => ({ ok: true }),
+  // home: which data this server serves, so a launcher never adopts a server of another data home
+  'GET /api/ping': () => ({ ok: true, home: S.realish(S.ROOT), pid: process.pid }),
   'GET /api/topics': () => S.listTopics().map(slug => {
     const m = S.loadTopicMeta(slug);
     const files = S.journalFiles(slug);
@@ -148,9 +160,14 @@ const routes = {
   'POST /api/jobs/stop': async (req) => { await readBody(req); const st = J.stop(); broadcast({ type: 'jobs' }); return st; },
   'POST /api/restart': async (req) => { const b = await readBody(req); setTimeout(() => restart(b.reason || 'requested'), 50); return { ok: true }; },
   'POST /api/shutdown': async (req) => { await readBody(req); setTimeout(() => process.exit(0), 50); return { ok: true }; },
-  'GET /api/status': () => publicStatus(),
+  // clients: open event streams, i.e. whether the app is open in a browser (the launcher then doesn't open another tab)
+  'GET /api/status': () => ({ ...publicStatus(), clients: clients.size }),
   'POST /api/send': async (req) => {
     const b = await readBody(req);
+    // the browser retries a send whose answer it didn't get (a timeout, a server restart): the
+    // client id makes that retry return the saved entry instead of posting the message twice
+    const cid = typeof b.cid === 'string' && b.cid.length <= 64 ? b.cid : null;
+    if (cid && sentByCid.has(cid)) { log(`send ${b.topic} ${sentByCid.get(cid).id}: retry, already saved`); return sentByCid.get(cid); }
     if (!S.listTopics().includes(b.topic)) throw new Error('unknown topic');
     if (!['answer', 'ask', 'action', 'start', 'meta'].includes(b.kind)) throw new Error('bad kind');
     const text = String(b.text || '').trim();
@@ -163,6 +180,8 @@ const routes = {
     primeSeen(b.topic);
     const [saved] = S.appendJournal(b.topic, [e]);
     S.enqueue(saved);
+    if (cid) { sentByCid.set(cid, saved); if (sentByCid.size > 500) sentByCid.delete(sentByCid.keys().next().value); }
+    log(`send ${b.topic} ${saved.id} ${saved.kind}${saved.track ? ' track=' + saved.track : ''}: queued (${saved.text.length} chars)`);
     announce(b.topic, [saved]);
     // app remarks for the tutor ("Tell the tutor now"): the tutor gets it (labelled META), and it is also an open item in
     // feedback.md, so later interface work can mine what the learner wanted
@@ -200,7 +219,9 @@ const routes = {
   'POST /api/append': async (req) => {
     const b = await readBody(req);
     primeSeen(b.topic);
+    if (!S.listTopics().includes(b.topic)) throw new Error('unknown topic');
     const saved = S.appendJournal(b.topic, b.entries);
+    log(`post ${b.topic} ${saved.map(e => e.id + ' ' + e.kind + (e.track ? ' track=' + e.track : '')).join(', ')}`);
     announce(b.topic, saved);
     return saved;
   },
@@ -213,7 +234,8 @@ const routes = {
     return e;
   },
   'POST /api/picked': async (req) => {
-    await readBody(req);
+    const b = await readBody(req);
+    log(`picked up by the tutor: ${(b.ids || []).join(' ')}`);
     status.pickedAt = Date.now();
     computeStatus(true);
     return { ok: true };
@@ -252,7 +274,8 @@ async function handle(req, res) {
   try {
     if (p === '/api/events') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
-      res.write(`data: ${JSON.stringify({ type: 'status', ...publicStatus() })}\n\n`);
+      // retry: reconnect a second after the server restarts (the browser's default is ~3 s)
+      res.write(`retry: 1000\ndata: ${JSON.stringify({ type: 'status', ...publicStatus() })}\n\n`);
       clients.add(res);
       req.on('close', () => clients.delete(res));
       return;
@@ -282,7 +305,8 @@ async function handle(req, res) {
     res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-cache' });
     fs.createReadStream(file).pipe(res);
   } catch (e) {
-    send(res, 400, { error: e.message });
+    log(`error ${req.method} ${p}: ${e.message}`);
+    if (!res.headersSent) send(res, 400, { error: e.message }); else res.end();
   }
 }
 
@@ -316,20 +340,35 @@ function watch() {
   // server code changed (the builder job, or the tutor extending the app): restart into the new code,
   // unless background jobs are running (their runner restarts the server when they finish)
   try {
-    fs.watch(path.join(S.CODE, 'app'), (_ev, f) => { if (f && f.endsWith('.js')) debounce('app', () => { if (!J.status().running) restart('app/' + f + ' changed'); }, 1500); });
+    fs.watch(path.join(S.CODE, 'app'), (_ev, f) => { if (f && f.endsWith('.js')) debounce('app', () => { if (!J.status().running) restart('app/' + f + ' changed'); else pendingRestart = 'app/' + f + ' changed'; }, 1500); });
   } catch {}
   setInterval(computeStatus, 1000);
+  // a code change that came while jobs ran: restart once they're done (their runner restarts the
+  // server only when they committed something)
+  setInterval(() => { if (pendingRestart && !J.status().running) { const r = pendingRestart; pendingRestart = null; restart(r); } }, 5000);
 }
+let pendingRestart = null;
 
 // Replace this process with a fresh `bin/learn serve` running the current code. Browsers reconnect
 // by themselves (EventSource retries) and refetch what they missed.
 let server = null;
+// The new code must load first: an agent editing app/ in two steps can leave it broken for a
+// moment, and a server that restarted into that would just be gone. Then keep the old one running
+// and try again on the next change (or in a minute).
+let restartRetry = null;
 function restart(reason) {
-  console.log(`learn: restarting (${reason})`);
+  clearTimeout(restartRetry);
+  try { execFileSync(process.execPath, ['-e', `require(${JSON.stringify(path.join(S.CODE, 'app', 'server.js'))})`], { stdio: 'pipe', timeout: 15000 }); }
+  catch (e) {
+    log(`learn: not restarting (${reason}): the new code doesn't load, keeping this server.\n${String(e.stderr || e.message).trim().split('\n').slice(0, 6).join('\n')}`);
+    restartRetry = setTimeout(() => restart(reason), 60e3);
+    return;
+  }
+  log(`learn: restarting (${reason})`);
   try { server.close(); } catch {}
   for (const c of clients) { try { c.end(); } catch {} }
-  const log = fs.openSync(path.join(S.STATE, 'server.log'), 'a');
-  spawn(process.execPath, [path.join(S.CODE, 'bin', 'learn'), 'serve'], { detached: true, stdio: ['ignore', log, log], env: process.env }).unref();
+  const fd = fs.openSync(path.join(S.STATE, 'server.log'), 'a');
+  spawn(process.execPath, [path.join(S.CODE, 'bin', 'learn'), 'serve'], { detached: true, stdio: ['ignore', fd, fd], env: process.env }).unref();
   setTimeout(() => process.exit(0), 100);
 }
 function titleFrom(goal) {
@@ -342,9 +381,12 @@ function start() {
   S.ensureDir(S.INBOX);
   server = http.createServer(handle);
   let tries = 0;
-  const listen = () => server.listen(S.PORT, '127.0.0.1', () => console.log(`learn: http://localhost:${S.PORT}`));
+  const listen = () => server.listen(S.PORT, '127.0.0.1', () => log(`learn: http://localhost:${S.PORT} (pid ${process.pid}, data ${S.realish(S.ROOT)})`));
+  // a bug in a watcher or a timer must not take the server down mid-lesson: log it and carry on
+  process.on('uncaughtException', e => log('uncaught:', e.stack || e.message));
+  process.on('unhandledRejection', e => log('unhandled rejection:', e?.stack || e));
   // after a restart the old process may still hold the port for a moment
-  server.on('error', e => { if (e.code === 'EADDRINUSE' && ++tries < 40) setTimeout(listen, 100); else { console.error(e.message); process.exit(1); } });
+  server.on('error', e => { if (e.code === 'EADDRINUSE' && ++tries < 40) setTimeout(listen, 100); else { log(e.message); process.exit(1); } });
   listen();
   for (const slug of S.listTopics()) seenSet(slug);
   watch();

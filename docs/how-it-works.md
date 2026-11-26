@@ -113,7 +113,24 @@ browser ◀──SSE── server ◀── data/topics/<slug>/journal/*.jsonl �
 ```
 
 - `bin/learn` (the launcher) starts the server and supervises the agent in your terminal. It
-  replaces the session on handoff or topic switch.
+  replaces the session on handoff or topic switch, restarts the server if it dies, and at every
+  start puts messages a previous tutor picked up but never answered back in the queue. It opens a
+  browser tab only when none is connected.
+
+What keeps a message from getting lost, and where to look when one seems to:
+
+- The browser keeps the text in the box (read-only, "Sending…") until the server has saved it;
+  sends retry through a server restart, and a client id stops a retry from posting twice. A
+  failure is shown next to the box, with the text still there.
+- One event stream per browser, however many tabs are open (a Web Lock picks the tab that holds
+  it; the others get its events over a BroadcastChannel). A browser allows six connections to a
+  host, and one stream per tab used to use them all up, so sends just hung.
+- "Delivering…" shows only while the message is in `state/inbox/` (the status carries the queue),
+  and "thinking" ends when the tutor listens again, so neither can stick.
+- `state/server.log` has a timestamped line for every message received, picked up and posted, and
+  every restart. A restart first checks that the new code loads, and keeps the old server if not.
+- Journal appends, notes, terms and levels are written under a lock (`state/locks/`): the
+  server, the tutor's parallel CLI calls and the jobs all write the same files.
 - `app/`: Node server, storage, launcher, agent adapter, background jobs, topic checker. No
   dependencies. `web/`: the UI as plain ES modules; `web/viz/` holds visualization components.
 - `docs/`: `protocol.md` (the tutor's loop), `method.md` (how to teach), `bootstrap.md` (new

@@ -31,9 +31,31 @@ function readJSON(p, dflt = null) {
   try { return JSON.parse(t); } catch (e) { throw new Error(`Bad JSON in ${p}: ${e.message}`); }
 }
 function writeJSON(p, obj) {
-  const tmp = p + '.tmp';
+  // a tmp name of its own: two processes writing the same file must not share one
+  const tmp = `${p}.${process.pid}.${Math.random().toString(36).slice(2, 8)}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(obj, null, 2) + '\n');
   fs.renameSync(tmp, p);
+}
+// A lock around a read-modify-write of one file, across processes: the server, the tutor's CLI
+// calls (often several in parallel) and the jobs all write the same journal and notes. Without it
+// two appends computed the same message id, and one of two parallel `note` calls was lost.
+// Lock files live in state/locks (never in the data repo); a lock older than 10 s is stale.
+const sleepSync = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+function withLock(file, fn) {
+  const dir = path.join(STATE, 'locks');
+  ensureDir(dir);
+  const lock = path.join(dir, require('crypto').createHash('sha1').update(path.resolve(file)).digest('hex').slice(0, 16));
+  let fd = null;
+  for (let i = 0; fd == null; i++) {
+    try { fd = fs.openSync(lock, 'wx'); }
+    catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      let age = 0; try { age = Date.now() - fs.statSync(lock).mtimeMs; } catch { continue; }
+      if (age > 10e3 || i > 500) { try { fs.unlinkSync(lock); } catch {} continue; }
+      sleepSync(10);
+    }
+  }
+  try { return fn(); } finally { try { fs.closeSync(fd); } catch {} try { fs.unlinkSync(lock); } catch {} }
 }
 function config() { try { return readJSON(CONFIG, {}) || {}; } catch { return {}; } }
 
@@ -238,7 +260,7 @@ function readPages(slug) {
 // line is dropped: the term is the title.
 const { termSlug, TERM_PAGE, pageForTerm } = require('../web/js/terms.js');
 // ids of app-talk ("meta") entries, see web/js/journal.js
-const { metaIds, pendingQuestion, tracksState, trackOf } = require('../web/js/journal.js');
+const { metaIds, pendingQuestion, tracksState, trackOf, awaitingReply } = require('../web/js/journal.js');
 function termPagesDir(slug) { return path.join(topicDir(slug), 'terms'); }
 function readTermPages(slug) {
   const d = termPagesDir(slug);
@@ -292,7 +314,8 @@ function parseGlossary(md) {
 function glossaryPath(slug) { return path.join(topicDir(slug), 'glossary.md'); }
 function readGlossary(slug) { return parseGlossary(readText(glossaryPath(slug), '')); }
 // Append a glossary entry. Refuses a term (or alias) that already exists.
-function addTerm(slug, { term, short, body, ...meta }) {
+function addTerm(slug, args) { return withLock(glossaryPath(slug), () => addTermUnlocked(slug, args)); }
+function addTermUnlocked(slug, { term, short, body, ...meta }) {
   term = String(term || '').trim();
   if (!term) throw new Error('term name required');
   if (!short || !String(short).trim()) throw new Error('short definition required (--short)');
@@ -329,20 +352,24 @@ function readNotes(slug) {
 function addNote(slug, { kind, text, skill = null, ref = null, due = null }) {
   if (!NOTE_KINDS.includes(kind)) throw new Error(`note kind must be one of ${NOTE_KINDS.join('|')}`);
   if (!String(text || '').trim()) throw new Error('note text required');
+  return withLock(notesPath(slug), () => {
   const n = readNotes(slug);
   const item = { id: 'n' + n.next++, kind, skill: skill ? String(skill) : null, text: String(text).trim(), ref, created: localDate(), status: 'open' };
   if (due) item.due = due;
   n.items.push(item);
   writeJSON(notesPath(slug), n);
   return item;
+  });
 }
 function closeNote(slug, id, outcome = '') {
+  return withLock(notesPath(slug), () => {
   const n = readNotes(slug);
   const it = n.items.find(x => x.id === id);
   if (!it) throw new Error(`no note ${id} in ${slug}`);
   Object.assign(it, { status: 'done', closed: localDate() }, outcome ? { outcome } : {});
   writeJSON(notesPath(slug), n);
   return it;
+  });
 }
 // "3d", "1w", "2026-12-01" -> YYYY-MM-DD
 function parseDue(s) {
@@ -384,14 +411,23 @@ function readJournal(slug) {
   return journalFiles(slug).flatMap(f => readJournalFile(slug, f));
 }
 // Append entries (without ids) to a topic journal; assigns ids "<date>.<n>". Returns entries.
-function appendJournal(slug, entries, date = localDate()) {
+function appendJournal(slug, entries, date = null) {
   ensureDir(journalDir(slug));
-  const file = path.join(journalDir(slug), `${date}.jsonl`);
-  const existing = readJournalFile(slug, `${date}.jsonl`);
-  let n = existing.reduce((mx, e) => Math.max(mx, Number(String(e.id).split('.').pop()) || 0), 0);
-  const out = entries.map(e => ({ id: `${date}.${++n}`, ts: e.ts || new Date().toISOString(), ...e, topic: slug }));
-  fs.appendFileSync(file, out.map(e => JSON.stringify(e)).join('\n') + '\n');
-  return out;
+  return withLock(journalDir(slug), () => {
+    // never a day file older than the newest one (a clock or time zone set back): the journal
+    // is read in file order, so that entry would sort before older ones
+    const files = journalFiles(slug), newest = files.length ? files[files.length - 1].slice(0, 10) : '';
+    const day = date || (newest > localDate() ? newest : localDate());
+    const file = path.join(journalDir(slug), `${day}.jsonl`);
+    const existing = readJournalFile(slug, `${day}.jsonl`);
+    let n = existing.reduce((mx, e) => Math.max(mx, Number(String(e.id).split('.').pop()) || 0), 0);
+    const out = entries.map(e => ({ id: `${day}.${++n}`, ts: e.ts || new Date().toISOString(), ...e, topic: slug }));
+    // a write cut short left no newline: start on a fresh line, or this entry would be lost with it
+    let torn = false;
+    try { const st = fs.statSync(file); if (st.size) { const fd = fs.openSync(file, 'r'), b = Buffer.alloc(1); fs.readSync(fd, b, 0, 1, st.size - 1); fs.closeSync(fd); torn = b[0] !== 10; } } catch {}
+    fs.appendFileSync(file, (torn ? '\n' : '') + out.map(e => JSON.stringify(e)).join('\n') + '\n');
+    return out;
+  });
 }
 // `id` may be "<date>.<n>" (searched in `slug` first, then every topic) or "<topic>/<date>.<n>".
 function findEntry(id, slug = null) {
@@ -430,6 +466,17 @@ function enqueue(entry) {
   const f = path.join(INBOX, `${Date.now()}-${entry.id}.json`);
   fs.writeFileSync(f + '.tmp', JSON.stringify(entry));
   fs.renameSync(f + '.tmp', f);
+}
+// { id, topic } of each queued message (ids repeat across topics, so the topic matters)
+function inboxEntries() {
+  let files = [];
+  try { files = fs.readdirSync(INBOX).filter(f => f.endsWith('.json')); } catch { return []; }
+  const out = [];
+  for (const f of files) {
+    try { const e = JSON.parse(fs.readFileSync(path.join(INBOX, f), 'utf8')); out.push({ id: e.id, topic: e.topic }); }
+    catch { /* claimed by wait meanwhile */ }
+  }
+  return out;
 }
 function inboxIds() {
   try { return fs.readdirSync(INBOX).filter(f => f.endsWith('.json')).map(f => f.replace(/^\d+-/, '').replace(/\.json$/, '')); }
@@ -494,6 +541,9 @@ function removeLegend(slug, key) {
 
 // ---------- levels ----------
 function setLevel(slug, skillId, level, reason) {
+  return withLock(path.join(topicDir(slug), 'topic.json'), () => setLevelUnlocked(slug, skillId, level, reason));
+}
+function setLevelUnlocked(slug, skillId, level, reason) {
   const meta = loadTopicMeta(slug);
   const s = findSkill(meta, skillId);
   if (!s) throw new Error(`no skill ${skillId} in ${slug}`);
@@ -506,10 +556,10 @@ function setLevel(slug, skillId, level, reason) {
 
 module.exports = {
   CODE, ROOT, TOPICS, LEARNER, LEARNER_OUTSIDE, REPORTS, FEEDBACK, CONFIG, STATE, INBOX, PORT, realish, dataRepo, shown,
-  ensureDir, readText, readJSON, writeJSON, localDate, config, ensureHome, commitData, dataPath,
+  ensureDir, readText, readJSON, writeJSON, withLock, localDate, config, ensureHome, commitData, dataPath,
   listTopics, topicDir, slugify, createTopic, readPages, PAGE_NAME, readTermPages, termPagePath, termPagesDir, termSlug, TERM_PAGE, pageForTerm, MEDIA_NAME, mediaDir, readMedia, loadTopicMeta, saveTopicMeta,
   walkSkills, findSkill, leafSkills, parseGlossary, readGlossary, addTerm, META_KEYS,
   NOTE_KINDS, readNotes, addNote, closeNote, parseDue, appendLog,
-  journalDir, journalFiles, readJournal, readJournalFile, appendJournal, findEntry, lastEntry, pendingQuestion, metaIds, tracksState, trackOf,
-  hasQuestion, setLevel, COLOR, LEGEND_KEY, setLegend, removeLegend, enqueue, inboxIds, appendFeedback, openFeedback,
+  journalDir, journalFiles, readJournal, readJournalFile, appendJournal, findEntry, lastEntry, pendingQuestion, metaIds, tracksState, trackOf, awaitingReply,
+  hasQuestion, setLevel, COLOR, LEGEND_KEY, setLegend, removeLegend, enqueue, inboxIds, inboxEntries, appendFeedback, openFeedback,
 };

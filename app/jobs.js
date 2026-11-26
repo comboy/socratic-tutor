@@ -43,7 +43,19 @@ function available() {
 
 function readState() { try { return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); } catch { return { runner: null, current: null, queue: [], history: [] }; } }
 function writeState(st) { S.ensureDir(S.STATE); S.writeJSON(STATE_FILE, st); }
-function running(st = readState()) { return !!st.runner && T.alive(st.runner.pid); }
+// The runner's pid alone isn't proof: after a reboot or a crash that pid can belong to anything,
+// and "jobs running" blocks the server's code reloads. So it must also be a learn process.
+const runnerCheck = { pid: 0, ok: false, at: 0 };
+function isRunner(pid) {
+  if (!T.alive(pid)) return false;
+  if (process.platform === 'win32') return true;
+  if (runnerCheck.pid === pid && Date.now() - runnerCheck.at < 30e3) return runnerCheck.ok;
+  let ok = true;
+  try { ok = /learn/.test(require('child_process').execFileSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' })); } catch {}
+  Object.assign(runnerCheck, { pid, ok, at: Date.now() });
+  return ok;
+}
+function running(st = readState()) { return !!st.runner && isRunner(st.runner.pid); }
 
 // Things each job may want to know about (shown next to the checkboxes in the UI).
 // glossary terms of the focus skill (and its children) that have no term page yet
@@ -174,7 +186,10 @@ async function runAll(names) {
   while (steps.length) {
     const step = steps.shift(), name = step.job;
     const s = readState(); s.queue = steps.map(x => x.job);
-    const startedAt = new Date().toISOString(), id = `${stamp()}-${name}`;
+    const startedAt = new Date().toISOString();
+    // the same job twice within a minute (the planner listed it twice) gets its own report
+    let id = `${stamp()}-${name}`;
+    for (let k = 2; fs.existsSync(path.join(S.REPORTS, id + '.md')) || fs.existsSync(path.join(LOGS, id + '.log')); k++) id = `${stamp()}-${name}-${k}`;
     const reportFile = path.join(S.REPORTS, id + '.md'), logFile = path.join(LOGS, id + '.log');
     s.current = { name, startedAt, log: path.relative(S.ROOT, logFile), ...(step.why ? { why: step.why } : {}) };
     writeState(s);

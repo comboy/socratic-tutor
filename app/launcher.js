@@ -14,7 +14,7 @@ const { randomUUID } = require('crypto');
 const S = require('./store');
 const T = require('./session');
 const { agent, agentEnv } = require('./agent');
-const { api, serverUp, openBrowser } = require('./client');
+const { api, serverInfo, serverUp, openBrowser } = require('./client');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const BIN = path.join(S.CODE, 'bin', 'learn');
@@ -39,7 +39,9 @@ Start \`${bin} wait\` in the background now and post nothing until the learner w
 }
 
 async function ensureServer() {
-  if (await serverUp()) return false;
+  const up = await serverInfo();
+  if (up?.foreign) throw new Error(`port ${S.PORT} is taken by another learn server, serving ${up.home} (a demo or test run?). Stop it, or start this one on another port: LEARN_PORT=4750 bin/learn`);
+  if (up) return false;
   S.ensureDir(S.STATE);
   const log = fs.openSync(path.join(S.STATE, 'server.log'), 'a');
   const server = spawn(process.execPath, [BIN, 'serve'], { detached: true, stdio: ['ignore', log, log], env: process.env });
@@ -47,6 +49,16 @@ async function ensureServer() {
   for (let i = 0; i < 50 && !(await serverUp()); i++) await sleep(100);
   if (!(await serverUp())) throw new Error('server failed to start, see state/server.log');
   return true;
+}
+
+async function browserConnected(waitMs) {
+  const t0 = Date.now();
+  for (;;) {
+    const st = await api('GET', '/api/status').catch(() => null);
+    if (st?.clients > 0) return true;
+    if (Date.now() - t0 >= waitMs) return false;
+    await sleep(250);
+  }
 }
 
 // Resolves with { exit: code } when the agent exits on its own, or { handoff } when one is requested.
@@ -80,7 +92,19 @@ async function start({ topic: openTopic, resume, open = true, claudeArgs = [] })
   const url = `http://localhost:${S.PORT}/${openTopic ? '#/' + openTopic : ''}`;
   // the tutor starts idle and adopts a topic when a message arrives (`-c` keeps the old session's)
   let topic = resume ? (T.readSession()?.topic || null) : null;
-  console.log(`learn: ${url}${open && !openBrowser(url) ? '  (open it in your browser)' : ''}`);
+  // Open a tab only if the app isn't open already. Each `bin/learn` used to open one, and stacked
+  // tabs are how a browser runs out of connections to the server (web/js/app.js, "live updates").
+  // After a fresh server start, open tabs need a moment to reconnect.
+  const already = open && await browserConnected(startedServer ? 2500 : 0);
+  console.log(`learn: ${url}${already ? '  (already open in your browser)' : open && !openBrowser(url) ? '  (open it in your browser)' : ''}`);
+  // messages a tutor picked up but never answered (it was stopped, it crashed) go back in the
+  // queue, so the new tutor answers them instead of them sitting unanswered in the thread
+  // (a `wait` left over from a killed tutor would claim them for nobody: stop it first)
+  T.killListeners();
+  for (const t of S.listTopics()) {
+    const lost = T.requeueUnanswered(t, 24 * 3600e3);
+    if (lost.length) console.log(`learn: ${lost.length} unanswered message(s) in ${t} queued for the tutor`);
+  }
   process.on('SIGINT', () => {});            // Ctrl+C belongs to the agent
   let current = null;
   const shutdown = async (code, signal) => {
@@ -96,6 +120,17 @@ async function start({ topic: openTopic, resume, open = true, claudeArgs = [] })
   // started by another process that must outlive us (bin/learn demo): stop when it's gone
   const parent = Number(process.env.LEARN_PARENT_PID) || 0;
   if (parent) setInterval(() => { try { process.kill(parent, 0); } catch { shutdown(129, true); } }, 2000).unref();
+
+  // the server must outlive anything that kills it (a crash, a restart into code that dies on
+  // load): if it's gone at two checks in a row (a normal restart takes under a second), start it again
+  let misses = 0;
+  setInterval(async () => {
+    if (await serverUp()) { misses = 0; return; }
+    if (++misses < 2) return;
+    misses = 0;
+    // (nothing printed: the terminal belongs to the agent's interface now; server.log has it)
+    try { await ensureServer(); } catch {}
+  }, 5000).unref();
 
   const A = agent();
   T.clearHandoff();
@@ -133,7 +168,8 @@ Common causes: not logged in (run \`${A.cmd()}\` once), or the permission mode i
     await stop(run.child);
     T.killListeners();
     if (h.topic && S.listTopics().includes(h.topic)) topic = h.topic;
-    const lost = T.requeueUnanswered(topic);
+    // every topic: a batch can hold messages for two (a topic switch answers neither)
+    const lost = S.listTopics().flatMap(t => T.requeueUnanswered(t));
     T.clearHandoff();
     process.stdout.write(`\n\x1b[2m── learn: fresh tutor session (${h.reason || 'handoff'}${prevTokens ? `, previous context ~${Math.round(prevTokens / 1000)}k tokens` : ''}${lost.length ? `, ${lost.length} message(s) requeued` : ''}) ──\x1b[0m\n\n`);
     kind = 'handoff';
