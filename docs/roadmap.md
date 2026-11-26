@@ -85,6 +85,48 @@ Still open, most worth doing first:
   when the launcher's session isn't one's own parent would be immediate, but an agent harness
   that doesn't pass environment variables through would then never hear anything.
 
+## Code structure
+
+Proposals from the first janitor pass (2026-11-26), not done there because each is bigger than a
+safe cleanup, or sat in code another agent was changing that hour. Roughly by what they'd save.
+
+- **One test file is where agents collide.** `test/acceptance.mjs` is ~2000 lines in a single
+  `main()`; every feature adds to it, and two agents working the same hour both had it open. The
+  sections it already prints (Launcher & protocol, Tutor commands, Rendering, Talking to the
+  tutor, Handoff, Views, Glossary & feedback) could be files under `test/cases/`, each exporting
+  `(t) => { … }` and getting the harness (`test`, `learn`, `api`, `page`, `HOME`, `ENV`) from the
+  runner. Order matters today (later tests read what earlier ones posted), so the first step is
+  only the split, same order; making sections independent (`--only` by file) can follow.
+- **`bin/learn` holds every command (~1200 lines).** The tutor's loop (`resume`, `wait`, `post`
+  with grading, corrections and the queue) is the part that changes weekly and the part where a
+  mistake costs a lesson; it shares the file with twenty small bookkeeping commands. Moving the
+  loop to `app/tutor-cli.js` (and leaving `bin/learn` as flags, help and dispatch) would make the
+  risky part readable on its own. Public commands and output stay as they are.
+- **"Has this message been answered?" is written twice.** `awaitingReply` (`web/js/journal.js`,
+  the UI's "writing…") and `unanswered` (`app/session.js`, re-delivery) both decide whether a
+  tutor reply to a learner message exists, with the same rule spelled out separately (replyTo, or
+  a later lesson message in the thread) and small differences (a grade counts in one, an action
+  is special in the other, each has its own list of learner kinds). When they disagree the UI
+  says "writing…" for a message nothing will re-deliver, or the reverse. One `isAnswered(J, u)`
+  in `journal.js`, used by both, with the differences as named options.
+- **Who counts as "the learner wrote this" is an inline condition in a dozen places**
+  (`e.role === 'user' && !e.imported && …` with different extras: not app talk, this thread,
+  these kinds) in `bin/learn`, `journal.js`, `session.js`, `stats.js`. Two or three named
+  predicates in `journal.js` (a learner turn; a lesson turn, i.e. not app talk; in thread t) would
+  make the differences deliberate instead of accidental.
+- **The inbox's file format is known in four files.** `<ms>-<id>.json`, claimed as
+  `….json.<pid>`: written in `store.js`, claimed in `bin/learn wait`, released in `session.js`,
+  deleted by name in `server.js`. After the 2026-11-26 reliability work it deserves to be one
+  small module (`enqueue`, `claim`, `release`, `drop`, `list`) so the next fix is made once.
+- **`web/app.css` (~1100 lines) has no check for dead rules.** This pass removed about twenty
+  that matched nothing. Many class names are built from a prefix (`'st-' + state`, `lvClass`), so
+  a simple test (every class in the CSS appears in `web/` or as a known prefix) needs a short
+  allowlist; it would be worth having once the file grows again.
+- **The viz-check test fails now and then when the machine is busy** (once in this pass, with
+  another agent's test run going; it passed twice alone). `vizcheck.js` already retries a page
+  load that never finishes; the test's failure message shows only stdout, so the reason (on
+  stderr) is lost. Printing both would tell the next occurrence apart from a real fault.
+
 ## Sharing
 
 The code is shareable as is: all personal data lives in the data home (`data/`, gitignored, its
