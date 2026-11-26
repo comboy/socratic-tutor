@@ -139,8 +139,9 @@ ready, and you write the first one's reply while they read. The latency doesn't 
 behind their reading.
 
 It is **on by default** (the learner asked for that, 2026-11-25: they hadn't noticed the button): when
-threads aren't open, `resume` says so, and you open them with your first reply, unless the topic is
-too new to have a second line worth running. Only the learner's "One thread" (`two threads: off`)
+threads aren't open, `resume` says so, and you open them with your first reply. A brand-new topic
+has nothing to review yet, but it has the diagnostic: its questions are spread over both threads
+(`docs/bootstrap.md`). Only the learner's "One thread" (`two threads: off`)
 turns it off; then leave it off until they press "Two threads" again.
 To open: pick the second
 thread, `bin/learn track open "<main thread, a>" "<second thread, b>"`, reply to the action in a
