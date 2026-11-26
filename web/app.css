@@ -373,6 +373,9 @@ body.resizing-v { cursor: row-resize; user-select: none; }
 /* two threads (experiment) */
 .tracks-bar { container-type: inline-size; flex: none; position: relative; z-index: 4; display: flex; align-items: center; gap: 10px; padding: 6px 16px; border-bottom: 1px solid var(--line); background: var(--side); min-width: 0; }
 .tracks-bar[hidden] { display: none; }
+.tracks-closed { padding-top: 3px; padding-bottom: 3px; }
+.track-closed-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }
+.thread-idle { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 12px 0; padding: 8px 14px; color: var(--muted); font-size: 13px; background: var(--well); border: 1px solid var(--line); border-radius: 8px; }
 .track-label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--muted); white-space: nowrap; }
 .track-label .ico { width: 15px; height: 15px; }
 .exp-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 50%, var(--line)); border-radius: 4px; padding: 0 4px; }

@@ -32,18 +32,51 @@ function lastLesson(t) {
 // the tutor message the learner hasn't seen in a thread they're not looking at (stored per topic)
 const seenKey = t => `seen:${app.topic.slug}:${t}`;
 function markSeen() { const t = curTrack(), l = t && lastLesson(t); if (l && l.role === 'tutor') store.set(seenKey(t), l.id); }
+// What a thread holds for the learner. "nothing waiting" (no open question, nothing being
+// written) is said in words, on the tab and in the thread: an empty-handed thread read as lost
+// replies (2026-11-25). The learner's message counts as being answered only while the tutor has it
+// queued or is working; once the tutor is listening again with no reply here (it answered in the
+// other thread), nothing more is coming.
 function trackState(t) {
-  const l = lastLesson(t);
+  const l = lastLesson(t), s = app.status || {};
   if (!l) return { key: 'empty', text: 'nothing yet' };
-  if (l.role === 'user') return { key: 'writing', text: 'writing…' };
+  if (l.role === 'user') {
+    const queued = (s.inbox || []).includes(`${app.topic.slug}/${l.id}`);
+    if (s.phase === 'thinking' || s.phase === 'handoff') return { key: 'writing', text: 'writing…' };
+    if (queued || Date.now() - Date.parse(l.ts) < 4e3) return { key: 'writing', text: queued && s.phase !== 'listening' ? 'queued' : 'writing…' };
+    return { key: 'idle', text: 'nothing waiting' };
+  }
   if (t !== curTrack() && store.get(seenKey(t), '') !== l.id) return { key: 'ready', text: 'ready' };
-  return app.d.pendingBy?.[t] ? { key: 'turn', text: 'your turn' } : { key: 'idle', text: 'read' };
+  return app.d.pendingBy?.[t] ? { key: 'turn', text: 'your turn' } : { key: 'idle', text: 'nothing waiting' };
 }
-function drawTrackBar(note) {
+// Two threads are on by default (the learner asked: they hadn't seen the button), so the bar is
+// there from the start of a topic, saying the second thread isn't open yet. Only their own
+// "One thread" takes it away; then the button in the input's footer brings it back.
+function tracksOff() {
+  const J = app.topic.journal;
+  for (let i = J.length - 1; i >= 0; i--) { const m = J[i].role === 'user' && /^two threads: (on|off)/.exec(J[i].text || ''); if (m) return m[1] === 'off'; }
+  return false;
+}
+const TRACKS_TIP = 'An experiment against waiting: while you read and answer one thread, the tutor writes the reply in the other. Sending in one takes you to the other when its reply is ready.';
+const tracksLabel = () => h('span', { class: 'track-label', title: TRACKS_TIP },
+  icon('threads'), h('span', { class: 'track-label-t', text: 'Two threads' }), h('span', { class: 'exp-tag', text: 'experiment' }));
+let barNote = '';   // why the thread just changed, shown for a few seconds
+function drawTrackBar() {
+  const note = barNote;
   if (!trackBar) return;
   const tr = app.d.tracks, cur = curTrack();
-  trackBar.hidden = !tr.open;
-  if (!tr.open) { trackBar.replaceChildren(); return; }
+  const off = !tr.open && tracksOff();
+  trackBar.hidden = off;
+  trackBar.classList.toggle('tracks-closed', !tr.open);
+  if (off) { trackBar.replaceChildren(); return; }
+  if (!tr.open) {
+    const asked = awaitingReply(app.topic.journal)?.text?.startsWith('two threads: on');
+    trackBar.replaceChildren(tracksLabel(),
+      h('span', { class: 'track-closed-t', title: TRACKS_TIP, text: asked ? 'The tutor is opening the second thread…' : 'One thread for now; the tutor opens a second when there is material for it.' }),
+      asked ? h('span') : h('button', { class: 'btn btn-tiny', id: 'twoThreadsBtn', title: 'Ask the tutor to open the second thread now', onclick: () => quickAction(TWO_ON) }, 'Open it now'),
+      asked ? h('span') : h('button', { class: 'btn btn-tiny', title: 'Stay with one thread: hides this bar (the Two threads button below the input brings it back)', onclick: () => quickAction(TWO_OFF) }, 'One thread'));
+    return;
+  }
   const tab = t => {
     const st = trackState(t);
     return h('button', { class: `track-tab st-${st.key}` + (t === cur ? ' on' : ''), title: (tr.titles[t] || '') + ` · ${st.text}  (t switches)`, onclick: () => switchTrack(t) },
@@ -52,11 +85,10 @@ function drawTrackBar(note) {
   };
   // replaceChildren turns a null into the text "null" (unlike h), so drop the empty note
   trackBar.replaceChildren(...[
-    h('span', { class: 'track-label', title: 'An experiment against waiting: while you read and answer one thread, the tutor writes the reply in the other. Sending in one takes you to the other when its reply is ready.' },
-      icon('threads'), h('span', { class: 'track-label-t', text: 'Two threads' }), h('span', { class: 'exp-tag', text: 'experiment' })),
+    tracksLabel(),
     h('div', { class: 'track-tabs' }, tab('a'), tab('b')),
     note ? h('span', { class: 'track-note', role: 'status', text: note }) : null,
-    h('button', { class: 'btn btn-tiny', title: 'Ask the tutor to fold the second thread back into the main one', onclick: () => quickAction('two threads: off (fold the second thread back into the main one)') }, 'One thread')].filter(Boolean));
+    h('button', { class: 'btn btn-tiny', title: 'Ask the tutor to fold the second thread back into the main one', onclick: () => quickAction(TWO_OFF) }, 'One thread')].filter(Boolean));
 }
 let noteTimer = 0;
 // opts.toReply: show the reply waiting there (the first tutor message after the learner's last
@@ -67,13 +99,14 @@ export function switchTrack(t, { toReply = false, note = '' } = {}) {
   drawThread();
   drawComposer();
   clearTimeout(noteTimer);
-  if (note) noteTimer = setTimeout(() => drawTrackBar(), 6000);
+  barNote = note;
+  if (note) noteTimer = setTimeout(() => { barNote = ''; drawTrackBar(); }, 6000);
   const J = app.topic.journal.filter(e => lessonEntry(e) && trackOf(e) === t);
   let i = J.length; while (i > 0 && J[i - 1].role === 'tutor') i--;
   const target = (toReply && J[i]) || curPending() || null;
   requestAnimationFrame(() => (target ? scrollToStart(target.id, false) : scrollBottom()));
   markSeen();
-  drawTrackBar(note);
+  drawTrackBar();
 }
 
 export function render(center) {
@@ -230,6 +263,7 @@ function toggleMeta(e, art) {
 let queuedSince = new Map();
 function drawTyping() {
   thread.querySelector('.typing')?.remove();
+  thread.querySelector('.thread-idle')?.remove();
   const s = app.status, t = curTrack();
   const waiting = awaitingReply(app.topic.journal, t);
   const queued = !!waiting && (s.inbox || []).includes(`${app.topic.slug}/${waiting.id}`);
@@ -257,6 +291,13 @@ function drawTyping() {
   if (node && t && waiting && s.phase !== 'handoff' && ['ready', 'turn'].includes(trackState(otherTrack(t)).key))
     node.append(h('button', { class: 'btn btn-small btn-primary', onclick: () => switchTrack(otherTrack(t), { toReply: true }) },
       `Thread ${otherTrack(t).toUpperCase()} is ready`, icon('chev')));
+  // two threads: this one has nothing for the learner (no open question, no reply being written);
+  // say so, and where there is something
+  if (!node && t && trackState(t).key === 'idle') {
+    const o = otherTrack(t), so = trackState(o);
+    node = h('div', { class: 'thread-idle', role: 'status' }, h('span', { text: `Nothing is waiting for you in thread ${t.toUpperCase()}: no open question here, and no reply is being written. You can still write below.` }),
+      ['ready', 'turn', 'writing'].includes(so.key) ? h('button', { class: 'btn btn-small', onclick: () => switchTrack(o, { toReply: so.key === 'ready' }) }, `Thread ${o.toUpperCase()}: ${so.text}`, icon('chev')) : null);
+  }
   if (node) thread.append(node);
 }
 
@@ -283,6 +324,7 @@ export function onEntries(fresh) {
   drawComposer(true);
   keepAnchor();
   if (curTrack()) { if (fresh.some(e => visible(e) && e.role === 'tutor') && nearBottom) markSeen(); drawTrackBar(); }
+  else if (fresh.some(e => e.role === 'user' || e.kind === 'message')) drawTrackBar();
   // Only two things move the conversation: a new tutor reply (shown from its beginning, where
   // reading starts, not the bottom of the thread) and the learner's own message. Anything else
   // (a grade, a level change, a tag, a session divider) appears in place and the view stays put.
@@ -308,9 +350,9 @@ function retag(ids) {
     redrawEntry(id);
   }
 }
-export function onStatus() { if (thread) drawTyping(); }
+export function onStatus() { if (thread) { drawTyping(); if (curTrack()) drawTrackBar(); } }
 // "Delivering…" turns into "not picked up yet" without a status change to trigger it
-setInterval(() => { if (thread?.isConnected && thread.querySelector('.typing')) drawTyping(); }, 5000);
+setInterval(() => { if (thread?.isConnected && (thread.querySelector('.typing') || curTrack())) { drawTyping(); if (curTrack()) drawTrackBar(); } }, 5000);
 // Topic files changed (the tutor's bookkeeping): update what the conversation shows of them, in
 // place. A full redraw would restart diagrams and reload images under the reader, so only the
 // rare changes that need one get it (and it keeps the place).
@@ -409,6 +451,7 @@ const QUICK = [
   null,
   ['Progress', 'show progress', 'progress', 'Ask the tutor for a progress summary'],
 ];
+const TWO_OFF = 'two threads: off (fold the second thread back into the main one)';
 const TWO_ON = 'two threads: on (open a second, closely related thread, so I can read and answer one while you write the other; docs/method.md "Two threads")';
 
 // One box, two modes: Answer (closes the open question; the tutor grades it) and Ask (a side
@@ -497,7 +540,7 @@ function drawComposer(keepFocus) {
     ta,
     h('div', { class: 'box-f' },
       h('div', { class: 'quick' }, ...QUICK.map(q => q ? h('button', { class: 'btn btn-small', title: q[3], onclick: () => quickAction(q[1]) }, icon(q[2]), h('span', { class: 'lbl', text: q[0] })) : h('span', { class: 'sep' })),
-        t ? null : h('button', { class: 'btn btn-small btn-exp', id: 'twoThreadsBtn', onclick: () => quickAction(TWO_ON),
+        t || !tracksOff() ? null : h('button', { class: 'btn btn-small btn-exp', id: 'twoThreadsBtn', onclick: () => quickAction(TWO_ON),
           title: 'Experiment: the tutor opens a second, closely related thread. When you answer in one, you are taken to the other, where its reply is usually ready, so you don’t wait while the tutor writes.' }, icon('threads'), h('span', { class: 'lbl', text: 'Two threads' }))),
       busy ? h('button', { class: 'btn send-btn', disabled: true }, h('span', { class: 'dots' }, h('i'), h('i'), h('i')), 'Sending…')
       : mode === 'ask'

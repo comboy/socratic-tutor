@@ -29,6 +29,9 @@ const REAL_FEEDBACK = path.join(CODE, 'data', 'feedback.md');
 const realFeedback = () => { try { return fs.readFileSync(REAL_FEEDBACK, 'utf8'); } catch { return null; } };
 const PORT = String(4800 + Math.floor(Math.random() * 150));
 const BASE = `http://localhost:${PORT}`;
+// (LEARN_HOST: a server started with --host hands it to everything it starts, a background job
+// running the tests included; the tests' own server is on loopback)
+delete process.env.LEARN_HOST;
 const ENV = { ...process.env, LEARN_HOME: HOME, LEARN_NO_GIT: '1', LEARN_PORT: PORT, LEARN_CLAUDE: path.join(CODE, 'test', 'fake-tutor.mjs'),
   CLAUDE_CONFIG_DIR: path.join(HOME, 'claude'), LEARN_HANDOFF_TOKENS: '150000', FAKE_TOKENS_PER_TURN: '30000' };
 const learn = (...a) => execFileSync(process.execPath, [BIN, ...a], { env: ENV, encoding: 'utf8' });
@@ -199,6 +202,21 @@ async function main() {
     await sleep(600);
     assert(!JSON.stringify(fakeLog()).includes('API feedback'), 'the tutor saw it');
     assert(realFeedback() === real, 'wrote to the real data/feedback.md');
+  });
+
+  await test('live updates keep coming when a file is replaced again and again (atomic writes: a Linux watch loses the file after the first)', async () => {
+    const ctl = new AbortController(), seen = [];
+    const res = await fetch(BASE + '/api/events', { signal: ctl.signal });
+    (async () => { const dec = new TextDecoder(); try { for await (const chunk of res.body) for (const m of dec.decode(chunk).matchAll(/^data: (.*)$/gm)) seen.push(JSON.parse(m[1])); } catch {} })();
+    const f = path.join(HOME, 'topics/demo/notes.json'), body = fs.readFileSync(f, 'utf8');
+    const count = () => seen.filter(e => e.type === 'topic' && e.topic === 'demo' && e.part === 'notes.json').length;
+    try {
+      for (let i = 1; i <= 3; i++) {
+        fs.writeFileSync(f + '.x.tmp', body + ' '.repeat(i)); fs.renameSync(f + '.x.tmp', f);
+        await until(() => count() >= i, `update ${i} of notes.json reached the browser (got ${count()})`, 6000);
+        await sleep(300);
+      }
+    } finally { ctl.abort(); fs.writeFileSync(f, body); }
   });
 
   console.log('\nTutor commands');
@@ -525,8 +543,10 @@ async function main() {
   });
   await test('two threads (experiment): the tutor opens a second thread; sending in one takes you to the other, where the reply waits; post needs --track; latency; back to one thread', async () => {
     await page.nav(`${BASE}/#/demo/learn`, 900);
-    assert(await page.eval(`document.querySelector('#tracksBar').hidden`), 'thread bar shown with one thread');
-    await page.click('#twoThreadsBtn');
+    // on by default, so the bar is there before the second thread is: it says so and offers to open it
+    assert(await page.eval(`(() => { const b = document.querySelector('#tracksBar'); return !b.hidden && b.classList.contains('tracks-closed') && !b.querySelector('.track-tab') && /One thread for now/.test(b.textContent) && !document.querySelector('#composer #twoThreadsBtn'); })()`), 'one thread: the bar should show, closed, with the button in it');
+    await page.shot('two-threads-closed');
+    await page.click('#tracksBar #twoThreadsBtn');
     await page.waitFor(`!document.querySelector('#tracksBar').hidden && document.querySelectorAll('.track-tab').length === 2`, { timeout: 8000 });
     await page.waitFor(`document.querySelector('.track-tab.st-ready:not(.on)')`, { timeout: 8000 });   // B's question waits
     const j0 = journal();
@@ -560,6 +580,22 @@ async function main() {
     assert(sentB.track === 'b' && sentB.replyTo === bq.id, JSON.stringify(sentB));
     await until(() => journal().find(e => e.role === 'tutor' && e.track === 'b' && /answer in B/.test(e.text)), 'B reply');
     assert(/two threads: \d+ replies/.test(learn('latency', 'demo')), learn('latency', 'demo'));
+    // a thread with nothing for the learner says so (tab and thread), and sending in the other doesn't take them there
+    await page.waitFor(`document.querySelector('.track-tab.st-ready:not(.on) .track-letter')?.textContent === 'B'`, { timeout: 8000 });
+    await page.click('#answerBox'); await page.type('closing A FAKE-NOREPLY');
+    await page.key('Enter', { meta: true });
+    await page.waitFor(`document.querySelector('.track-tab.on .track-letter')?.textContent === 'B'`, { timeout: 3000 });
+    await page.waitFor(`(() => { const a = document.querySelector('.track-tab:not(.on)'); return a.classList.contains('st-idle') && /nothing waiting/.test(a.textContent); })()`, { timeout: 15000 });
+    assert(!await page.eval(`!!document.querySelector('.thread-idle')`), 'thread B has a question: no idle note there');
+    await page.click('#answerBox'); await page.type('second answer in B FAKE-DELAY-1200');
+    await page.key('Enter', { meta: true });
+    await sleep(700);
+    assert(await page.eval(`document.querySelector('.track-tab.on .track-letter')?.textContent`) === 'B', 'moved to a thread with nothing waiting');
+    await until(() => journal().find(e => e.role === 'tutor' && e.track === 'b' && /second answer in B/.test(e.text)), 'second B reply');
+    await page.click('.track-tab:not(.on)');
+    const idle = await page.waitFor(`document.querySelector('.thread-idle')?.innerText`, { timeout: 8000 });
+    assert(/Nothing is waiting for you in thread A/.test(idle) && /Thread B/.test(idle), idle);
+    await page.shot('two-threads-idle');
     // back to one thread: the bar goes, B's messages stay, marked
     await page.eval(`[...document.querySelectorAll('#tracksBar button')].find(b => /One thread/.test(b.textContent)).click()`);
     await page.waitFor(`document.querySelector('#tracksBar').hidden && document.querySelector('.track-chip') && /Fake thread-b question/.test(document.querySelector('#thread').innerText)`, { timeout: 8000 });
@@ -1047,7 +1083,7 @@ async function main() {
     post('cells', fig('busy.svg') + '\n\nSee {{the first one|first}}.');
     const id = lastTutor('cells').id, sel = `[id="m-${id}"] .viz-figure`;
     await page.nav(`${BASE}/#/cells/learn`, 1200);
-    const r = await page.waitFor(`(() => { const v = document.querySelector('${sel}'); if (!v || !v.querySelector('.fig-region')) return null;
+    const r = await page.waitFor(`(() => { const v = document.querySelector('${sel}'); if (!v || !v.querySelector('.fig-region') || !v.querySelector('.media-credit')) return null;   // the credit comes with media/index.json, a moment after the post
       const regs = [...v.querySelectorAll('.fig-region')], st = v.querySelector('.fig-stage').getBoundingClientRect();
       return { regions: regs.length, nums: regs.map(g => g.querySelector('text').textContent).join(), list: [...v.querySelectorAll('.fig-list li')].map(li => li.innerText.replace(/\\s+/g, ' ')),
         mask: v.querySelectorAll('mask rect').length, hide: v.querySelectorAll('.fig-hide').length, arrow: v.querySelector('.fig-arrow-label')?.textContent,
@@ -1235,6 +1271,26 @@ async function main() {
     assert(dock.names.join() === wiki.names.join(), 'dock and wiki order differ');
     await page.click('.sheet .gl-sort [data-sort="alpha"]');
     assert(await page.eval(`document.querySelector('.sheet .gl-letter').textContent`) === 'A', 'back to A–Z');
+  });
+  await test('glossary filter: ranked by where it matches (name start, inside the name, description), a typo finds the term; wiki and dock', async () => {
+    await page.eval(`localStorage.removeItem('learn:glossarySort')`);
+    await page.nav(`${BASE}/#/demo/wiki/glossary`, 900);
+    await page.waitFor(`document.querySelectorAll('.gl-row').length > 10`);
+    const filter = (box, q, SEL, HEAD) => page.eval(`(() => { const i = document.querySelector('${box}'); i.value = ${JSON.stringify(q)}; i.dispatchEvent(new Event('input'));
+      return { names: [...document.querySelectorAll('${SEL}')].map(b => [...b.childNodes].find(n => n.nodeType === 3).textContent.trim()), heads: [...document.querySelectorAll('${HEAD}')].map(x => x.textContent) }; })()`);
+    for (const [where, box, SEL, HEAD] of [['wiki', '.sheet input[type=search]', '.sheet .gl-row .gl-name', '.sheet .gl-letter'], ['dock', '#dock .dock-search input', '#dock .gl-item .gl-term', '#dock .gl-letter']]) {
+      const r = await filter(box, 'token', SEL, HEAD);
+      assert(r.names.slice(0, 3).join() === 'token,tokenizer,special tokens', `${where}: "token" should list token, tokenizer, special tokens first (A–Z put a description match first): ${r.names}`);
+      assert(r.heads.join('|') === 'Name starts with it|In the name|In the description' && r.names.indexOf('vocabulary') > 2, `${where}: tiers as sections, description matches last: ${r.heads} / ${r.names}`);
+      const typo = await filter(box, 'sofmax', SEL, HEAD);
+      assert(typo.names.join() === 'softmax' && typo.heads.join() === 'Similar spelling', `${where}: a typo finds the term: ${JSON.stringify(typo)}`);
+      const alias = await filter(box, 'byte', SEL, HEAD);
+      assert(alias.names[0] === 'BPE', `${where}: an alias counts as a name: ${alias.names}`);
+      assert((await filter(box, 'zzzz', SEL, HEAD)).names.length === 0 && await page.eval(`!!document.querySelector('${where === 'wiki' ? '.sheet' : '#dock'} .empty-row')`), `${where}: no match says so`);
+      if (where === 'wiki') { await filter(box, 'token', SEL, HEAD); await page.shot('glossary-filter'); }
+      const all = await filter(box, '', SEL, HEAD);
+      assert(all.heads[0] === 'A' && all.names.length > 10, `${where}: an empty filter is the A–Z list again`);
+    }
   });
   await test('the toolbar button opens a page with two tabs: instructions, and changes to the app (saved for the builder, the tutor not interrupted, open items listed); again goes back', async () => {
     const jl = journal().length;
