@@ -312,6 +312,7 @@ function toggleMeta(e, art) {
 // once it's answered, or once the tutor took it and went back to listening without a reply here
 // (it answered in the other thread, say): dots that never end read as "lost".
 let queuedSince = new Map();
+const sinceText = ts => { const m = Math.round((Date.now() - Date.parse(ts)) / 60e3); return m < 1 ? 'just now' : m === 1 ? 'a minute ago' : m < 90 ? `${m} minutes ago` : `${Math.round(m / 60)} hours ago`; };
 function drawTyping() {
   thread.querySelector('.typing')?.remove();
   thread.querySelector('.thread-idle')?.remove();
@@ -331,12 +332,16 @@ function drawTyping() {
   else if (waiting.kind === 'start' && firstReply && s.launcher && (queued || s.phase === 'thinking')) node = h('div', { class: 'typing' }, dots(),
     s.phase === 'thinking' ? 'The tutor is reading your goal. First a question or two to see where you stand; the skill tree and map fill in meanwhile.' : 'A tutor session for this topic is starting…');
   else if (!queued && s.phase === 'thinking') node = h('div', { class: 'typing' }, dots(), 'The tutor is thinking…');
+  // the tutor was given this message, is not working on it and hasn't replied (the server's view,
+  // app/server.js "stalled"): say so. A thread that just sat there is what a lost message looked like.
+  else if (!queued && (s.stalled || []).includes(`${app.topic.slug}/${waiting.id}`)) node = h('div', { class: 'typing offline stalled' }, h('b', { text: 'No reply yet. ' }),
+    `The tutor was given this message ${sinceText(waiting.ts)} and hasn’t answered it. `, s.launcher ? 'If one should have come: ' : '', s.launcher ? restart() : '');
   else if (!queued) node = null;
   else if (s.phase === 'starting') node = h('div', { class: 'typing' }, dots(), 'The tutor is starting up; your message will be picked up in a moment…');
   else if (s.phase === 'thinking') node = h('div', { class: 'typing' }, dots(), 'The tutor is answering another message; yours is next in line.');
   else if (s.phase === 'listening' && !stuck) node = h('div', { class: 'typing' }, dots(), 'Delivering…');
   else if (s.launcher) node = h('div', { class: 'typing offline' }, h('b', { text: 'Queued. ' }),
-    s.phase === 'listening' ? 'The tutor hasn’t picked it up yet. ' : 'The tutor isn’t listening right now. ', 'If this lasts, restart it: ', restart());
+    s.phase === 'listening' ? 'The tutor hasn’t picked it up yet. ' : 'The tutor isn’t listening right now. ', 'If it stays quiet for a few minutes it is restarted by itself; or do it now: ', restart());
   else node = h('div', { class: 'typing offline' }, h('b', { text: 'Queued. ' }), 'No tutor is running. Start one in a terminal with ', h('code', { text: 'bin/learn' }), '; your message will be delivered then.');
   // two threads: while this one is being written, the other may have its reply ready
   if (node && t && waiting && s.phase !== 'handoff' && ['ready', 'turn'].includes(trackState(otherTrack(t)).key))

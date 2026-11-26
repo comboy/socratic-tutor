@@ -324,6 +324,12 @@ A checklist: `- [ ] 2026-11-21 (learner, llms · learn): text`. The builder job 
   as a VPN address or `0.0.0.0` makes it reachable from other machines, with an access token
   (`docs/setup.md`, "Running on a server"). `bin/learn --host <ip>` and `LEARN_HOST` override it.
 
+- `redeliverSeconds` (default 120): a message `wait` printed to the tutor that has no reply after
+  this long, with the tutor listening again, is printed to it once more (`DELIVERED AGAIN`).
+  `watchdogSeconds` (default 300, `0` turns it off): with a learner's message waiting, no `wait`
+  running and the agent quiet this long, the server replaces the tutor with a fresh session
+  (three times as long for an agent whose activity can't be read). `app/session.js` and
+  `app/server.js` have the reasons.
 - `agent`: `"claude"` (default) or `{ "cmd": "codex", "interactive": ["{prompt}"], "headless":
   ["exec", "{prompt}"] }` for any other CLI agent (see `app/agent.js`).
 - `handoffTokens`: context size at which the tutor hands over to a fresh session (Claude only).

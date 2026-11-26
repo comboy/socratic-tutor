@@ -27,6 +27,12 @@ fs.cpSync(path.join(CODE, 'test', 'fixture', 'topics'), path.join(HOME, 'topics'
 fs.cpSync(path.join(CODE, 'test', 'fixture', 'learner'), path.join(HOME, 'learner'), { recursive: true });
 const REAL_FEEDBACK = path.join(CODE, 'data', 'feedback.md');
 const realFeedback = () => { try { return fs.readFileSync(REAL_FEEDBACK, 'utf8'); } catch { return null; } };
+// config.json of the test home. redeliverSeconds: a message the fake tutor leaves unanswered
+// (FAKE-NOREPLY) would be handed to it again two minutes later, in the middle of some other test;
+// the tests of that net set their own values.
+const BASE_CONFIG = { redeliverSeconds: 100000 };
+const setConfig = (patch = {}) => fs.writeFileSync(path.join(HOME, 'config.json'), JSON.stringify({ ...BASE_CONFIG, ...patch }));
+setConfig();
 const PORT = String(4800 + Math.floor(Math.random() * 150));
 const BASE = `http://localhost:${PORT}`;
 // (LEARN_HOST: a server started with --host hands it to everything it starts, a background job
@@ -728,6 +734,108 @@ async function main() {
     await until(() => fakeLog().some(l => l.event === 'replied' && l.id === id), 'the lost message reaches the tutor', 10000);
     assert(!fs.readdirSync(inbox).some(f => f.includes(id)), 'claim file left behind: ' + fs.readdirSync(inbox));
   });
+  await test('a message the tutor was given and left unanswered (its wait printed into the void, or it went back to listening) is delivered again by the running wait, once, and answered once', async () => {
+    setConfig({ redeliverSeconds: 1 });
+    try {
+      const sent = await api('/api/send', { topic: 'demo', kind: 'ask', text: 'FAKE-NOREPLY lost on the way' });
+      await until(() => fakeLog().some(l => l.event === 'noreply' && l.id === sent.id), 'delivered the first time');
+      const again = await until(() => fakeLog().find(l => l.event === 'replied' && l.id === sent.id), 'delivered again and answered, with nothing sent meanwhile', 20000);
+      assert(/DELIVERED AGAIN/.test(again.head), 'not marked as delivered again: ' + again.head);
+      await sleep(2500);
+      assert(journal().filter(e => e.role === 'tutor' && e.kind === 'message' && e.replyTo === sent.id).length === 1, 'answered more than once');
+      assert(!(await api('/api/status')).stalled.length, 'an answered message is listed as stalled');
+      // one the tutor leaves alone even the second time: delivered twice, no more, and the thread says so
+      await page.nav(`${BASE}/#/demo/learn`, 900);
+      const never = await api('/api/send', { topic: 'demo', kind: 'ask', text: 'FAKE-NEVER answered' });
+      await until(() => fakeLog().filter(l => l.event === 'noreply' && l.id === never.id).length === 2, 'delivered twice', 20000);
+      await until(async () => (await api('/api/status')).stalled.includes(`demo/${never.id}`), 'status lists it as stalled', 15000);
+      await page.waitFor(`/No reply yet/.test(document.querySelector('.typing.stalled')?.textContent || '') && !!document.querySelector('.typing.stalled .btn')`, { timeout: 8000 });
+      await page.shot('stalled-message');
+      await sleep(3000);
+      assert(fakeLog().filter(l => l.event === 'noreply' && l.id === never.id).length === 2, 'delivered a third time');
+    } finally { setConfig(); }
+    // the next reply in the thread ends it
+    const next = await api('/api/send', { topic: 'demo', kind: 'ask', text: 'and on we go' });
+    await until(() => fakeLog().some(l => l.event === 'replied' && l.id === next.id), 'next message answered');
+    await page.waitFor(`!document.querySelector('.typing.stalled')`, { timeout: 8000 });
+  });
+  await test('watchdog: a tutor that took a message, went quiet and listens no more is replaced by itself, and the fresh one answers', async () => {
+    const before = sessions().length;
+    const sent = await api('/api/send', { topic: 'demo', kind: 'ask', text: 'STALL-ONCE and nobody presses a button' });
+    await until(() => fakeLog().some(l => l.event === 'stalling' && l.id === sent.id), 'tutor stalls');
+    setConfig({ watchdogSeconds: 2 });
+    try {
+      await until(() => fakeLog().some(l => l.event === 'replied' && l.id === sent.id), 'a fresh tutor answers without anyone asking', 30000);
+    } finally { setConfig(); }
+    assert(sessions().length === before + 1, 'sessions started: ' + (sessions().length - before));
+    assert(journal().filter(e => e.role === 'tutor' && e.kind === 'message' && e.replyTo === sent.id).length === 1, 'answered once');
+    assert(/watchdog: .*replacing the tutor/.test(fs.readFileSync(path.join(HOME, 'state/server.log'), 'utf8')), 'server.log says why');
+    await until(async () => (await api('/api/status')).phase === 'listening', 'listening again', 20000);
+  });
+  await test('a command never ends in silence: a server that dies mid-answer is an error for post, and wait prints its message first; a wait that cannot print puts the message back', async () => {
+    const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-cut-'));
+    fs.cpSync(path.join(HOME, 'topics'), path.join(copy, 'topics'), { recursive: true });
+    const port = Number(PORT) + 334;
+    const cenv = { ...ENV, LEARN_HOME: copy, LEARN_PORT: String(port) };
+    delete cenv.LEARN_SESSION;
+    const enqueue = m => execFileSync(process.execPath, ['-e', `const S = require(${JSON.stringify(path.join(CODE, 'app', 'store.js'))}); S.ensureDir(S.INBOX); S.enqueue(JSON.parse(process.argv[1]))`, JSON.stringify(m)], { env: cenv });
+    const runCli = (a, { input, stdout = 'pipe' } = {}) => new Promise(res => {
+      const c = spawn(process.execPath, [BIN, ...a], { env: cenv, stdio: ['pipe', stdout, 'pipe'] });
+      let o = '', e = ''; c.stdout?.on('data', d => o += d); c.stderr.on('data', d => e += d);
+      c.stdin.end(input || '');
+      const t = setTimeout(() => c.kill('SIGKILL'), 20000);
+      c.on('exit', status => { clearTimeout(t); res({ status, stdout: o, stderr: e }); });
+    });
+    // a server that answers the ping and then dies in the middle of every other answer
+    const net = await import('node:net');
+    const srv = net.createServer(sock => {
+      sock.on('error', () => {});
+      sock.on('data', d => {
+        if (/^GET \/api\/ping/.test(String(d))) { const b = JSON.stringify({ ok: true, home: fs.realpathSync(copy) }); return sock.write(`HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: ${b.length}\r\n\r\n${b}`); }
+        sock.write('HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 400\r\n\r\n[{"id"'); setTimeout(() => sock.destroy(), 30);
+      });
+    });
+    await new Promise(r => srv.listen(port, '127.0.0.1', r));
+    const inbox = () => fs.readdirSync(path.join(copy, 'state/inbox'));
+    try {
+      const p = await runCli(['post', '--topic', 'demo', '--force'], { input: 'cut off mid-answer' });
+      assert(p.status === 1 && /closed the connection/.test(p.stderr), `post ended with ${p.status}: ${p.stdout}${p.stderr}`);
+      enqueue({ id: 'cut-1', topic: 'demo', role: 'user', kind: 'ask', text: 'printed before the server is told', ts: new Date().toISOString() });
+      const w = await runCli(['wait']);
+      assert(w.status === 0 && w.stdout.includes('printed before the server is told') && /re-run `bin\/learn wait`/.test(w.stdout), `wait: ${w.status} ${w.stdout}${w.stderr}`);
+      assert(!inbox().length, 'left in the inbox: ' + inbox());
+    } finally { srv.close(); }
+    // stdout that refuses every write (Linux has a device for that): exit 1, and the message is queued again
+    if (fs.existsSync('/dev/full')) {
+      enqueue({ id: 'cut-2', topic: 'demo', role: 'user', kind: 'ask', text: 'cannot be printed', ts: new Date().toISOString() });
+      const full = fs.openSync('/dev/full', 'w');
+      const w = await runCli(['wait'], { stdout: full });
+      fs.closeSync(full);
+      assert(w.status === 1 && /wait failed: .*back in the queue/.test(w.stderr), `wait on a full device: ${w.status} ${w.stderr}`);
+      assert(inbox().length === 1 && /-cut-2\.json$/.test(inbox()[0]), 'not back in the inbox: ' + inbox());
+      const w2 = await runCli(['wait']);
+      assert(w2.status === 0 && w2.stdout.includes('cannot be printed'), 'the next wait did not deliver it: ' + w2.stdout + w2.stderr);
+    }
+    fs.rmSync(copy, { recursive: true, force: true });
+  });
+  await test('a send retried after the server restarted in between is still saved once (the entry carries the client id)', async () => {
+    const body = { topic: 'cells', kind: 'ask', text: 'retried across a restart', cid: 'test-cid-restart' };
+    const first = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-cid-'));
+    fs.cpSync(path.join(HOME, 'topics'), path.join(first, 'topics'), { recursive: true });
+    const port = String(Number(PORT) + 335), cenv = { ...ENV, LEARN_HOME: first, LEARN_PORT: port };
+    const post = async () => (await fetch(`http://localhost:${port}/api/send`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json();
+    const up = () => until(() => fetch(`http://localhost:${port}/api/ping`).then(r => r.ok).catch(() => false), 'server');
+    let srv = spawn(process.execPath, [BIN, 'serve'], { env: cenv, stdio: 'ignore' });
+    try {
+      await up();
+      const a = await post();
+      srv.kill(); await new Promise(r => srv.once('exit', r));
+      srv = spawn(process.execPath, [BIN, 'serve'], { env: cenv, stdio: 'ignore' });
+      await up();
+      const b = await post();
+      assert(a.id && a.id === b.id, `two entries: ${a.id} ${b.id}`);
+    } finally { srv.kill(); fs.rmSync(first, { recursive: true, force: true }); }
+  });
   await test('ping names the data home, status lists the queue by topic/id and the open browser tabs', async () => {
     const p = await api('/api/ping');
     assert(p.home === fs.realpathSync(HOME), JSON.stringify(p));
@@ -1377,6 +1485,9 @@ async function main() {
     await page.waitFor(`location.hash === '#/demo/learn'`, { timeout: 3000 });   // back where it came from (and where the light-theme test reloads)
   });
   await test('formulas: keyed parts are coloured without hovering; tables are centred', async () => {
+    // (a formula of its own: the thread draws the latest 60 entries, and the fixture's formulas
+    // scroll out of that as earlier tests add messages)
+    execFileSync(process.execPath, [BIN, 'post', '--topic', 'demo', '--force'], { env: ENV, stdio: 'pipe', input: 'A keyed formula: $\\k{sq}{x^2} + \\k{one}{1}$, where {{the square|sq}} grows faster.', encoding: 'utf8' });
     await page.nav(`${BASE}/#/demo/learn`, 1000);
     const r = await page.eval(`(() => {
       const k = document.querySelector('.msg-body .katex [data-k]'), fg = getComputedStyle(document.querySelector('.msg-body')).color;

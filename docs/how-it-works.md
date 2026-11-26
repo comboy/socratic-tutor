@@ -136,6 +136,17 @@ What keeps a message from getting lost, and where to look when one seems to:
   host, and one stream per tab used to use them all up, so sends just hung.
 - "Delivering…" shows only while the message is in `state/inbox/` (the status carries the queue),
   and "thinking" ends when the tutor listens again, so neither can stick.
+- A message `wait` takes from the queue is printed to the tutor or goes back in the queue: the
+  claimed file stays (`….json.<pid>`) until its text is written to stdout, and every other way
+  out of that process puts it back. What was printed is recorded in `state/delivered.json`; one
+  that is still unanswered two minutes later, with the tutor listening again, is printed again
+  once (`DELIVERED AGAIN`), by the `wait` that is running, with nothing for the learner to do.
+  After that the thread says "No reply yet" next to it, with the restart button.
+- With a message waiting, no `wait` running and the agent quiet for five minutes (its turn ended
+  without a reply or without re-arming the listener), the server's watchdog replaces the tutor;
+  the launcher requeues what's unanswered for the fresh session. `server.log` says when and why.
+- A CLI command never ends with exit code 0 and no output because the server went away
+  mid-answer: that is an error, and `wait` prints its message before it talks to the server.
 - `state/server.log` has a timestamped line for every message received, picked up and posted, and
   every restart. A restart first checks that the new code loads, and keeps the old server if not.
 - Journal appends, notes, terms and levels are written under a lock (`state/locks/`): the

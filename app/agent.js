@@ -49,6 +49,7 @@ const claude = {
   // start as a "nested session"; the tutor is a session of its own, in its own terminal or headless.
   env: () => ({ ENABLE_CLAUDEAI_MCP_SERVERS: S.config().agentMcp ? undefined : 'false', CLAUDECODE: undefined, CLAUDE_CODE_ENTRYPOINT: undefined }),
   contextTokens,
+  lastActivity,
 };
 
 function generic(spec) {
@@ -116,4 +117,18 @@ function contextTokens(id) {
   return null;
 }
 
-module.exports = { agent, agentEnv, contextTokens };
+// When the session last wrote to its transcript, or one of its subagents to theirs (ms; null when
+// there's no transcript). A working agent writes every tool call and result; one whose turn has
+// ended, or that sits at a prompt, writes nothing. A single command that runs for minutes in the
+// foreground looks the same as idle, so whoever reads this should allow for that.
+function lastActivity(id) {
+  const f = findTranscript(id);
+  if (!f) return null;
+  let t = 0;
+  try { t = fs.statSync(f).mtimeMs; } catch { return null; }
+  const sub = path.join(f.replace(/\.jsonl$/, ''), 'subagents');
+  try { for (const n of fs.readdirSync(sub)) if (n.endsWith('.jsonl')) { try { t = Math.max(t, fs.statSync(path.join(sub, n)).mtimeMs); } catch {} } } catch {}
+  return t;
+}
+
+module.exports = { agent, agentEnv, contextTokens, lastActivity };

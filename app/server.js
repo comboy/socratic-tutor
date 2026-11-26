@@ -25,7 +25,7 @@ function broadcast(ev) {
 
 // ---------- tutor status ----------
 // phase: listening | thinking | handoff (old tutor wrapping up / new one booting) | starting | offline
-const status = { phase: 'offline', queued: 0, inbox: [], pickedAt: 0, tutorAt: 0, context: null, launcher: false, kind: null };
+const status = { phase: 'offline', queued: 0, inbox: [], stalled: [], pickedAt: 0, tutorAt: 0, context: null, launcher: false, kind: null };
 let ctxAt = 0, lastSent = '';
 function computeStatus(force) {
   const sess = T.readSession();
@@ -56,14 +56,59 @@ function computeStatus(force) {
     status.context = c ? { tokens: c.tokens, model: c.model, limit: T.HANDOFF_TOKENS } : null;
   }
   Object.assign(status, { phase, queued, inbox, launcher, kind: sess?.kind || null });
+  try { watchdog({ sess, launcher, listening, booting, handoffReq, phase, inbox }); } catch (e) { log('watchdog: ' + e.message); }
   const pub = JSON.stringify(publicStatus());
   if (pub !== lastSent || force) { lastSent = pub; broadcast({ type: 'status', ...publicStatus() }); }
 }
 function publicStatus() {
-  const { phase, queued, inbox, context, launcher, kind } = status;
+  const { phase, queued, inbox, stalled, context, launcher, kind } = status;
   // inbox: "<topic>/<id>" of the messages not picked up yet (the UI says "delivering" only for those).
   // listening/thinking kept for older UI code paths
-  return { phase, queued, inbox, context, launcher, kind, listening: phase === 'listening' || phase === 'thinking', thinking: phase === 'thinking' };
+  // stalled: "<topic>/<id>" of messages the tutor was given long ago and hasn't answered (the UI says so)
+  return { phase, queued, inbox, stalled, context, launcher, kind, listening: phase === 'listening' || phase === 'thinking', thinking: phase === 'thinking' };
+}
+
+// ---------- the learner must never have to unstick it ----------
+// Called with every status computation (each second); looks every few seconds.
+// - stalled: messages the tutor was given (state/delivered.json) that have no reply well past the
+//   point where a running `wait` hands them over again (app/session.js recoverLost). The UI shows
+//   it next to the message: a thread that just sits there with no sign is what a lost message
+//   looked like for 50 minutes (2026-11-26). Not for a button press: many need no reply.
+// - the watchdog: a learner's message is waiting (in the queue, or given to the tutor and
+//   unanswered), no `wait` is running, and the agent has been quiet (no transcript writes) for
+//   `watchdogSeconds` (config.json; default 300, 0 turns it off; a full test run in the foreground
+//   is 200 s of silence from a working agent, a long reply being written about one minute): its turn ended without a reply
+//   or without re-arming the listener (it forgot, it hit an error, its `wait` died), and nothing
+//   will ever wake it. Then the tutor is replaced, as "Restart the tutor" does: the launcher
+//   starts a fresh session and requeues what's unanswered. An agent whose activity can't be read
+//   gets three times as long, counted from its last post or pick-up. At most twice in a row
+//   without a tutor message in between: if fresh sessions don't answer either, restarting isn't
+//   the cure, and the UI goes on offering the button.
+const dog = { at: 0, sess: null, quietSince: 0, waitingSince: 0, fired: 0, firedAt: 0 };
+function watchdog({ sess, launcher, listening, booting, handoffReq, phase, inbox }) {
+  const now = Date.now();
+  if (now - dog.at < 3000) return;
+  dog.at = now;
+  let pending = [];
+  try { pending = T.pendingDeliveries(); } catch {}
+  const grace = T.redeliverMs();
+  status.stalled = ['listening', 'offline'].includes(phase)
+    ? pending.filter(p => p.entry.kind !== 'action' && now - p.at > grace + (p.again ? 0 : 30e3) && !inbox.includes(`${p.topic}/${p.id}`)).map(p => `${p.topic}/${p.id}`) : [];
+  if (dog.sess !== (sess?.id || null)) { dog.sess = sess?.id || null; dog.quietSince = now; }
+  if (listening) dog.quietSince = now;
+  const waiting = inbox.length > 0 || pending.length > 0;
+  if (!waiting) dog.waitingSince = 0; else if (!dog.waitingSince) dog.waitingSince = now;
+  if (status.tutorAt > dog.firedAt) dog.fired = 0;
+  const limit = Number(process.env.LEARN_WATCHDOG_MS) || Number(S.config().watchdogSeconds ?? 300) * 1000;
+  if (!limit || !waiting || listening || !sess || !launcher || booting || handoffReq || dog.fired >= 2) return;
+  const act = T.lastActivity(sess.id);
+  const idle = now - Math.max(act ?? 0, status.tutorAt, status.pickedAt, Date.parse(sess.startedAt) || 0);
+  const quiet = Math.min(now - dog.quietSince, now - dog.waitingSince, idle);
+  if (quiet < (act == null ? 3 * limit : limit)) return;
+  dog.fired++; dog.firedAt = now; dog.quietSince = now;
+  const topic = sess.topic || (inbox[0] || `${pending[0].topic}/`).split('/')[0];
+  log(`watchdog: a message has waited ${Math.round((now - dog.waitingSince) / 1000)} s (${inbox.concat(pending.map(p => `${p.topic}/${p.id}`)).join(' ')}), no wait is running and the agent has been quiet for ${Math.round(idle / 1000)} s: replacing the tutor`);
+  T.requestHandoff({ reason: 'the tutor went quiet with a message waiting', topic, force: true, by: 'watchdog' });
 }
 
 // ---------- journal change tracking ----------
@@ -172,10 +217,14 @@ const routes = {
     const cid = typeof b.cid === 'string' && b.cid.length <= 64 ? b.cid : null;
     if (cid && sentByCid.has(cid)) { log(`send ${b.topic} ${sentByCid.get(cid).id}: retry, already saved`); return sentByCid.get(cid); }
     if (!S.listTopics().includes(b.topic)) throw new Error('unknown topic');
+    // (the server restarted between saving it and answering: the entry carries the client id)
+    const had = cid && S.journalFiles(b.topic).slice(-1).flatMap(f => S.readJournalFile(b.topic, f)).find(x => x.cid === cid && x.role === 'user');
+    if (had) { log(`send ${b.topic} ${had.id}: retry, already saved (before a restart)`); sentByCid.set(cid, had); return had; }
     if (!['answer', 'ask', 'action', 'start', 'meta'].includes(b.kind)) throw new Error('bad kind');
     const text = String(b.text || '').trim();
     if (!text) throw new Error('empty');
     const e = { role: 'user', kind: b.kind, text };
+    if (cid) e.cid = cid;
     if (b.kind === 'meta') e.meta = true;
     if (b.replyTo) e.replyTo = b.replyTo;
     if (b.quote) e.quote = b.quote;
