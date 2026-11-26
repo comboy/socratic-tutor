@@ -361,34 +361,51 @@ commands.resume = () => {
 };
 
 // ---------------------------------------------------------------- the loop
+// What must hold, whatever happens to this process: a message it took from the queue is either
+// printed in full on stdout or back in the queue. So a claimed file is kept (….json.<pid>) until
+// its text is written; the text is written before anything that can fail or hang (the server, the
+// transcript, files other agents may be editing); writes go through write(2) directly, so a failed
+// one is an error and not silence (console.log ignores them); and every way out of the process
+// that isn't "printed" puts the claims back (the exit handler). What was printed is recorded
+// (T.noteDelivered), and a running `wait` queues again what stays unanswered (T.recoverLost).
 commands.wait = async () => {
   S.ensureDir(S.INBOX);
   const mine = process.env.LEARN_SESSION || null;
   const stale = () => { const cur = T.readSession(); return mine && cur && cur.id !== mine; };
   if (stale()) { console.log('(this tutor session was replaced by a newer one; not listening)'); return; }
-  process.on('exit', T.registerListener(mine));
+  // loaded now rather than when the message is here: these files may be mid-edit by then
+  try { require('../app/agent'); require('crypto'); } catch {}
+  const held = [];   // { src, dst }: claimed, not printed yet
+  const putBack = () => { for (const h of held.splice(0)) { try { fs.renameSync(h.dst, h.src); } catch {} } };
+  const unregister = T.registerListener(mine);
+  process.on('exit', () => { putBack(); unregister(); });
   for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, () => process.exit(130));
+  const out = text => {
+    const buf = Buffer.from(text + '\n');
+    for (let off = 0, tries = 0; off < buf.length;) {
+      try { off += fs.writeSync(1, buf, off); }
+      catch (e) { if (e.code !== 'EAGAIN' || ++tries > 300) throw e; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10); }
+    }
+  };
 
   const claim = () => {
     const files = fs.readdirSync(S.INBOX).filter(f => f.endsWith('.json')).sort();
-    const got = [];
+    const got = [], seen = new Set();
     for (const f of files) {
       const src = path.join(S.INBOX, f), dst = src + '.' + process.pid;
       try { fs.renameSync(src, dst); } catch { continue; }    // someone else took it
-      try { got.push(JSON.parse(fs.readFileSync(dst, 'utf8'))); held.push(dst); } catch { fs.unlinkSync(dst); }
+      let m; try { m = JSON.parse(fs.readFileSync(dst, 'utf8')); } catch { try { fs.unlinkSync(dst); } catch {} continue; }
+      // queued twice (a handoff and a dying wait both put it back), or queued again and answered meanwhile
+      let drop = seen.has(`${m.topic}/${m.id}`);
+      if (!drop && m.redelivered) try { drop = !T.stillUnanswered(m); } catch {}
+      if (drop) { try { fs.unlinkSync(dst); } catch {} continue; }
+      seen.add(`${m.topic}/${m.id}`); m._held = { src, dst }; held.push(m._held); got.push(m);
     }
     return got;
   };
-  // A claimed message stays on disk (….json.<pid>) until it has been printed: if this process dies
-  // or goes quiet in between, the next wait puts it back (T.recoverLost has the story).
-  const held = [];
-  const release = () => { for (const f of held.splice(0)) { try { fs.unlinkSync(f); } catch {} } };
-  try {
-    const s0 = T.readSession();
-    const back = T.recoverLost(s0 && (!mine || s0.id === mine) ? s0.topic : null, s0 && s0.startedAt);
-    if (back.length) console.log(`(${back.length} message(s) had been taken from the queue without a reply and are delivered again: ${back.join(', ')})`);
-  } catch (e) { console.log(`(checking for lost messages failed: ${e.message})`); }
-  let msgs = claim();
+  const recover = () => { try { return T.recoverLost(); } catch (e) { return []; } };
+  recover();
+  let msgs = claim(), lastCheck = Date.now();
   while (!msgs.length) {
     await new Promise(res => {
       let w; const t = setTimeout(done, 1000);
@@ -396,10 +413,9 @@ commands.wait = async () => {
       try { w = fs.watch(S.INBOX, done); } catch {}
     });
     if (stale()) { console.log('(this tutor session was replaced by a newer one; stop listening)'); return; }
+    if (Date.now() - lastCheck > Math.min(10e3, T.redeliverMs() / 2)) { lastCheck = Date.now(); recover(); }
     msgs = claim();
   }
-  // tell the server the messages were picked up (UI shows "thinking")
-  await viaServer('POST', '/api/picked', { ids: msgs.map(m => `${m.topic}/${m.id}`) }, () => null).catch(() => {});
   // which topic is this session for? A message for another topic means a topic switch.
   const sess = T.readSession();
   const mineSess = sess && (!mine || sess.id === mine) ? sess : null;
@@ -412,56 +428,63 @@ commands.wait = async () => {
   const other = own.length ? null : elsewhere.at(-1);
   const after = own.length ? elsewhere.at(-1) : null;
   let handoff = false;
+  const extra = fn => { try { return fn(); } catch (e) { return null; } };   // nice to have; never in the way of the text
   for (const m of own) {
     const bits = [`id=${m.id}`, `topic=${m.topic}`];
     if (m.replyTo) bits.push(`replying-to=${m.replyTo}`);
     if (m.quote) bits.push(`quote=${m.quote}`);
-    if (m.kind !== 'meta' && m.topic && S.tracksState(S.readJournal(m.topic)).open) bits.push(`track=${S.trackOf(m)}`);
+    const J = extra(() => m.topic ? S.readJournal(m.topic) : null) || [];
+    if (m.kind !== 'meta' && extra(() => S.tracksState(J).open)) bits.push(`track=${S.trackOf(m)}`);
     if (m.kind === 'meta') bits.push('(about the app, not the lesson: reply with `post --meta`; already in feedback.md for the builder)');
-    if (m.redelivered) bits.push('(DELIVERED AGAIN: it was taken from the queue earlier and never got a reply; say so to the learner if they waited)');
-    console.log(`── ${String(m.kind).toUpperCase()}  ${bits.join('  ')} ──`);
-    console.log(m.text);
+    if (m.redelivered) bits.push('(DELIVERED AGAIN: you were given this message a while ago and it had no reply when this was printed. If you never saw it, answer it now and tell the learner it got lost on the way. If you saw it and left it, answer it now: a line is enough. If your reply went out in the meantime, or it is a button press that needs none, carry on)');
+    let text = `── ${String(m.kind).toUpperCase()}  ${bits.join('  ')} ──\n${m.text}\n`;
     // an answer to (or a skip of) a queued review question: which one, its rubric, how to grade it
-    if (m.replyTo && m.topic && m.kind !== 'meta') {
-      const J = S.readJournal(m.topic), q = J.find(e => e.id === m.replyTo);
-      if (q?.queue) {
-        const left = S.openQueue(J).filter(e => S.trackOf(e) === S.trackOf(q)).length;
-        console.log(`(${m.kind === 'answer' ? 'answers' : 'about'} review-queue question ${q.id}${q.skills?.length ? ` [skill ${q.skills.join(',')}]` : ''}: ${firstLine((q.text.match(/^:::question[^\n]*\n([\s\S]*?)^:::\s*$/m) || [])[1] || q.text, 160)}
+    const q = m.replyTo && m.kind !== 'meta' ? J.find(e => e.id === m.replyTo) : null;
+    if (q?.queue) text += extra(() => {
+      const left = S.openQueue(J).filter(e => S.trackOf(e) === S.trackOf(q)).length;
+      return `(${m.kind === 'answer' ? 'answers' : 'about'} review-queue question ${q.id}${q.skills?.length ? ` [skill ${q.skills.join(',')}]` : ''}: ${firstLine((q.text.match(/^:::question[^\n]*\n([\s\S]*?)^:::\s*$/m) || [])[1] || q.text, 160)}
  rubric: ${q.expect || '(none stored)'}
- ${m.kind === 'answer' ? `Grade this answer on its own: post --track ${S.trackOf(q)} --grade <verdict> --grade-of ${m.id} --grade-skill <id>, with short feedback. ` : ''}${left} more open in the queue${left < 2 ? ': top it up (post --queue --expect "…", one question per message)' : ''}.)`);
-      }
-    }
-    console.log();
+ ${m.kind === 'answer' ? `Grade this answer on its own: post --track ${S.trackOf(q)} --grade <verdict> --grade-of ${m.id} --grade-skill <id>, with short feedback. ` : ''}${left} more open in the queue${left < 2 ? ': top it up (post --queue --expect "…", one question per message)' : ''}.)\n`;
+    }) || '';
+    out(text);
+    // printed: it is the tutor's now
+    T.noteDelivered([m], mine);
+    held.splice(held.indexOf(m._held), 1);
+    try { fs.unlinkSync(m._held.dst); } catch {}
     if (T.isFreshTutorAction(m)) handoff = true;
   }
-  release();   // printed (messages for another topic are requeued by the handoff, as before)
-  const instr = T.instructionsChanged(mine);
-  if (instr != null) console.log(`── INSTRUCTIONS CHANGED ── The learner just edited their instructions to every tutor (the "In my own words" section of the profile). They override everything derived; follow them from this reply on:\n${instr ? instr.replace(/^/gm, '  ') : '  (now empty)'}\n`);
+  // messages for another topic aren't shown: back in the queue, for the session that takes that
+  // topic (the UI goes on saying "queued", which is what they are)
+  putBack();
+  // tell the server the messages were picked up (UI shows "thinking")
+  await viaServer('POST', '/api/picked', { ids: msgs.map(m => `${m.topic}/${m.id}`) }, () => null).catch(() => {});
+  const instr = extra(() => T.instructionsChanged(mine));
+  if (instr != null) out(`── INSTRUCTIONS CHANGED ── The learner just edited their instructions to every tutor (the "In my own words" section of the profile). They override everything derived; follow them from this reply on:\n${instr ? instr.replace(/^/gm, '  ') : '  (now empty)'}\n`);
   if (mineSess && !mineSess.topic && msgs[0]?.topic) {
     T.writeSession({ ...mineSess, topic: msgs[0].topic });
     const at = new Date(Date.parse(msgs[0].ts || new Date().toISOString()) - 1).toISOString();
     S.appendJournal(msgs[0].topic, [{ role: 'system', kind: 'session', text: 'Session started', ts: at }]);
-    console.log(`(first message for topic ${msgs[0].topic}: run \`bin/learn resume ${msgs[0].topic}\` before replying${msgs.some(m => m.kind === 'start') ? '; START = new topic, follow docs/bootstrap.md' : ''})`);
+    out(`(first message for topic ${msgs[0].topic}: run \`bin/learn resume ${msgs[0].topic}\` before replying${msgs.some(m => m.kind === 'start') ? '; START = new topic, follow docs/bootstrap.md' : ''})`);
   }
   if (other) {
-    console.log(`── TOPIC SWITCH ── The learner is now in topic "${other.topic}"${other.kind === 'start' ? ' (a NEW topic)' : ''}; this session is for "${mineSess.topic}". Don't reply. Instead:
+    out(`── TOPIC SWITCH ── The learner is now in topic "${other.topic}"${other.kind === 'start' ? ' (a NEW topic)' : ''}; this session is for "${mineSess.topic}". Don't reply. Instead:
   1. Update "Resume here" in ${mineSess.topic}'s progress.md if anything changed, and \`bin/learn commit "…"\`.
   2. Run \`bin/learn handoff --topic ${other.topic} --reason "topic switch"\`. A fresh tutor picks up ${other.topic} with these messages queued for it.`);
     return;
   }
-  const ctx = mine && T.contextTokens(mine);
+  const ctx = extra(() => mine && T.contextTokens(mine));
   const turns = !ctx && mineSess ? S.readJournal(mineSess.topic || msgs[0].topic).filter(e => e.role === 'tutor' && e.kind === 'message' && e.ts > mineSess.startedAt).length : 0;
-  if (after) console.log(`── TOPIC SWITCH AFTER REPLY ── The learner also wrote in topic "${after.topic}"${after.kind === 'start' ? ' (a NEW topic)' : ''} (${elsewhere.map(m => m.id).join(', ')}; not shown here). Reply to the above first. Then, instead of re-arming wait:
+  if (after) out(`── TOPIC SWITCH AFTER REPLY ── The learner also wrote in topic "${after.topic}"${after.kind === 'start' ? ' (a NEW topic)' : ''} (${elsewhere.map(m => m.id).join(', ')}; not shown here). Reply to the above first. Then, instead of re-arming wait:
   1. Update "Resume here" in ${mineSess.topic}'s progress.md, and \`bin/learn commit "…"\`.
   2. Run \`bin/learn handoff --topic ${after.topic} --reason "topic switch"\`. A fresh tutor picks up ${after.topic} with those messages queued for it.`);
-  else if (handoff) console.log(HANDOFF_STEPS('The learner asked for a fresh tutor.'));
+  else if (handoff) out(HANDOFF_STEPS('The learner asked for a fresh tutor.'));
   else if (ctx && ctx.tokens >= T.HANDOFF_TOKENS)
-    console.log(HANDOFF_STEPS(`Your context is at ~${Math.round(ctx.tokens / 1000)}k tokens (handoff threshold ${Math.round(T.HANDOFF_TOKENS / 1000)}k). Reply to the message above first.`));
+    out(HANDOFF_STEPS(`Your context is at ~${Math.round(ctx.tokens / 1000)}k tokens (handoff threshold ${Math.round(T.HANDOFF_TOKENS / 1000)}k). Reply to the message above first.`));
   else if (!ctx && turns >= T.HANDOFF_MESSAGES)
-    console.log(HANDOFF_STEPS(`This session has posted ${turns} messages (handoff after ${T.HANDOFF_MESSAGES} when the context size is unknown). Reply to the message above first.`));
+    out(HANDOFF_STEPS(`This session has posted ${turns} messages (handoff after ${T.HANDOFF_MESSAGES} when the context size is unknown). Reply to the message above first.`));
   else {
-    const two = msgs.some(m => m.topic && S.tracksState(S.readJournal(m.topic)).open);
-    console.log(`(reply: bin/learn post …${two ? ' --track <the message\'s track>' : ''} ; then re-run \`bin/learn wait\` in the background${ctx ? `; context ~${Math.round(ctx.tokens / 1000)}k tokens` : ''})`);
+    const two = msgs.some(m => m.topic && extra(() => S.tracksState(S.readJournal(m.topic)).open));
+    out(`(reply: bin/learn post …${two ? ' --track <the message\'s track>' : ''} ; then re-run \`bin/learn wait\` in the background${ctx ? `; context ~${Math.round(ctx.tokens / 1000)}k tokens` : ''})`);
   }
 };
 const HANDOFF_STEPS = why => `── HANDOFF ── ${why} Then, instead of re-arming wait:

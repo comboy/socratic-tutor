@@ -6,7 +6,9 @@
 //   - every learner message gets an "Echo" reply with a new question; answers get graded;
 //     a META message (About the app) gets an "Echo (meta)" reply posted with --meta, no question
 //   - a message containing STALL-ONCE is left unanswered the first time (simulates a stuck tutor)
-//   - FAKE-NOREPLY: no reply, back to listening (a message handled without a lesson post)
+//   - FAKE-NOREPLY: no reply, back to listening (a message handled without a lesson post, or one
+//     whose `wait` output never reached the tutor); answered when `wait` delivers it again.
+//     FAKE-NEVER: never answered, however often it comes
 //   - writes a fake Claude transcript with growing token usage, so the context meter and the
 //     automatic handoff can be tested (CLAUDE_CONFIG_DIR must point somewhere disposable)
 //   - when `wait` prints a HANDOFF block: replies if needed, then runs `bin/learn handoff`;
@@ -90,7 +92,8 @@ async function main() {
         await hang();                                   // stuck until killed
       }
       // FAKE-NOREPLY: handled without a lesson message (like a thread switch): straight back to wait
-      if (/FAKE-NOREPLY/.test(m.text)) { log({ event: 'noreply', id: m.id }); continue; }
+      // (a message handed over again is answered: the tutor is told to; FAKE-NEVER isn't, even then)
+      if (/FAKE-NEVER/.test(m.text) || (/FAKE-NOREPLY/.test(m.text) && !/DELIVERED AGAIN/.test(m.extra))) { log({ event: 'noreply', id: m.id, head: m.extra }); continue; }
       if (m.kind === 'meta') { post(`Echo (meta): ${m.text.slice(0, 300)}`, ['--topic', m.topic, '--meta']); log({ event: 'replied', id: m.id, meta: true, head: m.extra }); continue; }
       const grade = m.kind === 'answer' ? ['--grade', 'correct', '--note', 'fake tutor grades everything correct'] : [];
       // two threads: reply in the message's thread (`wait` prints track=…); FAKE-OPEN-TRACKS opens them
