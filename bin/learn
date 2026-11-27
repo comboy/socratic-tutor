@@ -97,7 +97,7 @@ commands.help = () => {
                                          --host 0.0.0.0 (all addresses) or one IP: reachable from other machines, with an
                                          access token (bin/learn status prints the link; docs/setup.md, "Running on a server")
 bin/learn ask-learner "question + your recommendation"   a job's question for the learner: the tutor asks it in the conversation (--done <n> "answer")
-bin/learn allow [code] [--list]          let in a browser from another machine that is waiting (you type this; never an agent)
+bin/learn allow [code] [--list]          let in the browser from another machine that is waiting (with several: the code on its page); you type this, never an agent
 bin/learn doctor                         check this machine has what's needed (Node, git, the agent and its login, Chrome)
 bin/learn serve [--host ip]              web server only (http://localhost:${S.PORT})
 bin/learn demo [--empty|--real] [--port n] [--no-open] [--keep]   the UI on a throwaway copy of the demo data
@@ -1147,15 +1147,18 @@ commands.allow = async () => {
   const st = await C.api('GET', '/api/access/waiting');
   if (!st.open) { console.log('This server only answers this machine (no --host): there is nobody to let in.'); return; }
   if (f.list || !st.waiting.length) {
-    console.log(st.waiting.length ? `waiting to be let in (newest first):\n${st.waiting.map(w => '  ' + line(w)).join('\n')}\nbin/learn allow lets the newest in; bin/learn allow <code> a particular one.`
+    console.log(st.waiting.length ? `waiting to be let in (newest first):\n${st.waiting.map(w => '  ' + line(w)).join('\n')}\nbin/learn allow lets it in when one is waiting; with several, bin/learn allow <code> (the code on that browser's page).`
       : 'No browser is waiting. Open the server\'s address in the browser first (it shows a page with a code and waits), then run this again.');
     return;
   }
   if (!(process.stdin.isTTY && process.stdout.isTTY) && !process.env.LEARN_ALLOW_TEST) {
     die(`${st.waiting.length} browser(s) waiting:\n${st.waiting.map(w => '  ' + line(w)).join('\n')}\nNot let in: \`bin/learn allow\` is for the person, typed in a terminal. If you are an agent: tell them, don't do it for them.`);
   }
+  // several waiting: the code decides. The newest is whoever asked last, which anyone who can reach the
+  // port can arrange to be; the code on your own screen is what tells your browser from another.
+  if (!f._[0] && st.waiting.length > 1) die(`${st.waiting.length} browsers are waiting:\n${st.waiting.map(w => '  ' + line(w)).join('\n')}\nWhich one is yours? Its page shows its code: bin/learn allow <code>`);
   const r = await C.api('POST', '/api/access/allow', { code: f._[0] || null });
-  if (!r.allowed) die(`no browser with code ${f._[0]} is waiting (bin/learn allow --list)`);
+  if (!r.allowed) die(f._[0] ? `no browser with code ${f._[0]} is waiting (bin/learn allow --list)` : 'not let in: the list of waiting browsers changed just now; run it again');
   console.log(`let in: ${line(r.allowed)}. Its page opens the app within a few seconds; a cookie keeps it in.`);
   if (r.waiting.length) console.log(`still waiting (not let in):\n${r.waiting.map(w => '  ' + line(w)).join('\n')}`);
 };

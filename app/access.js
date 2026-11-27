@@ -100,7 +100,8 @@ function tokenVisit(req, res, url) {
 // An approval is good for a few minutes and for one use. All of it lives in memory: after a server
 // restart a waiting page simply asks again, with the same code.
 const ASK = `${COOKIE}-ask`;
-const asks = new Map();   // secret -> { code, addr, browser, at, seen, allowed }
+const asks = new Map();   // secret -> { code, addr, browser, at, seen, polls, allowed }
+let lastAskLog = 0;
 const WAITING_MS = 20e3, ASK_TTL = 15 * 60e3, ALLOW_TTL = 3 * 60e3, ASK_MAX = 30;
 const codeOf = secret => crypto.createHash('sha256').update('learn-ask:' + secret).digest('base64url').replace(/[^A-Za-z]/g, '').slice(0, 4).toUpperCase();
 function browserName(ua) {
@@ -111,7 +112,10 @@ function browserName(ua) {
 }
 function pruneAsks(now = Date.now()) {
   for (const [k, a] of asks) if (now - a.seen > ASK_TTL || (a.allowed && now - a.allowed > ALLOW_TTL)) asks.delete(k);
-  while (asks.size > ASK_MAX) asks.delete([...asks].sort((x, y) => x[1].seen - y[1].seen)[0][0]);
+  // too many: one that asked once and never came back goes first (a flood of requests must not push out
+  // a browser that is really waiting), one already let in last
+  const rank = a => (a.allowed ? 2 : a.polls > 1 ? 1 : 0);
+  while (asks.size > ASK_MAX) asks.delete([...asks].sort((x, y) => rank(x[1]) - rank(y[1]) || x[1].seen - y[1].seen)[0][0]);
 }
 // -> { entry, secret, fresh }
 function noteAsk(req) {
@@ -123,9 +127,9 @@ function noteAsk(req) {
   let entry = asks.get(secret);
   // (new, or back after it stopped waiting: "the last request wins" counts from when it came back)
   const fresh = !entry || now - entry.seen > WAITING_MS;
-  if (!entry) asks.set(secret, entry = { code: codeOf(secret), addr: String(req.socket.remoteAddress || '?').replace(/^::ffff:/, ''), browser: browserName(req.headers['user-agent']), at: now, seen: now, allowed: 0 });
+  if (!entry) asks.set(secret, entry = { code: codeOf(secret), addr: String(req.socket.remoteAddress || '?').replace(/^::ffff:/, ''), browser: browserName(req.headers['user-agent']), at: now, seen: now, polls: 0, allowed: 0 });
   if (fresh) entry.at = now;
-  entry.seen = now;
+  entry.seen = now; entry.polls++;
   return { entry, secret, fresh };
 }
 // Browsers on the waiting page right now, newest first: [{ code, addr, browser, at }]
@@ -134,10 +138,15 @@ function waiting() {
   pruneAsks(now);
   return [...asks.values()].filter(a => !a.allowed && now - a.seen <= WAITING_MS).sort((x, y) => y.at - x.at).map(({ code, addr, browser, at }) => ({ code, addr, browser, at }));
 }
-// Let one in: the one with this code, or the newest. -> { code, addr, browser, at } | null
+// Let one in: the one with this code, or, without a code, the only one waiting. With several
+// waiting the code is required: "the newest" is whoever asked last, and anyone who can reach the port
+// can make sure that is them (a request every few seconds), to be let in when the person types the
+// command for their own phone. The code on their screen is what tells theirs apart.
+// -> { code, addr, browser, at } | null (nobody, no such code, or several and no code)
 function allow(code) {
   const now = Date.now(), want = code ? String(code).toUpperCase() : null;
-  const pick = [...asks.values()].filter(a => !a.allowed && now - a.seen <= WAITING_MS && (!want || a.code === want)).sort((x, y) => y.at - x.at)[0];
+  const live = [...asks.values()].filter(a => !a.allowed && now - a.seen <= WAITING_MS && (!want || a.code === want)).sort((x, y) => y.at - x.at);
+  const pick = want || live.length === 1 ? live[0] : null;
   if (!pick) return null;
   pick.allowed = now;
   return { code: pick.code, addr: pick.addr, browser: pick.browser, at: pick.at };
@@ -164,17 +173,19 @@ Or open this address in the browser and let it in from the server with \`bin/lea
   const { entry, secret, fresh } = noteAsk(req);
   if (entry.allowed && Date.now() - entry.allowed <= ALLOW_TTL) {
     asks.delete(secret);
-    res.writeHead(302, { 'set-cookie': [setCookie(), `${ASK}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`], location: req.url, 'cache-control': 'no-store' });
+    // (a path on this server, whatever the request line was: //other.host/x must not become a redirect there)
+    const u = new URL(req.url, 'http://x');
+    res.writeHead(302, { 'set-cookie': [setCookie(), `${ASK}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`], location: u.pathname.replace(/^[/\\]+/, '/') + u.search, 'cache-control': 'no-store' });
     res.end();
     log(`access: the browser ${entry.code} at ${entry.addr} (${entry.browser}) was let in with bin/learn allow`);
     return;
   }
-  if (fresh) log(`access: a browser at ${entry.addr} (${entry.browser}) has no access cookie and is waiting, code ${entry.code}. To let it in, type in a terminal on this machine: bin/learn allow`);
+  if (fresh && Date.now() - lastAskLog > 10e3 && (lastAskLog = Date.now())) log(`access: a browser at ${entry.addr} (${entry.browser}) has no access cookie and is waiting, code ${entry.code}. To let it in, type in a terminal on this machine: bin/learn allow`);
   res.writeHead(401, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'set-cookie': `${ASK}=${secret}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${ASK_TTL / 1000}` });
   res.end(page('learn: waiting to be let in', `<h1>This browser isn't known here yet</h1>
 <p>In a terminal on the machine that runs the tutor, type:</p>
 <p><code>bin/learn allow</code></p>
-<p>It lets in the browser that asked last and prints its code. This one is <span class="code">${entry.code}</span></p>
+<p>It lets this browser in. If several are waiting it asks for the code; this one is <span class="code">${entry.code}</span></p>
 <p class="muted">This page checks every few seconds and opens the app by itself once it is let in. A cookie then keeps this browser in.</p>
 <details><summary>Or paste the access token</summary><form method="get" action="/"><input name="token" autocomplete="off" placeholder="the token from bin/learn status (the part after ?token=)"><button>Open</button></form></details>`, 4));
 }

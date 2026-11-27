@@ -550,8 +550,10 @@ const QUESTIONS = path.join(ROOT, 'questions.md');
 const QUESTIONS_HEAD = `# Questions for the learner\n\nLeft by background jobs (\`bin/learn ask-learner "question, with a recommendation"\`). The tutor asks them\nin the conversation and ticks them: \`bin/learn ask-learner --done <n> "what they said"\`.\n\n`;
 function openQuestions() {
   const out = [];
-  readText(QUESTIONS, '').split('\n').forEach((l, i) => { const m = l.match(/^- \[ \] (\d{4}-\d\d-\d\d) \(([^)]*)\): (.*)$/); if (m) out.push({ line: i, date: m[1], by: m[2], text: m[3] }); });
-  return out.map((q, i) => ({ n: i + 1, ...q }));
+  // n: the question's place among all ever written, so it stays the same while others are ticked or added
+  let n = 0;
+  readText(QUESTIONS, '').split('\n').forEach((l, i) => { const m = l.match(/^- \[([ x])\] (\d{4}-\d\d-\d\d) \(([^)]*)\): (.*)$/); if (!m) return; n++; if (m[1] === ' ') out.push({ n, line: i, date: m[2], by: m[3], text: m[4] }); });
+  return out;
 }
 function addQuestion(text, by = 'cli') {
   const cur = readText(QUESTIONS, null);

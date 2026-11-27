@@ -54,8 +54,9 @@ prints the link to open, `http://<address>:4747/?token=…`. Opening it once set
 browser: every tab is in from then on, for 400 days after the last visit (per address: to a browser
 the IP and a host name for the same machine are two sites, each needing the link once). Without
 the token the server answers 401, and a browser gets a page that waits: it shows a short code, and
-typing `bin/learn allow` in a terminal on the server lets in the browser that asked last (it
-prints the code; `bin/learn allow <code>` picks one, `--list` shows who is waiting), so no link has
+typing `bin/learn allow` in a terminal on the server lets it in (it prints the code; when several
+are waiting it wants the code, `bin/learn allow <code>`, since anyone who can reach the port can
+make themselves the latest asker; `--list` shows who is waiting), so no link has
 to be copied between devices. That approval is the person's: the command wants a terminal, the
 server takes it only from the command line, and an agent asked to do it should tell the person
 instead (a browser an agent let in on its own would be a way in for anyone who can talk to the

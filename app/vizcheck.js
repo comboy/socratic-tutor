@@ -199,6 +199,7 @@ async function check({ text, topic = null, label = 'check', outDir = null, width
   let scenes = [];
   const run = async () => {
     page = await launch({ width, height: 900 });
+    if (late) { try { await page.close(); } catch {} return; }
     for (const theme of live ? ['dark'] : ['light', 'dark']) {
       if (late) return;
       await page.size(width, 900);

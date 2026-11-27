@@ -129,11 +129,17 @@ function toggleTracksPop(anchor) {
   document.addEventListener('mousedown', outsideTracksPop, true);
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && tpop) closeTracksPop(); });
+window.addEventListener('hashchange', () => { if (tpop && !thread?.isConnected) closeTracksPop(); else if (tpop) setTimeout(() => { if (tpop && !thread?.isConnected) closeTracksPop(); }, 0); });
 function fillTracksPop() {
   if (!tpop) return;
   if (!thread?.isConnected) { closeTracksPop(); return; }
   const tr = app.d.tracks, off = tracksOff();
   const asked = !tr.open && awaitingReply(app.topic.journal)?.text?.startsWith('two threads: on');
+  // (the tabs are redrawn every few seconds: the panel only when what it says changed, or a click
+  // that straddles a redraw is lost and the keyboard focus with it)
+  const sig = [tr.open, off, !!asked, staying()].join();
+  if (tpop.dataset.sig === sig) return;
+  tpop.dataset.sig = sig;
   const act = text => { closeTracksPop(); quickAction(text); };
   tpop.replaceChildren(
     h('div', { class: 'pop-h' }, icon('threads'), h('b', { text: 'Two threads' }), h('span', { class: 'spacer' }), h('button', { class: 'icon-btn', title: 'Close', onclick: closeTracksPop }, icon('close'))),

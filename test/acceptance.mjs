@@ -222,8 +222,18 @@ async function main() {
       assert((await req('GET', '/', { ...html, cookie: ask })).status === 401, 'an approval is used once');
       assert((await req('GET', '/', { ...html, cookie: ask2 })).status === 401, 'the other browser was not let in');
       assert(cli(['allow', 'ZZZZ'], { ...renv, LEARN_ALLOW_TEST: '1' }).status === 1, 'unknown code');
+      // two waiting and no code: nobody is let in (whoever asked last could be anyone who reaches the port); one waiting: no code needed
+      const two = cli(['allow'], { ...renv, LEARN_ALLOW_TEST: '1' });
+      assert(two.status === 1 && /Which one is yours/.test(two.stderr) && two.stderr.includes(code2), 'several waiting, no code: ' + two.stdout + two.stderr);
+      assert((await req('POST', '/api/access/allow', { authorization: `Bearer ${tok}`, 'content-type': 'application/json' }, '{}')).body.includes('"allowed":null'), 'the server refuses it too');
+      assert((await req('GET', '//evil.example/x', { ...html, cookie: ask2 })).status === 401, 'waiting at an odd address');
+      assert(cli(['allow', code2], { ...renv, LEARN_ALLOW_TEST: '1' }).status === 0, 'allow by code');
+      const odd = await req('GET', '//evil.example/x', { ...html, cookie: ask2 });
+      assert(odd.status === 302 && odd.headers.location === '/x', 'the redirect stays on this server: ' + odd.headers.location);
+      await sleep(21000);   // the first asker's page is long gone: one browser waiting again
+      await req('GET', '/', { ...html, cookie: ask });
       const last = cli(['allow'], { ...renv, LEARN_ALLOW_TEST: '1' });
-      assert(last.status === 0 && /let in: [A-Z]{4}  Firefox on Mac/.test(last.stdout), 'the newest asker wins: ' + last.stdout + last.stderr);
+      assert(last.status === 0 && /let in: [A-Z]{4}  Firefox on Mac/.test(last.stdout), 'one waiting: no code needed: ' + last.stdout + last.stderr);
       assert((await req('GET', '/?token=nope', html)).status === 401, 'wrong pasted token');
       const bad = spawnSync(process.execPath, [BIN, 'status', '--host', 'not-an-ip'], { env: renv, encoding: 'utf8' });
       assert(bad.status === 1 && /--host needs an IP/.test(bad.stderr), '--host validation: ' + bad.stderr);
@@ -254,8 +264,9 @@ async function main() {
     assert(/## Questions for the learner from the background jobs[^\n]*post --meta[^\n]*\n  1\. \(builder, [^\n]*Gear icon/.test(r), 'resume shows them: ' + r.slice(r.indexOf('## Questions for'), r.indexOf('## Questions for') + 400));
     assert(/ticked: Gear icon/.test(learn('ask-learner', '--done', '1', 'keep the bubble')), 'done');
     const file = fs.readFileSync(path.join(HOME, 'questions.md'), 'utf8');
-    assert(/^- \[x\] .*Gear icon.* → \d{4}-\d\d-\d\d: keep the bubble$/m.test(file) && /^1\. \(\w+, .*A second one/.test(learn('ask-learner')), file);
-    learn('ask-learner', '--done', '1', 'asked');
+    assert(/^- \[x\] .*Gear icon.* → \d{4}-\d\d-\d\d: keep the bubble$/m.test(file) && /^2\. \(\w+, .*A second one/.test(learn('ask-learner')), file);
+    // numbers stay put: the second question is still 2 after the first was ticked
+    assert(/^2\. /.test(learn('ask-learner')) && /ticked: A second one/.test(learn('ask-learner', '--done', '2', 'asked')), 'numbers shifted: ' + learn('ask-learner'));
     assert(!/Questions for the learner/.test(learn('resume', 'demo')), 'nothing open: no section');
   });
   await test('live updates keep coming when a file is replaced again and again (atomic writes: a Linux watch loses the file after the first)', async () => {
@@ -783,6 +794,7 @@ async function main() {
     await until(() => journal().find(e => e.role === 'tutor' && e.track === 'b' && /second answer in B/.test(e.text)), 'second B reply');
     await page.click('.track-tab:not(.on)');
     const idle = await page.waitFor(`document.querySelector('.thread-idle')?.innerText`, { timeout: 8000 });
+    assert(await page.eval(`getComputedStyle(document.querySelector('.thread-idle')).display === 'flex' && parseFloat(getComputedStyle(document.querySelector('.thread-idle')).paddingLeft) > 8`), 'the idle note lost its style');
     assert(/Nothing is waiting for you in thread A/.test(idle) && /Thread B/.test(idle), idle);
     await page.shot('two-threads-idle');
     // a thread's subject drifts: the tutor renames its tab, nothing else changes
