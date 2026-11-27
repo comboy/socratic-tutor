@@ -641,11 +641,15 @@ async function main() {
   });
   await test('two threads (experiment): the tutor opens a second thread; sending in one takes you to the other, where the reply waits; post needs --track; latency; back to one thread', async () => {
     await page.nav(`${BASE}/#/demo/learn`, 900);
-    // on by default, so the bar is there before the second thread is: it says so and offers to open it
-    assert(await page.eval(`(() => { const b = document.querySelector('#tracksBar'); return !b.hidden && b.classList.contains('tracks-closed') && !b.querySelector('.track-tab') && /One thread for now/.test(b.textContent) && !document.querySelector('#composer #twoThreadsBtn'); })()`), 'one thread: the bar should show, closed, with the button in it');
+    // one thread: no bar and no row for it; the button under the input says what two threads are for and opens the second
+    const closed = await page.eval(`(() => { const b = document.querySelector('#tracksBar'); return { bar: !!b && !b.hidden, tabs: document.querySelectorAll('.track-tab').length, btn: !!document.querySelector('#composer #twoThreadsBtn'),
+      top: Math.round(document.querySelector('#threadScroll').getBoundingClientRect().top - document.querySelector('.learn').getBoundingClientRect().top) }; })()`);
+    assert(!closed.bar && closed.tabs === 0 && closed.btn && closed.top === 0, 'one thread: no bar, the conversation starts at the top, the button is under the input: ' + JSON.stringify(closed));
+    await page.click('#twoThreadsBtn');
+    assert(/while you read and answer one, the tutor writes the reply in the other/.test(await page.eval(`document.querySelector('#tracksPop')?.innerText || ''`)) && await page.eval(`!!document.querySelector('#keepOneBtn')`), 'the panel says why and offers both');
     await page.shot('two-threads-closed');
-    await page.click('#tracksBar #twoThreadsBtn');
-    await page.waitFor(`!document.querySelector('#tracksBar').hidden && document.querySelectorAll('.track-tab').length === 2`, { timeout: 8000 });
+    await page.click('#openThreadsBtn');
+    await page.waitFor(`!document.querySelector('#tracksBar').hidden && document.querySelectorAll('.track-tab').length === 2 && !document.querySelector('#tracksPop')`, { timeout: 8000 });
     await page.waitFor(`document.querySelector('.track-tab.st-ready:not(.on)')`, { timeout: 8000 });   // B's question waits
     const j0 = journal();
     const bq = j0.filter(e => e.track === 'b' && e.question).pop();
@@ -662,6 +666,20 @@ async function main() {
     await page.waitFor(`/Fake thread-b question/.test(document.querySelector('.box-q')?.innerText || '') && !/answer in A/.test(document.querySelector('#thread').innerText)`, { timeout: 3000 });
     assert(/the tutor writes that reply/.test(await page.eval(`document.querySelector('.track-note')?.textContent || ''`)), 'no note about the switch');
     await page.shot('two-threads');
+    // the tabs cost no row: they sit in the input's header, the conversation starts at the top; an info button says why there are two
+    const lay = await page.eval(`(() => { const bar = document.querySelector('#tracksBar'), i = document.querySelector('#trackInfo');
+      return { inHeader: !!bar.closest('.box-h'), top: Math.round(document.querySelector('#threadScroll').getBoundingClientRect().top - document.querySelector('.learn').getBoundingClientRect().top), tip: i?.title || '', exp: /experiment/i.test(document.querySelector('.learn').innerText) }; })()`);
+    assert(lay.inHeader && lay.top === 0 && /^Why two threads/.test(lay.tip) && !lay.exp, 'tabs in the header, info button, no EXPERIMENT badge: ' + JSON.stringify(lay));
+    // a laptop screen: everything still fits in the header's one line, and the question's own link scrolls the conversation to it
+    await page.size(1280, 800); await sleep(300);
+    const lap = await page.eval(`(() => { const hd = document.querySelector('.box-h'), r = hd.getBoundingClientRect(); const tabs = [...document.querySelectorAll('.track-tab')].map(t => t.getBoundingClientRect());
+      return { h: Math.round(r.height), fits: hd.scrollWidth <= hd.clientWidth + 1, tabsIn: tabs.every(t => t.width > 20 && t.right <= r.right), thread: Math.round(document.querySelector('#threadScroll').clientHeight), jump: !!document.querySelector('.box-q #qJump'), goq: !!document.querySelector('.box-h .goq') }; })()`);
+    assert(lap.h <= 36 && lap.fits && lap.tabsIn && lap.jump && !lap.goq, 'laptop height: ' + JSON.stringify(lap));
+    await page.shot('two-threads-laptop');
+    await page.eval(`document.querySelector('#threadScroll').scrollTop = 0`);
+    await page.click('#qJump', 900);
+    assert(await page.eval(`(() => { const q = [...document.querySelectorAll('.msg.pending-q .callout-question')].pop() || document.querySelector('.msg.pending-q'); const b = q.getBoundingClientRect(), s = document.querySelector('#threadScroll').getBoundingClientRect(); return b.top >= s.top - 2 && b.bottom <= s.bottom + 2 && document.querySelector('.msg.pending-q').classList.contains('flash'); })()`), 'the link on the question shows its message');
+    await page.size(1400, 900); await sleep(200);
     const sentA = journal().find(e => e.role === 'user' && /answer in A/.test(e.text));
     assert(sentA.track === 'a' && sentA.replyTo, JSON.stringify(sentA));
     // A's reply arrives while the learner reads B: A's tab says so, B stays on screen
@@ -681,14 +699,19 @@ async function main() {
     // a thread with nothing for the learner says so (tab and thread), and sending in the other doesn't take them there
     await page.waitFor(`document.querySelector('.track-tab.st-ready:not(.on) .track-letter')?.textContent === 'B'`, { timeout: 8000 });
     // "Stay here": sending doesn't take the learner to the other thread, though it has something ready
+    await page.click('#trackInfo');
     await page.click('#trackStay');
-    assert(await page.eval(`document.querySelector('#trackStay').classList.contains('on')`), 'pin not on');
+    assert(await page.eval(`document.querySelector('#trackStay').classList.contains('on') && document.querySelector('#trackInfo').classList.contains('staying')`), 'pin not on');
+    await page.key('Escape');
     await page.click('#answerBox'); await page.type('closing A FAKE-NOREPLY');
     await page.key('Enter', { meta: true });
     await sleep(700);
     assert(await page.eval(`document.querySelector('.track-tab.on .track-letter')?.textContent`) === 'A', 'pinned, but taken to the other thread');
+    await page.click('#trackInfo');
     await page.click('#trackStay');
     assert(!await page.eval(`document.querySelector('#trackStay').classList.contains('on')`), 'pin not off');
+    await page.key('Escape');
+    assert(!await page.eval(`!!document.querySelector('#tracksPop')`), 'Escape closes the panel');
     await page.click('.track-tab:not(.on)');
     await page.waitFor(`document.querySelector('.track-tab.on .track-letter')?.textContent === 'B'`, { timeout: 3000 });
     await page.waitFor(`(() => { const a = document.querySelector('.track-tab:not(.on)'); return a.classList.contains('st-idle') && /nothing waiting/.test(a.textContent); })()`, { timeout: 15000 });
@@ -703,8 +726,9 @@ async function main() {
     assert(/Nothing is waiting for you in thread A/.test(idle) && /Thread B/.test(idle), idle);
     await page.shot('two-threads-idle');
     // back to one thread: the bar goes, B's messages stay, marked
-    await page.eval(`[...document.querySelectorAll('#tracksBar button')].find(b => /One thread/.test(b.textContent)).click()`);
-    await page.waitFor(`document.querySelector('#tracksBar').hidden && document.querySelector('.track-chip') && /Fake thread-b question/.test(document.querySelector('#thread').innerText)`, { timeout: 8000 });
+    await page.click('#trackInfo');
+    await page.click('#oneThreadBtn');
+    await page.waitFor(`document.querySelector('#tracksBar').hidden && !document.querySelector('#tracksPop') && document.querySelector('.track-chip') && /Fake thread-b question/.test(document.querySelector('#thread').innerText)`, { timeout: 8000 });
     assert(!journal().filter(e => e.kind === 'tracks').pop().open, 'closed');
   });
   await test('composer resize handle drags and remembers', async () => {

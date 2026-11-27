@@ -20,6 +20,7 @@ const P = {
   page: '<path d="M6 3.5h8.5L18 7v13.5H6z"/><path d="M14 3.5V7h4"/><path d="M9 12l2 2 4-4"/><path d="M9 17h6"/>',
   sheet: '<rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
   send: '<path d="M4 12l16-8-6 16-2.5-6.5z"/>',
+  info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11.2v5.3"/><path d="M12 7.6v.2"/>',
   ask: '<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.5a2.5 2.5 0 1 1 3.4 2.3c-.7.3-1 .8-1 1.5v.4"/><path d="M12 16.8v.2"/>',
   bulb: '<path d="M9 17.5h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/>',
   example: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 15l3-4 2.5 3 2-2.5"/>',

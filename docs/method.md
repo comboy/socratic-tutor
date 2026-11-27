@@ -230,7 +230,7 @@ read, and the UI files them in that thread next to its open question; a message 
 review and then asked an unrelated one put their follow-up beside the wrong question box, and they
 noticed (2026-11-25). When a review thread moves to a new subject, post the new question as its own
 short message.
-The learner can press "Stay here" in the thread bar: both threads stay open, but sending no longer
+The learner can switch on "Stay here" (behind the info button next to the thread tabs, in the input's header): both threads stay open, but sending no longer
 takes them to the other one (they asked for it, 2026-11-27: sometimes they want to stay on one
 subject, or take breaks anyway so the wait costs nothing). You can't see it from your side; an
 open question in the other thread simply waits longer, which is fine.

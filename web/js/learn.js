@@ -1,6 +1,6 @@
 // Learn view: the conversation thread + the input box (answer / ask), which can hide in a corner.
-// With two threads open (an experiment against reply latency, journal.js), a bar on top switches
-// between them and sending in one takes the learner to the other when its reply is waiting.
+// With two threads open (an experiment against reply latency, journal.js), two tabs in the input's
+// header switch between them and sending in one takes the learner to the other when its reply is waiting.
 import { MOD, h, $, $$, store, skillById, levelOf, lvClass, fmtDate, fmtTime, shortId } from './util.js';
 import { renderInto, rich, linkTerms } from './rich.js';
 import { plain } from './md.js';
@@ -12,7 +12,7 @@ import { handoff } from './tutor.js';
 import { attachComplete, findTerm } from './complete.js';
 
 const PAGE = 60;
-let thread, composer, trackBar, shownFrom = 0, quote = null, sizes = null, drawnLegend = '';
+let thread, composer, trackBar, noteEl, shownFrom = 0, quote = null, sizes = null, drawnLegend = '';
 
 // ---------------------------------------------------------------- two threads
 // null when only one thread is open; else 'a' or 'b', the one on screen (remembered per topic)
@@ -82,9 +82,7 @@ function tracksOff() {
   for (let i = J.length - 1; i >= 0; i--) { const m = J[i].role === 'user' && /^two threads: (on|off)/.exec(J[i].text || ''); if (m) return m[1] === 'off'; }
   return false;
 }
-const TRACKS_TIP = 'An experiment against waiting: while you read and answer one thread, the tutor writes the reply in the other. Sending in one takes you to the other when its reply is ready ("Stay here" turns that off for a while).';
-const tracksLabel = () => h('span', { class: 'track-label', title: TRACKS_TIP },
-  icon('threads'), h('span', { class: 'track-label-t', text: 'Two threads' }), h('span', { class: 'exp-tag', text: 'experiment' }));
+const TRACKS_TIP = 'Why two threads: while you read and answer one, the tutor writes the reply in the other, so you wait less. Sending in one takes you to the other when its reply is ready.';
 // "Stay here": the learner keeps both threads but isn't taken to the other one after sending (they
 // want to stay on one subject, or are taking breaks anyway so the wait costs nothing). Per topic,
 // on this device; the tabs, the t key and the "Thread B is ready" button still switch.
@@ -92,38 +90,65 @@ const stayKey = () => 'trackStay:' + app.topic.slug;
 const staying = () => !!store.get(stayKey(), false);
 function toggleStay() { store.set(stayKey(), !staying()); barNote = ''; drawTrackBar(); }
 let barNote = '';   // why the thread just changed, shown for a few seconds
+// The two thread tabs live in the input's header (and next to the corner buttons when the input is
+// hidden), not in a row of their own: on a laptop the height is what the conversation needs, and
+// the learner asked for it back. What used to sit in that row (why there are two threads, Stay
+// here, One thread, and "open it now" while there is one) is behind the info button next to the
+// tabs, or behind the Two threads button under the input while only one thread is open.
 function drawTrackBar() {
-  const note = barNote;
   if (!trackBar) return;
   const tr = app.d.tracks, cur = curTrack();
-  const off = !tr.open && tracksOff();
-  trackBar.hidden = off;
-  trackBar.classList.toggle('tracks-closed', !tr.open);
-  if (off) { trackBar.replaceChildren(); return; }
-  if (!tr.open) {
-    const asked = awaitingReply(app.topic.journal)?.text?.startsWith('two threads: on');
-    trackBar.replaceChildren(tracksLabel(),
-      h('span', { class: 'track-closed-t', title: TRACKS_TIP, text: asked ? 'The tutor is opening the second thread…' : 'One thread for now; the tutor opens a second when there is material for it.' }),
-      asked ? h('span') : h('button', { class: 'btn btn-tiny', id: 'twoThreadsBtn', title: 'Ask the tutor to open the second thread now', onclick: () => quickAction(TWO_ON) }, 'Open it now'),
-      asked ? h('span') : h('button', { class: 'btn btn-tiny', title: 'Stay with one thread: hides this bar (the Two threads button below the input brings it back)', onclick: () => quickAction(TWO_OFF) }, 'One thread'));
-    return;
-  }
+  if (noteEl) { noteEl.hidden = !barNote; noteEl.textContent = barNote; }
+  trackBar.hidden = !tr.open;
+  if (tpop) fillTracksPop();
+  if (!tr.open) { trackBar.replaceChildren(); return; }
   const tab = t => {
     const st = trackState(t);
-    return h('button', { class: `track-tab st-${st.key}` + (t === cur ? ' on' : ''), title: (tr.titles[t] || '') + ` · ${st.text}  (t switches)`, onclick: () => switchTrack(t) },
+    return h('button', { class: `track-tab st-${st.key}` + (t === cur ? ' on' : ''), title: (tr.titles[t] || (t === 'a' ? 'Main thread' : 'Second thread')) + ` · ${st.text}  (t switches)`, onclick: () => switchTrack(t) },
       h('span', { class: 'track-letter', text: t.toUpperCase() }), h('span', { class: 'track-title', text: tr.titles[t] || (t === 'a' ? 'Main thread' : 'Second thread') }),
-      h('span', { class: 'track-st' }, st.key === 'writing' ? h('span', { class: 'dots' }, h('i'), h('i'), h('i')) : null, st.text));
+      h('span', { class: 'track-st' }, st.key === 'writing' ? h('span', { class: 'dots' }, h('i'), h('i'), h('i')) : null, h('span', { class: 'track-st-t', text: st.text })));
   };
-  // replaceChildren turns a null into the text "null" (unlike h), so drop the empty note
-  trackBar.replaceChildren(...[
-    tracksLabel(),
+  trackBar.replaceChildren(
     h('div', { class: 'track-tabs' }, tab('a'), tab('b')),
-    note ? h('span', { class: 'track-note', role: 'status', text: note }) : null,
-    h('button', { class: 'btn btn-tiny track-stay' + (staying() ? ' on' : ''), id: 'trackStay', 'aria-pressed': String(staying()),
-      title: staying() ? 'You stay in this thread after sending. Click to be taken to the other thread again when its reply is ready.'
-        : 'Stay in the thread you are in after sending, instead of being taken to the other one. Both threads stay open; switch by hand whenever you like.',
-      onclick: toggleStay }, staying() ? icon('check') : null, 'Stay here'),
-    h('button', { class: 'btn btn-tiny', title: 'Ask the tutor to fold the second thread back into the main one', onclick: () => quickAction(TWO_OFF) }, 'One thread')].filter(Boolean));
+    h('button', { class: 'icon-btn track-info' + (staying() ? ' staying' : ''), id: 'trackInfo', 'aria-label': 'About the two threads',
+      title: TRACKS_TIP + (staying() ? ' ("Stay here" is on: you stay in this thread after sending.)' : '') + ' Click for the options.', onclick: ev => toggleTracksPop(ev.currentTarget) }, icon('info')));
+}
+// the small panel behind the info button (two threads open) or the Two threads button (one thread)
+let tpop = null;
+function closeTracksPop() { tpop?.remove(); tpop = null; document.removeEventListener('mousedown', outsideTracksPop, true); }
+function outsideTracksPop(e) { if (tpop && !tpop.contains(e.target) && !e.target.closest('#trackInfo, #twoThreadsBtn')) closeTracksPop(); }
+function toggleTracksPop(anchor) {
+  if (tpop) { closeTracksPop(); return; }
+  tpop = h('div', { class: 'popover tracks-pop', id: 'tracksPop' });
+  document.body.append(tpop);
+  fillTracksPop();
+  const r = anchor.getBoundingClientRect(), w = tpop.offsetWidth;
+  tpop.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + 'px';
+  // above the button when it sits low on the page (it does: the input is at the bottom)
+  if (r.top > innerHeight / 2) tpop.style.bottom = innerHeight - r.top + 6 + 'px'; else tpop.style.top = r.bottom + 6 + 'px';
+  document.addEventListener('mousedown', outsideTracksPop, true);
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && tpop) closeTracksPop(); });
+function fillTracksPop() {
+  if (!tpop) return;
+  if (!thread?.isConnected) { closeTracksPop(); return; }
+  const tr = app.d.tracks, off = tracksOff();
+  const asked = !tr.open && awaitingReply(app.topic.journal)?.text?.startsWith('two threads: on');
+  const act = text => { closeTracksPop(); quickAction(text); };
+  tpop.replaceChildren(
+    h('div', { class: 'pop-h' }, icon('threads'), h('b', { text: 'Two threads' }), h('span', { class: 'spacer' }), h('button', { class: 'icon-btn', title: 'Close', onclick: closeTracksPop }, icon('close'))),
+    h('div', { class: 'pop-b' },
+      h('p', { class: 'pop-desc', text: TRACKS_TIP }),
+      tr.open ? h('div', { class: 'tracks-pop-row' },
+        h('button', { class: 'btn btn-small track-stay' + (staying() ? ' on' : ''), id: 'trackStay', 'aria-pressed': String(staying()), onclick: toggleStay }, staying() ? icon('check') : null, 'Stay here'),
+        h('span', { class: 'pop-hint', text: staying() ? 'On: you stay in this thread after sending. Switch with the tabs or t.' : 'Stay in the thread you are in after sending, instead of being taken to the other one.' })) : null,
+      tr.open ? h('div', { class: 'tracks-pop-row' },
+        h('button', { class: 'btn btn-small', id: 'oneThreadBtn', onclick: () => act(TWO_OFF) }, 'One thread'),
+        h('span', { class: 'pop-hint', text: 'Ask the tutor to fold the second thread back into the main one.' })) : null,
+      !tr.open ? h('p', { class: 'pop-hint tracks-pop-state', text: asked ? 'The tutor is opening the second thread…' : off ? 'You asked for one thread. It stays that way until you open the second one.' : 'One thread for now; the tutor opens a second when there is material for it.' }) : null,
+      !tr.open && !asked ? h('div', { class: 'tracks-pop-row' },
+        h('button', { class: 'btn btn-small btn-primary', id: 'openThreadsBtn', title: 'Ask the tutor to open the second thread now', onclick: () => act(TWO_ON) }, 'Open it now'),
+        off ? null : h('button', { class: 'btn btn-small', id: 'keepOneBtn', title: 'Stay with one thread: the tutor does not open a second one on its own', onclick: () => act(TWO_OFF) }, 'Keep one thread')) : null));
 }
 let noteTimer = 0;
 // opts.toReply: show the reply waiting there (the first tutor message after the learner's last
@@ -147,9 +172,11 @@ export function switchTrack(t, { toReply = false, note = '' } = {}) {
 export function render(center) {
   thread = h('div', { class: 'thread', id: 'thread' });
   composer = h('div', { class: 'composer', id: 'composer' });
-  trackBar = h('div', { class: 'tracks-bar', id: 'tracksBar' });
+  trackBar = h('div', { class: 'tracks-bar', id: 'tracksBar', hidden: '' });
+  noteEl = h('div', { class: 'track-note', role: 'status', hidden: '' });
+  closeTracksPop();
   if (store.get('composerH', 0) && !store.get('composerHidden', false)) requestAnimationFrame(() => setComposerH(store.get('composerH', 0)));
-  center.replaceChildren(h('div', { class: 'learn' }, trackBar, h('div', { class: 'thread-scroll', id: 'threadScroll' }, thread), composer));
+  center.replaceChildren(h('div', { class: 'learn' }, noteEl, h('div', { class: 'thread-scroll', id: 'threadScroll' }, thread), composer));
   anchor = null;
   // a link to a message in the other thread opens that thread
   const target0 = app.args[0] === 'm' && app.d.byId.get(app.args[1]);
@@ -520,6 +547,13 @@ export function reveal(id) {
   n.classList.remove('flash'); void n.offsetWidth; n.classList.add('flash');
 }
 
+// the question itself, inside its message (a long message ends with it; centring the message would show its middle)
+function revealQuestion(id) {
+  reveal(id);
+  const q = [...(thread.querySelector(`[id="m-${CSS.escape(id)}"]`)?.querySelectorAll('.callout-question') || [])].pop();
+  if (q) { steer(1200); q.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+}
+
 // ---------------------------------------------------------------- composer
 const QUICK = [
   ['Just tell me', 'just tell me', 'bulb', 'Skip the Socratic part for this question and explain the answer'],
@@ -568,7 +602,7 @@ function drawComposer(keepFocus) {
   if (quote) setMode('ask');
   const hidden = store.get('composerHidden', false);
   composer.classList.toggle('collapsed', hidden);
-  if (hidden) { composer.replaceChildren(h('div', { class: 'composer-corner' }, welcomeBack(), cornerButtons(pend))); return; }
+  if (hidden) { composer.replaceChildren(h('div', { class: 'composer-corner' }, welcomeBack(), h('div', { class: 'corner-row' }, trackBar, cornerButtons(pend)))); return; }
 
   const qtext = pend ? questionText(pend.text) : null;
   // an answer half-written to one review question stays with that question
@@ -614,24 +648,28 @@ function drawComposer(keepFocus) {
       h('div', { class: 'seg mode-seg' },
         modeBtn('answer', pend ? 'Answer' : 'Reply', 'send', 'Answer the open question: it closes it and the tutor grades it  (a)'),
         modeBtn('ask', 'Ask', 'ask', 'A side question or "tell me more": the open question stays open  (q)')),
-      t ? h('span', { class: 'track-chip', title: app.d.tracks.titles[t] || '', text: 'thread ' + t.toUpperCase() }) : null,
+      trackBar,
       h('span', { class: 'sub', text: mode === 'ask' ? (pend ? 'the question stays open' : '') : pend ? 'closes the question; the tutor grades it' : '' }),
       h('span', { class: 'spacer' }),
-      pend ? h('button', { class: 'btn btn-tiny goq', title: 'Jump to the question in the conversation', onclick: () => reveal(pend.id) }, 'Go to question') : null,
+      // (with the question shown below, the way back to its message is on the question itself)
+      pend && (mode !== 'answer' || qCollapsed) ? h('button', { class: 'btn btn-tiny goq', title: 'Scroll the conversation back to the message that asked the question', onclick: () => revealQuestion(pend.id) }, icon('up'), 'Go to question') : null,
       pend && mode === 'answer' ? h('button', { class: 'btn btn-tiny hideq', text: qCollapsed ? 'Show question' : 'Hide question', title: 'Show/hide the question text here', onclick: () => { store.set('qcollapsed', !qCollapsed); drawComposer(); } }) : null,
       h('button', { class: 'icon-btn hide-composer', id: 'hideComposer', title: 'Hide the input in the corner, for reading  (Esc · a / q bring it back)', onclick: hideComposer }, icon('chevd'))),
     // the question is shown only while answering it: an Ask is about something else, and the
     // question text would take the room its writer needs (it stays one click away: Go to question)
     mode === 'answer' ? strip : null,
-    pend && mode === 'answer' && !qCollapsed ? h('div', { class: 'box-q' }, rich(qtext || plain(pend.text, 400), 'hl-scope')) : null,
+    pend && mode === 'answer' && !qCollapsed ? h('div', { class: 'box-q' },
+      h('button', { class: 'q-jump', id: 'qJump', title: 'Scroll the conversation back to the message that asked this', onclick: () => revealQuestion(pend.id) }, icon('up'), h('span', { text: 'in the conversation' })),
+      rich(qtext || plain(pend.text, 400), 'hl-scope')) : null,
     mode === 'ask' && quote ? h('div', { class: 'quote-chip' }, h('span', { class: 'muted small', text: `About ${shortId(quote.id)}:` }), h('span', { class: 'quote-text', text: '“' + plain(quote.text, 140) + '”' }),
       h('button', { class: 'icon-btn', title: 'Remove quote', onclick: () => { quote = null; drawComposer(); } }, icon('close'))) : null,
     sendError ? h('div', { class: 'send-error pop-warn', role: 'alert', text: sendError }) : null,
     ta,
     h('div', { class: 'box-f' },
       h('div', { class: 'quick' }, ...QUICK.map(q => q ? h('button', { class: 'btn btn-small', title: q[3], onclick: () => quickAction(q[1]) }, icon(q[2]), h('span', { class: 'lbl', text: q[0] })) : h('span', { class: 'sep' })),
-        t || !tracksOff() ? null : h('button', { class: 'btn btn-small btn-exp', id: 'twoThreadsBtn', onclick: () => quickAction(TWO_ON),
-          title: 'Experiment: the tutor opens a second, closely related thread. When you answer in one, you are taken to the other, where its reply is usually ready, so you don’t wait while the tutor writes.' }, icon('threads'), h('span', { class: 'lbl', text: 'Two threads' })),
+        // one thread open: the second one is a click away (and what it is for, in the panel)
+        t ? null : h('button', { class: 'btn btn-small btn-exp', id: 'twoThreadsBtn', onclick: ev => toggleTracksPop(ev.currentTarget),
+          title: TRACKS_TIP + ' One thread is open now: click to open the second, or to keep one.' }, icon('threads'), h('span', { class: 'lbl', text: 'Two threads' })),
         // not a message to the tutor like its neighbours: a tool for the text being written
         app.topic.glossary.length ? h('span', { class: 'sep' }) : null,
         app.topic.glossary.length ? h('button', { class: 'btn btn-small find-term', id: 'findTermBtn', onmousedown: ev => ev.preventDefault(),
