@@ -34,6 +34,12 @@ visible).
    Why this matters more than usual: the server restarts itself when `app/` changes and browsers
    reload `web/` when the learner is idle, so whatever you commit is what they see next, and
    they'll come back to it mid-lesson.
+   Before you finish, have an agent that didn't write the changes review the run's whole diff for
+   regressions (give it the diff and the areas you are least sure of, not your conclusions), and
+   fix what it finds, with tests. Why: a learner mid-lesson pays more for a regression they have to
+   notice than for a feature that comes a day later, and the tests only cover what the author
+   thought of (one such review found a deleted style rule and an approval flaw in eight commits
+   that passed every test). If time is short, do fewer items and keep the review.
 4. Mark the item in `data/feedback.md`: `- [ ]` → `- [x]` with ` → done: <one line on what
    changed> (<commit>)`. For something waiting on the learner, ask with
    `bin/learn ask-learner "question, with your recommendation"` (the tutor brings it up in the
