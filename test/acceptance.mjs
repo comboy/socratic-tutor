@@ -510,6 +510,12 @@ async function main() {
     assert(r.spaced.includes('learning rate') && r.spaced.includes('KV cache'), 'term links with spaces: ' + r.spaced);
     await page.shot('learn-dark');
   });
+  await test('a single tilde is "about", not strikethrough; ~~two~~ still strike', async () => {
+    await page.nav(`${BASE}/#/demo/learn`, 600);
+    const r = await page.eval(`(async () => { const { md } = await import(location.origin + '/js/md.js'); const a = md('~30–37 trillion cells, of which **~25 trillion** are red; x~y~z'), b = md('this is ~~gone~~ now', { inline: true });
+      return { a, b }; })()`);
+    assert(!/<del>/.test(r.a) && r.a.includes('~30–37 trillion') && r.a.includes('x~y~z') && /<del>gone<\/del>/.test(r.b), JSON.stringify(r));
+  });
   await test('every viz type in the fixture mounts', async () => {
     const types = await page.eval(`[...new Set([...document.querySelectorAll('.thread .viz')].map(v => [...v.classList].find(c => c.startsWith('viz-') && c !== 'viz-error')))].sort().join()`);
     for (const t of ['bars', 'flow', 'matrix', 'plot', 'softmax', 'steps', 'tokens', 'vector']) assert(types.includes('viz-' + t), `viz ${t} missing (have ${types})`);

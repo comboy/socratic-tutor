@@ -38,7 +38,8 @@ whichever repo holds each, and nothing else in a shared repo. `bin/learn status`
 
 ## Markdown extensions (what the UI renders)
 
-Standard GitHub-flavoured markdown, plus:
+Standard GitHub-flavoured markdown (except that a single `~` is always the word "about": only
+`~~two~~` strike text out), plus:
 
 **Callouts**
 

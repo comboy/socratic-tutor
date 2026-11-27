@@ -102,6 +102,13 @@ function visualSpec(href, caption) {
   return spec;
 }
 
+// One tilde is "about" here (~30 trillion cells … ~25 trillion of them), never strikethrough: GFM's
+// single-tilde <del> struck out whatever stood between two of them on a line. ~~two~~ still strikes.
+marked.use({ tokenizer: { del(src) {
+  const m = /^~~(?=[^\s~])([\s\S]*?[^\s~])~~(?=[^~]|$)/.exec(src);
+  return m ? { type: 'del', raw: m[0], text: m[1], tokens: this.lexer.inlineTokens(m[1]) } : undefined;
+} } });
+
 function makeRenderer() {
   const r = new marked.Renderer();
   r.code = (code, info) => {
