@@ -53,6 +53,30 @@ export function tools(ctx) {
       if (o.key) ctx.key(t.node(), o.key);
       return t;
     },
+    // A thing's name wearing its colour inside the drawing, as {{text|key}} does in prose: the label
+    // (theme text colour, halo) with a line under it in the key's colour, both tagged with the key so
+    // hovering the name, the legend or the prose lights up the same parts. text: the legend's label
+    // when left out. o as for label, plus mark: 'underline' (default) | 'swatch' (a dot in front) |
+    // 'text' (the letters themselves in the colour: only for colours that read on the background).
+    // Returns the <g> (move or T.show it as one).
+    name(parent, x, y, key, text, o = {}) {
+      if (text && typeof text === 'object') { o = text; text = null; }
+      const c = ctx.color(key), size = o.size || 13, mark = o.mark || 'underline';
+      const g = sel(parent).append('g').attr('class', 'viz-name').style('pointer-events', 'none');
+      ctx.key(g.node(), key);
+      const str = String(text ?? (ctx.nameOf ? ctx.nameOf(key) : key));
+      const t = T.label(g, x, y, str, { ...o, key: null, fill: mark === 'text' ? c : o.fill });
+      const anchor = o.anchor || 'middle', lines = str.split('\n');
+      const nodes = lines.length === 1 ? [t.node()] : t.selectAll('tspan').nodes();
+      nodes.forEach((n, i) => {
+        let w = 0; try { w = n.getComputedTextLength(); } catch {}
+        if (!w) w = lines[i].length * size * 0.56;
+        const x0 = anchor === 'start' ? x : anchor === 'end' ? x - w : x - w / 2, yy = y + i * size * 1.2;
+        if (mark === 'underline') g.insert('line', 'text').attr('x1', x0).attr('x2', x0 + w).attr('y1', yy + 3.5).attr('y2', yy + 3.5).attr('stroke', c).attr('stroke-width', Math.max(2, size / 6)).attr('stroke-linecap', 'round');
+        else if (mark === 'swatch' && i === 0) g.append('circle').attr('cx', x0 - size * 0.55).attr('cy', yy - size * 0.32).attr('r', size * 0.3).attr('fill', c).attr('stroke', 'var(--line)').attr('stroke-width', 0.75);
+      });
+      return g;
+    },
     // text inside a filled shape: dark on the legend's mid-tone colours (reads in both themes)
     inlabel(parent, x, y, text, o = {}) { return T.label(parent, x, y, text, { halo: false, fill: o.fill || '#10202e', size: 12, weight: 600, ...o }); },
     // a straight or bowed arrow; returns the <path>. o: color, width, bow (px sideways), dash, head (false = none), key

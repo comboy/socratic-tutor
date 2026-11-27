@@ -12,7 +12,7 @@
 //   kit   the topic's own drawing kit (visuals/_kit.js): how its recurring things are drawn
 //   ctx   as in `viz js`, plus ctx.scene({ w, h, steps }) (web/viz/scene.js) and ctx.tools
 import { register, h } from './core.js';
-import { makeScene, tools } from './scene.js';
+import { makeScene } from './scene.js';
 import { topicSlug } from '../js/md.js';
 
 const cache = new Map();   // url -> Promise<string | null>
@@ -55,7 +55,6 @@ register('visual', (box, spec, ctx) => {
     const head = header(src);
     try {
       const vctx = Object.create(ctx);
-      vctx.tools = tools(vctx);
       vctx.scene = s => makeScene(stageBox, vctx, s, opts);
       vctx.opts = opts;
       if (caption) box.append(h('div', { class: 'viz-title', html: ctx.inline(caption) }));

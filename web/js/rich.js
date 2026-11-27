@@ -1,6 +1,7 @@
 // Rich content: markdown + viz mounting + glossary auto-links + linked highlighting + hover cards.
 import { md, vizSpecs, esc, setMedia } from './md.js';
 import { registry, h } from '../viz/index.js';
+import { tools as drawTools } from '../viz/scene.js';
 import { termMatcher } from './terms.js';
 
 const cfg = { terms: [], matcher: null, resolveTerm: () => null, resolveMsg: () => null, hoverCard: null, onRef: () => {}, legend: [], legendMap: new Map() };
@@ -77,14 +78,25 @@ function scopeIds(box) {
 
 function makeCtx(box) {
   const scope = () => box.closest('.hl-scope') || box;
+  let T = null;
   return {
     d3: window.d3,
+    // SVG drawing helpers (web/viz/scene.js): label, name, inlabel, arrow, show, lerp, ease, …
+    get tools() { return T || (T = drawTools(this)); },
     h,
     md: (src, cls = '') => { const d = rich(src, cls); return d; },
     inline: s => (s == null ? '' : md(String(s), { inline: true })),
     key: (el, k) => { el.setAttribute('data-k', k); return el; },
     uid: (name = 'id') => uidOf(box, name),
     color: k => keyColor(scope(), k),
+    // A thing's name wearing its colour, the way {{text|key}} does in prose (an underline in the
+    // key's colour, lit up with everything else tagged with the key): for the HTML parts of a
+    // drawing: a control's label, a table header, a caption built by hand. Text: the legend's
+    // label when none is given. In SVG: ctx.tools.name (web/viz/scene.js). Why one helper: a name
+    // that is coloured in the message and plain inside the drawing makes the learner match them
+    // by memory, which is the effort the colours are there to remove.
+    name: (k, text) => h('span', { class: 'lk', 'data-k': k, style: { '--kc': keyColor(scope(), k) }, text: text ?? legendEntries([k])[0].label ?? k }),
+    nameOf: k => legendEntries([k])[0].label || k,
     // the topic's legend as a row of swatches (all entries, or these keys); each item carries its
     // key, so hovering it lights up the parts of the drawing tagged with ctx.key(el, key)
     // (a legend the drawing never places is appended under it after the drawing runs)

@@ -1416,6 +1416,9 @@ async function main() {
         credit: v.querySelector('.media-credit')?.textContent, cap: v.querySelector('.media-cap-text')?.textContent, w: Math.round(st.width), err: !!v.querySelector('.viz-err-msg') }; })()`, { timeout: 5000 });
     assert(r.regions === 2 && r.nums === '1,2' && r.list.join('|') === '1 the first circle|2 the ninth one' && r.mask === 3 && r.hide === 1 && r.arrow === 'start here', JSON.stringify(r));
     assert(r.box2 === '240,80' && r.credit === 'Test Author · CC0' && r.cap === 'Look at 1 and 2 only' && r.w > 300 && !r.err, 'pixels / credit / size: ' + JSON.stringify(r));
+    // the numbers in the badges read in both themes, and the checker measures them against the badge, not the page
+    const figCheck = spawnSync(process.execPath, [BIN, 'viz-check', 'cells', id], { env: ENV, encoding: 'utf8' });
+    assert(!/unreadable text: "[12]"/.test(figCheck.stdout) && /1 drawing/.test(figCheck.stdout), 'badge numbers readable: ' + figCheck.stdout + figCheck.stderr);
     await page.eval(`document.querySelector('${sel} .fig-list li').id = 'zz-fig1'`);
     await page.hover('#zz-fig1', 300);
     const hl = await page.eval(`[...document.querySelectorAll('[id="m-${id}"] [data-k="first"]')].map(e => e.classList.contains('hl') + ':' + e.tagName.toLowerCase())`);
@@ -2143,6 +2146,11 @@ async function main() {
     await page.waitFor(`!!document.querySelector('${sel} .sc-svg circle')`);
     const state = () => page.eval(`(() => { const v = document.querySelector('${sel}'); return { count: v.querySelector('.sc-count').textContent, cx: Math.round(v.querySelector('circle').getAttribute('cx')), title: v.querySelector('.viz-title')?.textContent,
       cap: [...v.querySelectorAll('.sc-cap.on')].map(c => c.textContent.trim()).join('|'), note: v.querySelector('.visual-note')?.textContent, kit: v.querySelector('svg').textContent.includes('kit loaded'), btn: v.querySelector('.sc-main').textContent }; })()`);
+    // a name wears its key's colour inside the drawing too: SVG (underlined label) and HTML, both tagged with the key
+    const nm = await page.eval(`(() => { const v = document.querySelector('${sel}'); const g = v.querySelector('g.viz-name'), l = g?.querySelector('line'), s = v.querySelector('span.lk[data-k="ball"]');
+      return { k: g?.getAttribute('data-k'), text: g?.querySelector('text')?.textContent, w: l ? l.getAttribute('x2') - l.getAttribute('x1') : 0, stroke: l && getComputedStyle(l).stroke, fill: getComputedStyle(v.querySelector('circle')).fill,
+        html: s?.textContent, line: s && getComputedStyle(s).borderBottomColor, bg: getComputedStyle(v).getPropertyValue('--bg').trim() !== '' }; })()`);
+    assert(nm.k === 'ball' && nm.text === 'the ball' && nm.w > 30 && nm.stroke === nm.fill && nm.html === 'ball (html)' && nm.line === nm.fill && nm.bg, 'names in the key colour, --bg defined: ' + JSON.stringify(nm));
     let st = await state();
     assert(st.count === '2 / 3' && st.cx === 330 && st.title === 'Where does it end up?' && /gate lets it pass/.test(st.cap) && /made-up scene/.test(st.note) && st.kit && /Next/.test(st.btn), 'opens on step 2, as a still: ' + JSON.stringify(st));
     await page.click(`${sel} .sc-main`, 100);

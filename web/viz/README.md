@@ -24,6 +24,9 @@ To add a reusable component:
      // ctx.uid(name)     an id unique to this drawing ("ah" -> "ah-v12"), for SVG markers/gradients
      // ctx.color(k)      CSS colour of key k: the topic legend's colour if k is in it, else one
      //                   of the six highlight colours (per message)
+     // ctx.name(k, text?)  a name wearing its key's colour (HTML element, like {{text|k}} in prose);
+     //                   in SVG: ctx.tools.name(g, x, y, k, text?, { mark }) (web/viz/scene.js; ctx.tools
+     //                   also has label, inlabel, arrow, show, lerp, ease, …)
      // ctx.legend([k…])  a row of swatches + labels from the topic legend (all entries if no keys);
      //                   returns the element; if you don't place it, it goes under the drawing;
      //                   hovering an item lights up the parts tagged with that key

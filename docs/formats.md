@@ -151,6 +151,10 @@ literal (JSON or relaxed: unquoted keys, trailing commas, comments). Types:
 // (don't declare them: `const d3 = …` is a SyntaxError). ctx.slider(label,min,max,value,step,onChange)
 // returns an element: append it. ctx.key(element, key), ctx.md(markdownString) -> HTMLElement, ctx.color(key),
 // ctx.uid("ah") -> an id unique to this drawing (marker/gradient ids are scoped automatically)
+// A thing that has a legend colour wears it wherever it is named, inside the drawing too:
+// ctx.tools.name(svgGroup, x, y, "lactose") draws its name underlined in its colour (SVG);
+// ctx.name("lactose") gives the same as an HTML element (a control's label, a header); slider labels,
+// captions and step text are markdown, so {{lactose|lactose}} works there.
 const svg = ctx.d3.select(el).append("svg").attr("width", 300).attr("height", 80);
 ```
 ````
@@ -238,6 +242,15 @@ of being reinvented in each diagram:
 - `{{the template strand|template}}` in prose, `\k{template}{…}` in formulas and `ctx.color("template")`
   in a `viz js` drawing all get the legend colour (keys not in the legend keep the six rotating
   highlight colours). Tag drawn shapes with `ctx.key(el, "template")` so hovering links them up.
+- **A name in prose and the same name in a drawing are meant to match.** `{{lactose|lactose}}` in
+  the text underlines the word in the legend colour; inside a drawing, write the name with
+  `ctx.tools.name(g, x, y, "lactose")` (SVG: the label with the same coloured underline; `text`
+  defaults to the legend's label; `{ mark: "swatch" }` puts a dot in front instead, `"text"` colours
+  the letters) or `ctx.name("lactose")` (an HTML element, for controls, headers and captions built
+  by hand). Both carry the key, so hovering any of them lights up the rest. Why: a learner meeting
+  several new things at once asked that colour be on every mention, in both directions, so that
+  nothing has to be matched from memory (a name coloured in the message and plain in the drawing
+  was read as two different things).
 - `el.append(ctx.legend(["adenine", "template"]))` draws the key under a drawing: swatches with
   labels, and hovering one lights up its parts. Prefer it to hand-drawn legends.
 - `term` (optional) ties the colour to a glossary term: its page shows the swatch.

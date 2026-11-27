@@ -94,8 +94,9 @@ and replay, the tutor embed a single moment, and the checker render each step. `
 running time, for jiggle), `still` (true in the headless check).
 
 `sc` also has: `svg` (d3 selection, viewBox `0 0 w h`), `layer()`, `label(g, x, y, text, {anchor,
-size, bold, muted, key})` (theme colour, halo; `\n` for lines), `inlabel` (dark text on a filled
-shape), `arrow(g, [x1,y1], [x2,y2], {color, bow, dash, key})`, `show(sel, 0…1)`, `lerp`, `ease`,
+size, bold, muted, key})` (theme colour, halo; `\n` for lines), `name(g, x, y, key, text?, {…label's
+options, mark})` (a thing's name wearing its legend colour: see below), `inlabel` (dark text on a
+filled shape), `arrow(g, [x1,y1], [x2,y2], {color, bow, dash, key})`, `show(sel, 0…1)`, `lerp`, `ease`,
 `clamp`, `mix(colorA, colorB, p)`, `along(path, p)`, `rng(seed)`, `wobble(time, n)` (smooth
 seeded jiggle in −1…1), `control(node)` (a slider under the caption: `sc.control(ctx.slider(…))`,
 then `sc.redraw()` in its handler), `ambient: true` in the scene options (the clock runs while
@@ -103,6 +104,16 @@ the visual is on screen, for motion that is the point, like thermal jiggle; use 
 A visual without steps (a slider is the point) passes `steps: []` and gets a stage with no
 player. `opts` holds the embed's parameters. Everything in `ctx` from `viz js` works
 (`ctx.color(key)`, `ctx.key(el, key)`, `ctx.legend([...])`, `ctx.md`, `ctx.slider`).
+
+**Names wear their colour inside the visual too.** `{{text|key}}` in a message and a label in a
+drawing are meant to match, so a thing with a legend colour is written with `sc.name(g, x, y,
+'lactose')` (or `ctx.tools.name` outside a scene) wherever the drawing names it: the label, with
+an underline in its colour as in prose (`mark: 'swatch'` for a dot in front, `'text'` for coloured
+letters when the colour reads on the background). In HTML parts use `ctx.name('lactose')` (returns
+an element: a toggle's label, a table header), and `{{lactose|lactose}}` in anything that is
+markdown: step `text`, `ctx.slider` labels, `ctx.md` captions. All of them carry the key, so
+hovering one lights up the others. A recurring thing with no legend colour yet gets one first
+(`bin/learn legend`).
 
 `kit` is the topic's own: open `_kit.js` and STYLE.md before drawing, and draw recurring things
 with it. If the thing you need will recur, add it to the kit, not to your visual.

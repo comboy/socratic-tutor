@@ -99,7 +99,8 @@ function analyse() {
         const k = ink(t), x = (k.l + k.r) / 2, y = (k.t + k.b) / 2;
         let bg = null;
         for (const u of document.elementsFromPoint(x, y)) {
-          if (u === t.el || t.el.contains(u) || u.closest('text') === t.el || u.tagName === 'text' || u.tagName === 'tspan') continue;
+          // (HTML text sits on its own element's background first: a number in a filled badge)
+          if ((u === t.el && !t.html) || (u !== t.el && t.el.contains(u)) || u.closest('text') === t.el || u.tagName === 'text' || u.tagName === 'tspan') continue;
           const cs = getComputedStyle(u), c = rgba(u.closest('svg') && u.tagName !== 'svg' ? cs.fill : cs.backgroundColor);
           if (c && c[3] * (u.closest('svg') && u.tagName !== 'svg' ? Number(cs.fillOpacity || 1) * opacityOf(u) : 1) >= 0.5) { bg = c; break; }
         }

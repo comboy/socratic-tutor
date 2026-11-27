@@ -516,7 +516,11 @@ details.callout[open] summary { border-bottom: 1px solid var(--line-soft); }
 .hc-foot { padding: 5px 12px; border-top: 1px solid var(--line-soft); font-size: 11.5px; color: var(--faint); }
 
 /* ============ viz ============ */
-.viz { margin: .9em 0; font: 13px/1.4 var(--sans); padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 7px; background: var(--well); }
+/* --bg: what a drawing sits on. Hand-written drawings reach for var(--bg) (a patch behind a label, a
+   box "in the background colour"); undefined, it painted black in the light theme. */
+:root { --bg: var(--card); }
+.viz { margin: .9em 0; font: 13px/1.4 var(--sans); padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 7px; background: var(--well); --bg: var(--well); }
+.viz .lk { cursor: default; }
 .viz-title { font-weight: 650; font-size: 12.5px; margin-bottom: 6px; color: var(--fg-strong); }
 .viz-caption { font-size: 12.5px; line-height: 1.45; color: var(--muted); margin-top: 6px; }
 .viz-caption p { margin: 0; }
@@ -535,11 +539,12 @@ details.callout[open] summary { border-bottom: 1px solid var(--line-soft); }
 .fig-region.hl .fig-box, .fig-region.pin .fig-box { stroke-width: 4.5px; }
 .fig-region.hl, .fig-region.pin { box-shadow: none; background: none !important; }
 .fig-badge { fill: var(--kc, var(--k0)); stroke: #fff; stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
-.fig-badge-n { fill: #fff; font-family: var(--sans); font-weight: 700; }
+/* the numbers: light on the light theme's strong colours, dark on the dark theme's pale ones */
+.fig-badge-n { fill: var(--lv-text); font-family: var(--sans); font-weight: 700; }
 .fig-arrow-label { font-family: var(--sans); font-weight: 650; paint-order: stroke; stroke: #fff; stroke-linejoin: round; }
 .fig-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 3px; font-size: 13px; line-height: 1.4; }
 .fig-list li { display: flex; gap: 8px; align-items: baseline; padding: 2px 6px; border-radius: 4px; }
-.fig-n { flex: none; min-width: 1.5em; height: 1.5em; line-height: 1.5em; border-radius: 50%; text-align: center; font-size: 11.5px; font-weight: 700; color: #fff; background: var(--kc, var(--k0)); }
+.fig-n { flex: none; min-width: 1.5em; height: 1.5em; line-height: 1.5em; border-radius: 50%; text-align: center; font-size: 11.5px; font-weight: 700; color: var(--lv-text); background: var(--kc, var(--k0)); }
 .fig-cap { margin-top: 4px; }
 .lightbox .fig-big { cursor: zoom-out; width: min(94vw, calc((100vh - 220px) * var(--ar))); max-width: none; }
 .lightbox .fig-big img { width: 100%; max-width: none; max-height: none; padding: 0; border-radius: 0; box-shadow: none; }

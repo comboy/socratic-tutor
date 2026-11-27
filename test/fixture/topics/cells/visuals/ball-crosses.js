@@ -20,6 +20,8 @@ ctx.key(ball.node(), 'ball');
 sc.label(g, 150, 30, 'left room');
 sc.label(g, 450, 30, 'right room');
 const done = sc.label(g, 450, 150, 'arrived', { bold: true });
+sc.name(g, 150, 170, 'ball', 'the ball');
+el.append(ctx.name('ball', 'ball (html)'));
 if (kit.mark) kit.mark(g);
 sc.draw(f => {
   const x = sc.lerp(80, 270, sc.ease(f.at('approach'))) + 60 * sc.ease(f.at('cross')) + 150 * sc.ease(f.at('settle'));
