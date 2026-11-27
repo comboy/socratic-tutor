@@ -21,6 +21,7 @@ sc.label(g, 150, 30, 'left room');
 sc.label(g, 450, 30, 'right room');
 const done = sc.label(g, 450, 150, 'arrived', { bold: true });
 sc.name(g, 150, 170, 'ball', 'the ball');
+sc.phrase(g, 150, 58, 'watch {{it|ball}} go', { size: 12 });
 el.append(ctx.name('ball', 'ball (html)'));
 if (kit.mark) kit.mark(g);
 sc.draw(f => {

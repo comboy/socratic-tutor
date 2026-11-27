@@ -2250,7 +2250,14 @@ async function main() {
     const nm = await page.eval(`(() => { const v = document.querySelector('${sel}'); const g = v.querySelector('g.viz-name'), l = g?.querySelector('line'), s = v.querySelector('span.lk[data-k="ball"]');
       return { k: g?.getAttribute('data-k'), text: g?.querySelector('text')?.textContent, w: l ? l.getAttribute('x2') - l.getAttribute('x1') : 0, stroke: l && getComputedStyle(l).stroke, fill: getComputedStyle(v.querySelector('circle')).fill,
         html: s?.textContent, line: s && getComputedStyle(s).borderBottomColor, bg: getComputedStyle(v).getPropertyValue('--bg').trim() !== '' }; })()`);
-    assert(nm.k === 'ball' && nm.text === 'the ball' && nm.w > 30 && nm.stroke === nm.fill && nm.html === 'ball (html)' && nm.line === nm.fill && nm.bg, 'names in the key colour, --bg defined: ' + JSON.stringify(nm));
+    // the mark is the key colour pulled a little towards the text colour (so pale and dark keys show in both themes): near it, not equal
+    const rgb = c => { const n = (String(c).match(/-?[\d.]+/g) || []).map(Number); return /^color\(/.test(c) ? n.slice(0, 3).map(x => x * 255) : n.slice(0, 3); };
+    const near = (a, b) => { const x = rgb(a), y = rgb(b); return x.length === 3 && y.length === 3 && x.every((v, i) => Math.abs(v - y[i]) < 60); };
+    // a name inside a sentence: only the named words are underlined and tagged
+    const ph = await page.eval(`(() => { const g = document.querySelector('${sel} g.viz-phrase'), l = g?.querySelector('line'), t = g?.querySelector('text'); const b = t?.getBBox();
+      return { text: t?.textContent, k: l?.getAttribute('data-k'), w: l ? l.getAttribute('x2') - l.getAttribute('x1') : 0, tw: b?.width || 0, inside: !!(l && b && +l.getAttribute('x1') > b.x + 10 && +l.getAttribute('x2') < b.x + b.width - 5) }; })()`);
+    assert(ph.text === 'watch it go' && ph.k === 'ball' && ph.w > 3 && ph.w < ph.tw / 2 && ph.inside, 'a phrase underlines only its named part: ' + JSON.stringify(ph));
+    assert(nm.k === 'ball' && nm.text === 'the ball' && nm.w > 30 && near(nm.stroke, nm.fill) && nm.html === 'ball (html)' && near(nm.line, nm.fill) && nm.bg, 'names in the key colour, --bg defined: ' + JSON.stringify(nm));
     let st = await state();
     assert(st.count === '2 / 3' && st.cx === 330 && st.title === 'Where does it end up?' && /gate lets it pass/.test(st.cap) && /made-up scene/.test(st.note) && st.kit && /Next/.test(st.btn), 'opens on step 2, as a still: ' + JSON.stringify(st));
     await page.click(`${sel} .sc-main`, 100);

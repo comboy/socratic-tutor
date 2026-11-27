@@ -95,7 +95,8 @@ running time, for jiggle), `still` (true in the headless check).
 
 `sc` also has: `svg` (d3 selection, viewBox `0 0 w h`), `layer()`, `label(g, x, y, text, {anchor,
 size, bold, muted, key})` (theme colour, halo; `\n` for lines), `name(g, x, y, key, text?, {…label's
-options, mark})` (a thing's name wearing its legend colour: see below), `inlabel` (dark text on a
+options, mark})` (a thing's name wearing its legend colour: see below), `phrase(g, x, y, 'tail in
+the {{cytosol|cytosol}}', {…})` (a line with such names inside it; `.set(text)`, `.at(x, y)`), `inlabel` (dark text on a
 filled shape), `arrow(g, [x1,y1], [x2,y2], {color, bow, dash, key})`, `show(sel, 0…1)`, `lerp`, `ease`,
 `clamp`, `mix(colorA, colorB, p)`, `along(path, p)`, `rng(seed)`, `wobble(time, n)` (smooth
 seeded jiggle in −1…1), `control(node)` (a slider under the caption: `sc.control(ctx.slider(…))`,

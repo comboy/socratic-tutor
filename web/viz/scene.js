@@ -41,6 +41,9 @@ export function tools(ctx) {
   const T = {
     clamp, lerp, ease, rng, wobble,
     mix: (a, b, p) => d3.interpolateRgb(a, b)(clamp(p)),
+    // the colour of a name's underline: the legend colour pulled a little towards the text colour, so a
+    // pale one (membrane tan) shows on the light theme and a dark one (cytosol) on the dark theme
+    markColor: key => `color-mix(in srgb, ${ctx.color(key)} 82%, var(--fg))`,
     // text that stays readable on whatever is behind it: theme colour plus a halo in the box's background
     label(parent, x, y, text, o = {}) {
       const t = sel(parent).append('text').attr('x', x).attr('y', y).attr('text-anchor', o.anchor || 'middle')
@@ -72,10 +75,52 @@ export function tools(ctx) {
         let w = 0; try { w = n.getComputedTextLength(); } catch {}
         if (!w) w = lines[i].length * size * 0.56;
         const x0 = anchor === 'start' ? x : anchor === 'end' ? x - w : x - w / 2, yy = y + i * size * 1.2;
-        if (mark === 'underline') g.insert('line', 'text').attr('x1', x0).attr('x2', x0 + w).attr('y1', yy + 3.5).attr('y2', yy + 3.5).attr('stroke', c).attr('stroke-width', Math.max(2, size / 6)).attr('stroke-linecap', 'round');
+        if (mark === 'underline') g.insert('line', 'text').attr('x1', x0).attr('x2', x0 + w).attr('y1', yy + 3.5).attr('y2', yy + 3.5).attr('stroke', T.markColor(key)).attr('stroke-width', Math.max(2, size / 6)).attr('stroke-linecap', 'round');
         else if (mark === 'swatch' && i === 0) g.append('circle').attr('cx', x0 - size * 0.55).attr('cy', yy - size * 0.32).attr('r', size * 0.3).attr('fill', c).attr('stroke', 'var(--line)').attr('stroke-width', 0.75);
       });
       return g;
+    },
+    // One line in which some words are such names: T.phrase(g, x, y, 'tail in the {{cytosol|cytosol}}').
+    // The same {{text|key}} as in prose; each named part gets the underline in its colour and its key.
+    // o as for label. Returns the <g> with .set(text) (change the words) and .at(x, y) (follow a
+    // moving thing). A phrase made while hidden is measured again when T.show brings it back.
+    phrase(parent, x, y, text, o = {}) {
+      const size = o.size || 13, anchor = o.anchor || 'middle';
+      const g = sel(parent).append('g').attr('class', 'viz-name viz-phrase').style('pointer-events', 'none');
+      const t = T.label(g, 0, 0, '', { ...o, key: null }).style('white-space', 'pre');
+      let spans = [], measured = false;
+      const fit = () => {
+        let w = 0; try { w = t.node().getComputedTextLength(); } catch {}
+        const est = !w, per = size * 0.56, total = est ? spans.reduce((n, s) => n + s.str.length, 0) * per : w;
+        const x0 = anchor === 'start' ? 0 : anchor === 'end' ? -total : -total / 2;
+        let n = 0;
+        for (const s of spans) {
+          if (s.ln) {
+            let a = x0 + n * per, b = a + s.str.length * per;
+            if (!est) try { a = t.node().getStartPositionOfChar(n).x; b = t.node().getEndPositionOfChar(n + s.str.length - 1).x; } catch {}
+            s.ln.attr('x1', a + 1).attr('x2', b - 1);
+          }
+          n += s.str.length;
+        }
+        measured = !est;
+      };
+      g.set = str => {
+        g.selectAll('line').remove(); t.selectAll('tspan').remove(); spans = [];
+        String(str).split(/(\{\{[^{}|]+\|[^{}|]+\}\})/).filter(Boolean).forEach(part => {
+          const m = part.match(/^\{\{([^{}|]+)\|([^{}|]+)\}\}$/), s = { str: m ? m[1] : part };
+          const ts = t.append('tspan').text(s.str);
+          if (m) {
+            const key = m[2].trim(); ctx.key(ts.node(), key);
+            s.ln = g.insert('line', 'text').attr('y1', 3.5).attr('y2', 3.5).attr('stroke', T.markColor(key)).attr('stroke-width', Math.max(2, size / 6)).attr('stroke-linecap', 'round');
+            ctx.key(s.ln.node(), key);
+          }
+          spans.push(s);
+        });
+        fit(); return g;
+      };
+      g.at = (px, py) => g.attr('transform', `translate(${px},${py})`);
+      g.node().__fit = () => { if (!measured) fit(); };
+      return g.at(x, y).set(text);
     },
     // text inside a filled shape: dark on the legend's mid-tone colours (reads in both themes)
     inlabel(parent, x, y, text, o = {}) { return T.label(parent, x, y, text, { halo: false, fill: o.fill || '#10202e', size: 12, weight: 600, ...o }); },
@@ -96,7 +141,15 @@ export function tools(ctx) {
       return path;
     },
     // fade and really hide: an element at opacity 0 still catches the pointer and the checker's eye
-    show(s, on, max = 1) { const a = on === true ? max : on === false ? 0 : clamp(on) * max; sel(s).attr('opacity', a).style('display', a < 0.02 ? 'none' : null); return s; },
+    show(s, on, max = 1) {
+      const a = on === true ? max : on === false ? 0 : clamp(on) * max;
+      sel(s).each(function () {
+        const was = this.style.display === 'none';
+        this.setAttribute('opacity', a); this.style.display = a < 0.02 ? 'none' : '';
+        if (was && a >= 0.02) { if (this.__fit) this.__fit(); else for (const n of this.querySelectorAll('.viz-phrase')) n.__fit && n.__fit(); }   // names made while hidden: measure now
+      });
+      return s;
+    },
     // point at fraction p of a path element's length -> [x, y]
     along(pathNode, p) { const n = pathNode.node ? pathNode.node() : pathNode, L = n.getTotalLength(), q = n.getPointAtLength(clamp(p) * L); return [q.x, q.y]; },
     still: () => !!window.__vizStill,
