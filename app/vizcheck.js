@@ -36,7 +36,11 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8">
     configure({ terms: d.glossary, media: { slug: d.slug || 'x', index: d.media || {} }, legend: d.legend || [] });
     renderInto(document.getElementById('body'), d.text, { scope: false });
     for (let i = 0; i < 400 && window.__vizLoading; i++) await new Promise(r => setTimeout(r, 25));   // prepared visuals are fetched
-    await Promise.all([...document.images].map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; })));
+    // (the app loads images lazily: one far down a long page never starts loading here, and a check that
+    // waits for it never ends. Load them all now, and give a slow one 8 s, not for ever.)
+    for (const i of document.images) i.loading = 'eager';
+    await Promise.race([Promise.all([...document.images].map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; }))), new Promise(r => setTimeout(r, 8000))]);
+    window.__slowImages = [...document.images].filter(i => !i.complete).map(i => i.getAttribute('src'));
     await document.fonts?.ready;
   } catch (e) { window.__failed = String(e.stack || e); }
   window.__done = true;
@@ -181,13 +185,21 @@ async function check({ text, topic = null, label = 'check', outDir = null, width
   const dir = outDir || path.join(S.STATE, 'viz-check', label.replace(/[^\w.-]+/g, '-'));
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
-  let page;
+  let page, late = null;
+  // The whole check has a deadline: whatever goes wrong in Chrome (a drawing in an endless loop, a
+  // page that never settles), the caller gets an error in bounded time, never a silent hang.
+  const limit = (Number(process.env.LEARN_VIZ_DEADLINE) || 150 + 2 * live + Math.min(240, 6 * blocks.length)) * 1000;
+  let giveUp;
+  const gaveUp = new Promise((_, rej) => { giveUp = rej; });
+  gaveUp.catch(() => {});
+  const deadline = setTimeout(() => { late = `viz-check gave up after ${Math.round(limit / 1000)} s: headless Chrome did not finish drawing (a drawing that loops for ever, or a machine too busy; nothing was checked)`; giveUp(new Error(late)); }, limit);
   const drawings = blocks.map((b, i) => ({ n: i + 1, ...b, problems: [], notes: [], png: {} }));
-  const errors = [];
+  const errors = [], slow = [];
   let scenes = [];
-  try {
+  const run = async () => {
     page = await launch({ width, height: 900 });
     for (const theme of live ? ['dark'] : ['light', 'dark']) {
+      if (late) return;
       await page.size(width, 900);
       await page.dark(theme === 'dark');
       page.errors.length = 0;
@@ -199,6 +211,7 @@ async function check({ text, topic = null, label = 'check', outDir = null, width
       }
       const failed = await page.eval('window.__failed || null');
       if (failed) throw new Error('the check page did not load: ' + failed);
+      for (const src of await page.eval('window.__slowImages || []')) if (!slow.includes(src)) slow.push(src);
       await new Promise(r => setTimeout(r, live ? live * 1000 : 900));   // transitions and entry animations settle (live: let it run that long)
       // everything in view: hit-testing and screenshots only see the viewport
       const height = Math.min(12000, Math.max(300, await page.eval('Math.ceil(document.documentElement.scrollHeight)')));
@@ -224,12 +237,18 @@ async function check({ text, topic = null, label = 'check', outDir = null, width
       // a block the page never drew (inside a fence the renderer treats otherwise): say so, once
       if (theme === (live ? 'dark' : 'light')) for (const d of drawings) if (!d.rect) d.notes.push('not found on the page (is the block nested in other markup?)');
     }
+  };
+  try {
+    await Promise.race([run(), gaveUp]);
+  } catch (e) {
+    throw late ? new Error(late) : e;
   } finally {
+    clearTimeout(deadline);
     try { await page?.close(); } catch {}
-    server.close();
+    server.close(); server.closeAllConnections?.();
   }
   pruneOld(path.dirname(dir), dir);
-  return { drawings, errors, dir, width, scenes };
+  return { drawings, errors, dir, width, scenes, slow };
 }
 // state/viz-check keeps the last few checks; older folders go
 function pruneOld(root, keep, n = 12) {
@@ -257,6 +276,7 @@ function report(r, what) {
     for (const n of d.notes) lines.push(`  · ${n}`);
     if (Object.keys(d.png).length) lines.push(`  look: ${Object.values(d.png).map(rel).join('  ')}`);
   }
+  for (const src of r.slow || []) lines.push(`  · an image had not loaded after 8 s and was checked without: ${src}`);
   lines.push(`whole message: ${rel(path.join(r.dir, 'message-light.png'))}  ${rel(path.join(r.dir, 'message-dark.png'))}`);
   lines.push('Now look at the PNGs (Read shows them): only eyes can tell whether the drawing shows the right thing: directions, what each colour means, things that should touch or line up, labels next to what they name.');
   return lines.join('\n');

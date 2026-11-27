@@ -21,6 +21,7 @@ function playwrightChrome() {
 }
 export const chromePath = () => CANDIDATES.find(p => fs.existsSync(p)) || playwrightChrome();
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const SEND_TIMEOUT = 60000;
 
 // Chromes left behind by a test run that was killed outright (an agent's command timeout sends
 // SIGKILL, which no handler sees): orphans (parent gone) with one of our throwaway profiles.
@@ -68,6 +69,14 @@ export async function launch({ headed = false, width = 1400, height = 900, outDi
   let id = 0;
   const pending = new Map();
   const errors = [];
+  // Chrome can die under us (killed, crashed, out of memory). A command waiting for its answer
+  // would then wait for ever, and with it whoever called us (a check once sat for 3.4 hours):
+  // every pending and later command fails with the reason instead, and so does one that gets no
+  // answer in a minute.
+  let dead = null;
+  const died = why => { if (dead) return; dead = why; for (const [, p] of pending) p({ error: { message: why } }); pending.clear(); };
+  ws.addEventListener('close', () => died('headless Chrome went away (its connection closed)'));
+  proc.on('exit', () => died('headless Chrome exited'));
   ws.addEventListener('message', ev => {
     const m = JSON.parse(ev.data);
     if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); return; }
@@ -75,9 +84,11 @@ export async function launch({ headed = false, width = 1400, height = 900, outDi
     if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') errors.push('console.error: ' + m.params.args.map(a => a.value ?? a.description).join(' '));
   });
   const send = (method, params = {}) => new Promise((res, rej) => {
+    if (dead) return rej(new Error(`${method}: ${dead}`));
     const i = ++id;
-    pending.set(i, m => m.error ? rej(new Error(`${method}: ${m.error.message}`)) : res(m.result));
-    ws.send(JSON.stringify({ id: i, method, params }));
+    const timer = setTimeout(() => { if (pending.delete(i)) rej(new Error(`${method}: no answer from headless Chrome in ${SEND_TIMEOUT / 1000} s`)); }, SEND_TIMEOUT);
+    pending.set(i, m => { clearTimeout(timer); m.error ? rej(new Error(`${method}: ${m.error.message}`)) : res(m.result); });
+    try { ws.send(JSON.stringify({ id: i, method, params })); } catch (e) { pending.delete(i); clearTimeout(timer); rej(new Error(`${method}: ${e.message}`)); }
   });
   await send('Runtime.enable'); await send('Page.enable');
 
@@ -155,7 +166,9 @@ export async function launch({ headed = false, width = 1400, height = 900, outDi
     // every tab of the browser: [{ id, url, title }]
     async tabs() { return (await (await fetch(`http://127.0.0.1:${port}/json`)).json()).filter(t => t.type === 'page').map(({ id, url, title }) => ({ id, url, title })); },
     async closeTabs(ids) { for (const t of ids) await fetch(`http://127.0.0.1:${port}/json/close/${t}`).catch(() => {}); },
-    async close() { try { ws.close(); } catch {} proc.kill(); await sleep(200); fs.rmSync(profile, { recursive: true, force: true }); },
+    get dead() { return dead; },
+    pid: proc.pid,
+    async close() { died('the page was closed'); try { ws.close(); } catch {} proc.kill(); await sleep(200); fs.rmSync(profile, { recursive: true, force: true }); },
   };
   await page.size(width, height);
   return page;

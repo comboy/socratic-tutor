@@ -2104,6 +2104,19 @@ async function main() {
     const none = spawnSync(process.execPath, [BIN, 'viz-check', '-'], { env: ENV, input: 'just prose', encoding: 'utf8' });
     assert(none.status === 0 && /no viz blocks/.test(none.stdout), none.stdout + none.stderr);
     assert(vc('cells', '2020-01-01.1').status === 1, 'an unknown message is an error');
+    // a long page with an image far below the fold (the app loads images lazily): the check still ends
+    fs.writeFileSync(path.join(HOME, 'lazy-fig.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
+    learn('image', 'cells', path.join(HOME, 'lazy-fig.png'), '--author', 'Me', '--license', 'CC0');
+    const long = path.join(HOME, 'long-page.md');
+    fs.writeFileSync(long, good + '\n\n' + Array.from({ length: 150 }, (_, i) => `Paragraph ${i} of a long page.`).join('\n\n') + '\n\n![far down](media:lazy-fig.png)\n');
+    const lg = vc('cells', long);
+    assert(lg.status === 0 && /nothing measurable is wrong/.test(lg.stdout) && !/had not loaded/.test(lg.stdout), 'long page with an image far down: ' + lg.stdout + lg.stderr);
+    // a drawing that never returns: the check gives up with a message and a non-zero exit, and leaves no Chrome behind
+    const loop = path.join(HOME, 'loop-drawing.md');
+    fs.writeFileSync(loop, '```viz js\nfor (;;) {}\n```\n');
+    const t0 = Date.now();
+    const hung = spawnSync(process.execPath, [BIN, 'viz-check', 'cells', loop], { env: { ...ENV, LEARN_VIZ_DEADLINE: '6' }, encoding: 'utf8', timeout: 60000 });
+    assert(hung.status === 1 && /gave up after 6 s/.test(hung.stderr + hung.stdout) && Date.now() - t0 < 30000, `a hanging drawing ends the check with a message (${Date.now() - t0} ms, status ${hung.status}): ` + hung.stdout + hung.stderr);
   });
   await test('prepared visuals: listed, found, asked for; embedded with one line and stepped through in the UI; post refuses an unknown one; check renders every step; ready needs a fresh check', async () => {
     const run = (...a) => spawnSync(process.execPath, [BIN, ...a], { env: ENV, encoding: 'utf8' });
