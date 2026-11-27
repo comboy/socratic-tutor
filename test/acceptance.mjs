@@ -680,8 +680,16 @@ async function main() {
     assert(/two threads: \d+ replies/.test(learn('latency', 'demo')), learn('latency', 'demo'));
     // a thread with nothing for the learner says so (tab and thread), and sending in the other doesn't take them there
     await page.waitFor(`document.querySelector('.track-tab.st-ready:not(.on) .track-letter')?.textContent === 'B'`, { timeout: 8000 });
+    // "Stay here": sending doesn't take the learner to the other thread, though it has something ready
+    await page.click('#trackStay');
+    assert(await page.eval(`document.querySelector('#trackStay').classList.contains('on')`), 'pin not on');
     await page.click('#answerBox'); await page.type('closing A FAKE-NOREPLY');
     await page.key('Enter', { meta: true });
+    await sleep(700);
+    assert(await page.eval(`document.querySelector('.track-tab.on .track-letter')?.textContent`) === 'A', 'pinned, but taken to the other thread');
+    await page.click('#trackStay');
+    assert(!await page.eval(`document.querySelector('#trackStay').classList.contains('on')`), 'pin not off');
+    await page.click('.track-tab:not(.on)');
     await page.waitFor(`document.querySelector('.track-tab.on .track-letter')?.textContent === 'B'`, { timeout: 3000 });
     await page.waitFor(`(() => { const a = document.querySelector('.track-tab:not(.on)'); return a.classList.contains('st-idle') && /nothing waiting/.test(a.textContent); })()`, { timeout: 15000 });
     assert(!await page.eval(`!!document.querySelector('.thread-idle')`), 'thread B has a question: no idle note there');

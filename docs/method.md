@@ -230,6 +230,10 @@ read, and the UI files them in that thread next to its open question; a message 
 review and then asked an unrelated one put their follow-up beside the wrong question box, and they
 noticed (2026-11-25). When a review thread moves to a new subject, post the new question as its own
 short message.
+The learner can press "Stay here" in the thread bar: both threads stay open, but sending no longer
+takes them to the other one (they asked for it, 2026-11-27: sometimes they want to stay on one
+subject, or take breaks anyway so the wait costs nothing). You can't see it from your side; an
+open question in the other thread simply waits longer, which is fine.
 When you stop feeding a thread (late, a chapter closes), say so in that thread: the UI takes the
 learner there after they answer in the other, and an empty thread read as a bug (2026-11-25).
 What one evening showed (2026-11-25, `bin/learn latency`): before the switch the learner waited a

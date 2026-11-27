@@ -82,9 +82,15 @@ function tracksOff() {
   for (let i = J.length - 1; i >= 0; i--) { const m = J[i].role === 'user' && /^two threads: (on|off)/.exec(J[i].text || ''); if (m) return m[1] === 'off'; }
   return false;
 }
-const TRACKS_TIP = 'An experiment against waiting: while you read and answer one thread, the tutor writes the reply in the other. Sending in one takes you to the other when its reply is ready.';
+const TRACKS_TIP = 'An experiment against waiting: while you read and answer one thread, the tutor writes the reply in the other. Sending in one takes you to the other when its reply is ready ("Stay here" turns that off for a while).';
 const tracksLabel = () => h('span', { class: 'track-label', title: TRACKS_TIP },
   icon('threads'), h('span', { class: 'track-label-t', text: 'Two threads' }), h('span', { class: 'exp-tag', text: 'experiment' }));
+// "Stay here": the learner keeps both threads but isn't taken to the other one after sending (they
+// want to stay on one subject, or are taking breaks anyway so the wait costs nothing). Per topic,
+// on this device; the tabs, the t key and the "Thread B is ready" button still switch.
+const stayKey = () => 'trackStay:' + app.topic.slug;
+const staying = () => !!store.get(stayKey(), false);
+function toggleStay() { store.set(stayKey(), !staying()); barNote = ''; drawTrackBar(); }
 let barNote = '';   // why the thread just changed, shown for a few seconds
 function drawTrackBar() {
   const note = barNote;
@@ -113,6 +119,10 @@ function drawTrackBar() {
     tracksLabel(),
     h('div', { class: 'track-tabs' }, tab('a'), tab('b')),
     note ? h('span', { class: 'track-note', role: 'status', text: note }) : null,
+    h('button', { class: 'btn btn-tiny track-stay' + (staying() ? ' on' : ''), id: 'trackStay', 'aria-pressed': String(staying()),
+      title: staying() ? 'You stay in this thread after sending. Click to be taken to the other thread again when its reply is ready.'
+        : 'Stay in the thread you are in after sending, instead of being taken to the other one. Both threads stay open; switch by hand whenever you like.',
+      onclick: toggleStay }, staying() ? icon('check') : null, 'Stay here'),
     h('button', { class: 'btn btn-tiny', title: 'Ask the tutor to fold the second thread back into the main one', onclick: () => quickAction(TWO_OFF) }, 'One thread')].filter(Boolean));
 }
 let noteTimer = 0;
@@ -721,7 +731,7 @@ async function doSend(kind, text, extra, box, key) {
 // Two threads: the tutor now writes this thread's reply. If the other thread has something to
 // read (a reply that came while the learner was here, or its open question), go there.
 function afterSend(t) {
-  if (!t || !app.d.tracks.open) return;
+  if (!t || !app.d.tracks.open || staying()) return;
   const o = otherTrack(t), st = trackState(o);
   if (st.key === 'ready' || st.key === 'turn')
     switchTrack(o, { toReply: true, note: `Sent in ${t.toUpperCase()}: the tutor writes that reply while you read ${o.toUpperCase()}.` });
