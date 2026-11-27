@@ -229,6 +229,17 @@ const routes = {
   'POST /api/shutdown': async (req) => { await readBody(req); setTimeout(() => process.exit(0), 50); return { ok: true }; },
   // clients: open event streams, i.e. whether the app is open in a browser (the launcher then doesn't open another tab)
   'GET /api/status': () => ({ ...publicStatus(), clients: clients.size }),
+  // Browsers waiting to be let in, and letting one in (app/access.js). The person does this, from a
+  // terminal (`bin/learn allow`): a request that got here with a browser's cookie is refused, so no
+  // page, and nothing that only drives a page, can admit another browser.
+  'GET /api/access/waiting': (req) => { if (!cliRequest(req)) throw Object.assign(new Error('only from the command line: bin/learn allow'), { status: 403 }); return { open: A.OPEN, waiting: A.waiting() }; },
+  'POST /api/access/allow': async (req) => {
+    if (!cliRequest(req)) throw Object.assign(new Error('only from the command line: bin/learn allow'), { status: 403 });
+    const b = await readBody(req);
+    const got = A.allow(b.code || null);
+    log(got ? `access: bin/learn allow let in ${got.code} at ${got.addr} (${got.browser})` : `access: bin/learn allow${b.code ? ' ' + b.code : ''}: no such browser is waiting`);
+    return { allowed: got, waiting: A.waiting() };
+  },
   'POST /api/send': async (req) => {
     const b = await readBody(req);
     // the browser retries a send whose answer it didn't get (a timeout, a server restart): the
@@ -342,6 +353,8 @@ const routes = {
 // access token (app/access.js): its cookie is what a rebinding page can't have, so the Host can be
 // any name the server is reached by; a browser's change must still come from that same origin.
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', ...(A.isLoopback(S.HOST) ? [S.HOST] : [])].map(h => `${h}:${S.PORT}`));
+// from this machine, or with the CLI's bearer token: not a browser that is in by its cookie
+const cliRequest = req => A.fromThisMachine(req) ? !req.headers.origin && !/^Mozilla\//.test(String(req.headers['user-agent'] || '')) : A.credential(req) === 'bearer';
 // -> null (go ahead), or [status, why]
 function refused(req) {
   const local = A.fromThisMachine(req);
@@ -362,7 +375,7 @@ async function handle(req, res) {
   const p = decodeURIComponent(url.pathname);
   if (A.tokenVisit(req, res, url)) return;
   const no = refused(req);
-  if (no?.[0] === 401) return A.denied(res);
+  if (no?.[0] === 401) return A.denied(req, res, log);
   if (no) return send(res, no[0], { error: `refused: ${no[1]}` });
   A.keep(req, res);
   try {

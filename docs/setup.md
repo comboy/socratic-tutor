@@ -53,7 +53,13 @@ With 2 and 3 other machines need the access token: the server creates one in
 prints the link to open, `http://<address>:4747/?token=…`. Opening it once sets a cookie in that
 browser: every tab is in from then on, for 400 days after the last visit (per address: to a browser
 the IP and a host name for the same machine are two sites, each needing the link once). Without
-the token the server answers 401. Why: what's typed in the browser reaches agents
+the token the server answers 401, and a browser gets a page that waits: it shows a short code, and
+typing `bin/learn allow` in a terminal on the server lets in the browser that asked last (it
+prints the code; `bin/learn allow <code>` picks one, `--list` shows who is waiting), so no link has
+to be copied between devices. That approval is the person's: the command wants a terminal, the
+server takes it only from the command line, and an agent asked to do it should tell the person
+instead (a browser an agent let in on its own would be a way in for anyone who can talk to the
+agent). Why the token at all: what's typed in the browser reaches agents
 that run shell commands, so anyone who could reach an open port could get commands run. To change
 the token, delete the file; the next request makes a new one (and old links stop working). The
 launcher doesn't open a browser then (it prints the link). A reverse proxy on the same machine looks

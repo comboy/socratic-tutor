@@ -72,7 +72,11 @@ function keep(req, res) {
 // the address bar (and so out of history and bookmarks). -> true when it answered the request.
 function tokenVisit(req, res, url) {
   if (!OPEN || !url.searchParams.has('token')) return false;
-  if (!valid(url.searchParams.get('token'))) { denied(res); return true; }
+  if (!valid(url.searchParams.get('token'))) {
+    res.writeHead(401, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+    res.end(page('learn: wrong token', '<h1>That access token is not the right one</h1><p>On the machine that runs the tutor, <code>bin/learn status</code> prints the link with the current token. <a style="color:#6ea4ea" href="/">Back</a>, to be let in with <code>bin/learn allow</code> instead.</p>'));
+    return true;
+  }
   url.searchParams.delete('token');
   res.writeHead(302, {
     'set-cookie': setCookie(),
@@ -81,13 +85,98 @@ function tokenVisit(req, res, url) {
   res.end();
   return true;
 }
-function denied(res) {
-  res.writeHead(401, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
-  res.end(`This learn server can be reached from other machines, so it needs its access link.
+// ---------- a browser asking to be let in ----------
+// A browser from another machine without the cookie used to get a 401 and a hint to find the link
+// with `bin/learn status`: copying a long link between devices. Now it waits on that page, and the
+// person lets it in from a terminal on this machine: `bin/learn allow` (the newest one waiting, or
+// the one whose code they name). Who may approve is the point: the person, by a command they
+// type. Not a tab that is already in (it is likely on another device, out of reach when a new one
+// asks; the learner's call, 2026-11-26), and never an agent on its own judgment: an agent that can
+// admit browsers is a way in for whoever can talk to the agent. So the server takes an approval
+// only from this machine or the CLI's bearer token, and the command wants a terminal.
+//
+// The waiting browser holds a secret of its own in a cookie; the page shows a short code made from
+// it, the same one `allow` prints, so the person can see that the browser they let in is theirs.
+// An approval is good for a few minutes and for one use. All of it lives in memory: after a server
+// restart a waiting page simply asks again, with the same code.
+const ASK = `${COOKIE}-ask`;
+const asks = new Map();   // secret -> { code, addr, browser, at, seen, allowed }
+const WAITING_MS = 20e3, ASK_TTL = 15 * 60e3, ALLOW_TTL = 3 * 60e3, ASK_MAX = 30;
+const codeOf = secret => crypto.createHash('sha256').update('learn-ask:' + secret).digest('base64url').replace(/[^A-Za-z]/g, '').slice(0, 4).toUpperCase();
+function browserName(ua) {
+  ua = String(ua || '');
+  const b = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : /curl\//.test(ua) ? 'curl' : 'a browser';
+  const o = /iPhone|iPad/.test(ua) ? 'iOS' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS X|Macintosh/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : '';
+  return o ? `${b} on ${o}` : b;
+}
+function pruneAsks(now = Date.now()) {
+  for (const [k, a] of asks) if (now - a.seen > ASK_TTL || (a.allowed && now - a.allowed > ALLOW_TTL)) asks.delete(k);
+  while (asks.size > ASK_MAX) asks.delete([...asks].sort((x, y) => x[1].seen - y[1].seen)[0][0]);
+}
+// -> { entry, secret, fresh }
+function noteAsk(req) {
+  const now = Date.now();
+  pruneAsks(now);
+  const c = String(req.headers.cookie || '').split(/;\s*/).find(x => x.startsWith(ASK + '='));
+  let secret = c ? c.slice(ASK.length + 1) : '';
+  if (!/^[\w-]{24,64}$/.test(secret)) secret = crypto.randomBytes(24).toString('base64url');
+  let entry = asks.get(secret);
+  // (new, or back after it stopped waiting: "the last request wins" counts from when it came back)
+  const fresh = !entry || now - entry.seen > WAITING_MS;
+  if (!entry) asks.set(secret, entry = { code: codeOf(secret), addr: String(req.socket.remoteAddress || '?').replace(/^::ffff:/, ''), browser: browserName(req.headers['user-agent']), at: now, seen: now, allowed: 0 });
+  if (fresh) entry.at = now;
+  entry.seen = now;
+  return { entry, secret, fresh };
+}
+// Browsers on the waiting page right now, newest first: [{ code, addr, browser, at }]
+function waiting() {
+  const now = Date.now();
+  pruneAsks(now);
+  return [...asks.values()].filter(a => !a.allowed && now - a.seen <= WAITING_MS).sort((x, y) => y.at - x.at).map(({ code, addr, browser, at }) => ({ code, addr, browser, at }));
+}
+// Let one in: the one with this code, or the newest. -> { code, addr, browser, at } | null
+function allow(code) {
+  const now = Date.now(), want = code ? String(code).toUpperCase() : null;
+  const pick = [...asks.values()].filter(a => !a.allowed && now - a.seen <= WAITING_MS && (!want || a.code === want)).sort((x, y) => y.at - x.at)[0];
+  if (!pick) return null;
+  pick.allowed = now;
+  return { code: pick.code, addr: pick.addr, browser: pick.browser, at: pick.at };
+}
+const page = (title, body, refresh) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${refresh ? `<meta http-equiv="refresh" content="${refresh}">` : ''}<title>${title}</title>
+<style>body { font: 16px/1.5 -apple-system, "Segoe UI", sans-serif; background: #1f2227; color: #cfd3da; margin: 0; display: grid; place-items: center; min-height: 100vh; }
+main { max-width: 520px; padding: 24px; } h1 { font-size: 20px; color: #e6e8ec; margin: 0 0 12px; } code, .code { font: 600 15px ui-monospace, Menlo, Consolas, monospace; background: #2a2e35; border: 1px solid #3a404a; border-radius: 5px; padding: 1px 6px; color: #e6e8ec; }
+.code { font-size: 22px; letter-spacing: .12em; padding: 3px 10px; } p { margin: 10px 0; } .muted { color: #949baa; font-size: 14px; } details { margin-top: 22px; } summary { cursor: pointer; color: #949baa; font-size: 14px; }
+input { font: 14px ui-monospace, monospace; width: 100%; box-sizing: border-box; margin: 8px 0; padding: 7px 9px; background: #22262c; color: #e6e8ec; border: 1px solid #3a404a; border-radius: 5px; } button { font: 600 14px sans-serif; padding: 6px 14px; border-radius: 5px; border: 1px solid #3f5c85; background: #2b3b52; color: #e6e8ec; cursor: pointer; }</style></head><body><main>${body}</main></body></html>`;
+// The answer to a request without the token. A page (a browser asking for HTML) waits to be let
+// in; anything else gets the plain 401. `log(text)`: the server's log, once per browser that starts waiting.
+function denied(req, res, log = () => {}) {
+  const html = req && req.method === 'GET' && /\btext\/html\b/.test(String(req.headers.accept || ''));
+  if (!html) {
+    res.writeHead(401, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
+    res.end(`This learn server can be reached from other machines, so it needs its access link.
 
 On the server, run \`bin/learn status\`: it prints the link (http://…/?token=…). Open it once in
 this browser and a cookie keeps you in. (The token is in the data home, .access-token.)
+Or open this address in the browser and let it in from the server with \`bin/learn allow\`.
 `);
+    return;
+  }
+  const { entry, secret, fresh } = noteAsk(req);
+  if (entry.allowed && Date.now() - entry.allowed <= ALLOW_TTL) {
+    asks.delete(secret);
+    res.writeHead(302, { 'set-cookie': [setCookie(), `${ASK}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`], location: req.url, 'cache-control': 'no-store' });
+    res.end();
+    log(`access: the browser ${entry.code} at ${entry.addr} (${entry.browser}) was let in with bin/learn allow`);
+    return;
+  }
+  if (fresh) log(`access: a browser at ${entry.addr} (${entry.browser}) has no access cookie and is waiting, code ${entry.code}. To let it in, type in a terminal on this machine: bin/learn allow`);
+  res.writeHead(401, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'set-cookie': `${ASK}=${secret}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${ASK_TTL / 1000}` });
+  res.end(page('learn: waiting to be let in', `<h1>This browser isn't known here yet</h1>
+<p>In a terminal on the machine that runs the tutor, type:</p>
+<p><code>bin/learn allow</code></p>
+<p>It lets in the browser that asked last and prints its code. This one is <span class="code">${entry.code}</span></p>
+<p class="muted">This page checks every few seconds and opens the app by itself once it is let in. A cookie then keeps this browser in.</p>
+<details><summary>Or paste the access token</summary><form method="get" action="/"><input name="token" autocomplete="off" placeholder="the token from bin/learn status (the part after ?token=)"><button>Open</button></form></details>`, 4));
 }
 
 // ---------- where the CLI finds the server ----------
@@ -131,4 +220,4 @@ function remoteLines(host = S.HOST) {
   ];
 }
 
-module.exports = { OPEN, TOKEN_FILE, token, isLoopback, isWildcard, fromThisMachine, credential, tokenVisit, keep, denied, record, connectHost, clientHeaders, localUrl, remoteLines };
+module.exports = { OPEN, TOKEN_FILE, token, isLoopback, isWildcard, fromThisMachine, credential, tokenVisit, keep, denied, waiting, allow, record, connectHost, clientHeaders, localUrl, remoteLines };

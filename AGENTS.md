@@ -98,5 +98,8 @@ What the setup depends on, and why:
 - The journal is the append-only record that the UI, stats and wiki are built from, so it's
   changed only through `bin/learn` commands. `data/state/` is a live tutor's queue and session
   files, and a tutor session you didn't start is someone's lesson: leave both alone.
+- Who gets into the app from another machine is the person's decision (`bin/learn allow`, typed
+  by them): what a browser sends reaches agents that run commands. If a browser is waiting, say
+  so; don't let it in yourself.
 - No dependencies and no build step, so anyone can clone and run it; the UI follows
   `docs/design.md` (the UI's principles, with the reasons).

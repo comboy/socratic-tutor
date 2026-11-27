@@ -96,6 +96,7 @@ commands.help = () => {
                                          -c continues the last agent session instead of a fresh one
                                          --host 0.0.0.0 (all addresses) or one IP: reachable from other machines, with an
                                          access token (bin/learn status prints the link; docs/setup.md, "Running on a server")
+bin/learn allow [code] [--list]          let in a browser from another machine that is waiting (you type this; never an agent)
 bin/learn doctor                         check this machine has what's needed (Node, git, the agent and its login, Chrome)
 bin/learn serve [--host ip]              web server only (http://localhost:${S.PORT})
 bin/learn demo [--empty|--real] [--port n] [--no-open] [--keep]   the UI on a throwaway copy of the demo data
@@ -1096,6 +1097,10 @@ commands.status = async () => {
   const up = !!info && !info.foreign;
   console.log(`server: ${up ? `up at ${require('../app/access').localUrl(info.host || S.HOST)}${info.host && info.host !== '127.0.0.1' ? ` (listening on ${info.host})` : ''}` : 'down'} · data: ${S.shown(S.ROOT)}${S.ROOT !== S.realish(S.ROOT) ? ` (→ ${S.realish(S.ROOT)})` : ''} · learner: ${S.shown(S.LEARNER)}`);
   if (up && info.open) for (const l of require('../app/access').remoteLines(info.host)) console.log(l);
+  if (up && info.open) try {
+    const w = (await require('../app/client').api('GET', '/api/access/waiting')).waiting;
+    if (w.length) console.log(`${w.length} browser${w.length > 1 ? 's' : ''} waiting to be let in (${w.map(x => `${x.code}: ${x.browser} at ${x.addr}`).join('; ')}): if that is you, type \`bin/learn allow\` in a terminal`);
+  } catch {}
   const inbox = fs.existsSync(S.INBOX) ? fs.readdirSync(S.INBOX).filter(f => f.endsWith('.json')) : [];
   console.log(`inbox: ${inbox.length} pending · feedback: ${S.openFeedback().length} open`);
   for (const slug of S.listTopics()) {
@@ -1104,6 +1109,31 @@ commands.status = async () => {
     const p = S.pendingQuestion(j);
     console.log(`topic ${slug}: ${m.title} — ${j.length} journal entries; focus ${m.focus || '-'}${p ? `; pending question ${p.id}` : ''}`);
   }
+};
+
+// Let a browser from another machine in (app/access.js): it is waiting on the "isn't known here
+// yet" page. For the person at the terminal, never for an agent: who gets into the app decides who
+// can talk to agents that run commands here, so the approval is a command a human types.
+commands.allow = async () => {
+  const f = flags(argv, { list: 'bool' });
+  const C = require('../app/client');
+  if (!(await C.serverUp())) die('the learn server is not running (bin/learn starts it)');
+  const ago = t => { const s = Math.max(0, Math.round((Date.now() - t) / 1000)); return s < 90 ? `${s} s ago` : `${Math.round(s / 60)} min ago`; };
+  const line = w => `${w.code}  ${w.browser} at ${w.addr}, asked ${ago(w.at)}`;
+  const st = await C.api('GET', '/api/access/waiting');
+  if (!st.open) { console.log('This server only answers this machine (no --host): there is nobody to let in.'); return; }
+  if (f.list || !st.waiting.length) {
+    console.log(st.waiting.length ? `waiting to be let in (newest first):\n${st.waiting.map(w => '  ' + line(w)).join('\n')}\nbin/learn allow lets the newest in; bin/learn allow <code> a particular one.`
+      : 'No browser is waiting. Open the server\'s address in the browser first (it shows a page with a code and waits), then run this again.');
+    return;
+  }
+  if (!(process.stdin.isTTY && process.stdout.isTTY) && !process.env.LEARN_ALLOW_TEST) {
+    die(`${st.waiting.length} browser(s) waiting:\n${st.waiting.map(w => '  ' + line(w)).join('\n')}\nNot let in: \`bin/learn allow\` is for the person, typed in a terminal. If you are an agent: tell them, don't do it for them.`);
+  }
+  const r = await C.api('POST', '/api/access/allow', { code: f._[0] || null });
+  if (!r.allowed) die(`no browser with code ${f._[0]} is waiting (bin/learn allow --list)`);
+  console.log(`let in: ${line(r.allowed)}. Its page opens the app within a few seconds; a cookie keeps it in.`);
+  if (r.waiting.length) console.log(`still waiting (not let in):\n${r.waiting.map(w => '  ' + line(w)).join('\n')}`);
 };
 
 commands.show = () => {

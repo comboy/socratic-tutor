@@ -195,6 +195,36 @@ async function main() {
       // the CLI isn't on loopback either (here: counts as remote): it sends the token, and status prints the link
       const st = execFileSync(process.execPath, [BIN, 'status'], { env: renv, encoding: 'utf8' });
       assert(/server: up/.test(st) && st.includes(`?token=${tok}`) && /SSH tunnel|ssh -L/.test(st), 'status: ' + st);
+      // a browser without the cookie waits on a page with a code; the person lets it in from the terminal (bin/learn allow)
+      const cli = (args, env = renv) => spawnSync(process.execPath, [BIN, ...args], { env, encoding: 'utf8' });
+      assert(/No browser is waiting/.test(cli(['allow']).stdout), 'nobody waiting');
+      const html = { accept: 'text/html,*/*', 'user-agent': 'Mozilla/5.0 (Macintosh) Firefox/130.0' };
+      const w1 = await req('GET', '/', html);
+      const ask = String(w1.headers['set-cookie'] || '').split(';')[0], code = (w1.body.match(/class="code">([A-Z]{4})</) || [])[1];
+      assert(w1.status === 401 && /bin\/learn allow/.test(w1.body) && code && /-ask=/.test(ask) && /http-equiv="refresh"/.test(w1.body) && /name="token"/.test(w1.body) && !w1.body.includes(tok), 'waiting page: ' + w1.status + ' ' + w1.body.slice(0, 300));
+      assert((await req('GET', '/', { ...html, cookie: ask })).body.includes(code), 'the same browser keeps its code');
+      const other = await req('GET', '/', { ...html, 'user-agent': 'Mozilla/5.0 (Windows NT 10.0) Chrome/130.0' });
+      const code2 = (other.body.match(/class="code">([A-Z]{4})</) || [])[1], ask2 = String(other.headers['set-cookie'] || '').split(';')[0];
+      const list = cli(['allow', '--list']).stdout;
+      assert(list.includes(`${code}  Firefox on Mac`) && list.indexOf(code2) < list.indexOf(code) && /Chrome on Windows/.test(list), 'list, newest first: ' + list);
+      assert(execFileSync(process.execPath, [BIN, 'status'], { env: renv, encoding: 'utf8' }).includes('2 browsers waiting to be let in'), 'status says who waits');
+      // not from a browser that is already in, and not without a terminal (an agent's shell has none)
+      assert((await req('POST', '/api/access/allow', { ...json, origin: `http://tutor.lan:${rport}` }, '{}')).status !== 200 && (await req('GET', '/api/access/waiting', { cookie })).status !== 200, 'a browser with the cookie can let another in');
+      const noTty = cli(['allow']);
+      assert(noTty.status === 1 && /Not let in/.test(noTty.stderr) && noTty.stderr.includes(code), 'allow without a terminal: ' + noTty.stdout + noTty.stderr);
+      assert((await req('GET', '/', { ...html, cookie: ask })).status === 401, 'still waiting');
+      // the person, at a terminal: a named one, then "the last request wins"
+      const one = cli(['allow', code], { ...renv, LEARN_ALLOW_TEST: '1' });
+      assert(one.status === 0 && one.stdout.includes(`let in: ${code}  Firefox on Mac`) && /still waiting[\s\S]*Chrome on Windows/.test(one.stdout), 'allow <code>: ' + one.stdout + one.stderr);
+      const inNow = await req('GET', '/?x=2', { ...html, cookie: ask });
+      const got = [].concat(inNow.headers['set-cookie'] || []);
+      assert(inNow.status === 302 && inNow.headers.location === '/?x=2' && got.some(c => c === sc) && got.some(c => /-ask=;/.test(c)), 'let in on its next refresh: ' + inNow.status + ' ' + JSON.stringify(got));
+      assert((await req('GET', '/', { ...html, cookie: ask })).status === 401, 'an approval is used once');
+      assert((await req('GET', '/', { ...html, cookie: ask2 })).status === 401, 'the other browser was not let in');
+      assert(cli(['allow', 'ZZZZ'], { ...renv, LEARN_ALLOW_TEST: '1' }).status === 1, 'unknown code');
+      const last = cli(['allow'], { ...renv, LEARN_ALLOW_TEST: '1' });
+      assert(last.status === 0 && /let in: [A-Z]{4}  Firefox on Mac/.test(last.stdout), 'the newest asker wins: ' + last.stdout + last.stderr);
+      assert((await req('GET', '/?token=nope', html)).status === 401, 'wrong pasted token');
       const bad = spawnSync(process.execPath, [BIN, 'status', '--host', 'not-an-ip'], { env: renv, encoding: 'utf8' });
       assert(bad.status === 1 && /--host needs an IP/.test(bad.stderr), '--host validation: ' + bad.stderr);
     } finally { srv.kill(); fs.rmSync(rhome, { recursive: true, force: true }); }
@@ -455,7 +485,7 @@ async function main() {
     const srv = spawn(process.execPath, [BIN, 'serve'], { env: { ...ENV, LEARN_HOME: rhome, LEARN_PORT: rport, LEARN_TEST_REMOTE: '1' }, stdio: 'ignore' });
     const tokenFile = path.join(rhome, '.access-token');
     const inApp = `/· learn$/.test(document.title) && !!document.querySelector('.thread .msg')`;
-    const asked = `/bin\\/learn status/.test(document.body.innerText)`;
+    const asked = `/bin\\/learn allow/.test(document.body.innerText) && /isn't known here yet/.test(document.body.innerText)`;
     const elsewhere = href => 'data:text/html,' + encodeURIComponent(`<title>elsewhere</title><a id="go" href="${href}">the tutor</a>`);
     let tabs = [];
     try {
@@ -489,6 +519,13 @@ async function main() {
       fs.writeFileSync(tokenFile, 'another-token-for-the-acceptance-test\n');
       await page.nav(RB + '/#/demo/learn', 600);
       assert(await page.eval(asked), 'old cookie still lets in after the token changed');
+      // the waiting page, and the person letting this browser in from a terminal: the page opens the app by itself, where it was going
+      await page.shot('access-waiting');
+      const code = await page.eval(`document.querySelector('.code').textContent`);
+      const let1 = spawnSync(process.execPath, [BIN, 'allow'], { env: { ...ENV, LEARN_HOME: rhome, LEARN_PORT: rport, LEARN_TEST_REMOTE: '1', LEARN_ALLOW_TEST: '1' }, encoding: 'utf8' });
+      assert(let1.status === 0 && let1.stdout.includes(`let in: ${code}`), 'allow: ' + let1.stdout + let1.stderr);
+      await page.waitFor(inApp, { timeout: 12000 });
+      assert(/#\/demo\/learn$/.test(await page.eval('location.href')), 'let in, but not where it was going: ' + await page.eval('location.href'));
       await page.nav(`${RB}/?token=another-token-for-the-acceptance-test#/demo/learn`, 600);
       await page.waitFor(inApp);
       await page.nav(RB + '/#/demo/tree', 600);
