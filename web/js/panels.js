@@ -396,6 +396,9 @@ export function hoverCard(t) {
       h('div', { class: 'hc-foot', text: 'Click to open in the side panel' }));
   }
   if (t.dataset.ref === 'skill') {
+    const fd = (app.topic.meta.foundations || []).find(f => f.id === t.dataset.id);
+    if (fd) return h('div', {}, h('div', { class: 'hc-head' }, lvChip(fd.level ?? 0), h('b', { text: fd.name })),
+      h('div', { class: 'hc-body' + (fd.why ? '' : ' muted'), text: fd.why ? `Foundation (from outside this topic): ${fd.why}` : 'Foundation: knowledge from outside this topic' }));
     const s = skillById(app.topic.meta, t.dataset.id);
     if (!s) return null;
     return h('div', {}, h('div', { class: 'hc-head' }, lvChip(levelOf(s.node)), h('b', { text: `${s.id} ${s.name}` })),

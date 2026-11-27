@@ -294,6 +294,8 @@ async function boot() {
     onRef: (type, id) => {
       if (type === 'map') { go('map', id); return; }
       if (type === 'wiki') { go('wiki', ...String(id).split('/')); return; }
+      // a link to a foundation (knowledge from outside the topic): it lives in the tree, not in a skill panel
+      if (type === 'skill' && (app.topic?.meta.foundations || []).some(f => f.id === id)) { go('tree', id); return; }
       openDock(type, id);
     },
   });

@@ -219,7 +219,7 @@ from `needs`:
   word (skill ids are numbers), `level` is your estimate (`bin/learn level <topic> linalg 2`),
   `why` says what needs it, and `topic` names another topic that covers it, once one exists. A weak
   foundation is a good reason to suggest a short side topic (and to note it in
-  `learner/knowledge.md`).
+  `learner/knowledge.md`). `[linear algebra](skill:linalg)` links to one (it opens in the Tree).
 - Edit both with `bin/learn tree`: it prints the tree as an outline, and `tree --set` replaces it
   from one (levels, summaries and other fields are kept by id):
 

@@ -415,10 +415,10 @@ async function main() {
     const t = await api('/api/topic/demo');
     assert(t.pages.map(p => p.name + ':' + p.title).join() === 'notes-on-softmax:Softmax notes,residual-stream:How x is built, layer by layer', JSON.stringify(t.pages.map(p => p.name)));
     const bad = path.join(HOME, 'topics/demo/pages/zz-bad.md');
-    fs.writeFileSync(bad, '# Bad\n\n[gone](wiki:page/nope) [ok](wiki:page/residual-stream) [list](wiki:pages)\n');
+    fs.writeFileSync(bad, '# Bad\n\n[gone](wiki:page/nope) [ok](wiki:page/residual-stream) [list](wiki:pages) [a foundation](skill:linalg)\n');
     const out = learn('check', 'demo');
     fs.rmSync(bad);
-    assert(/pages\/zz-bad\.md: broken link wiki:page\/nope/.test(out) && !/residual-stream/.test(out) && !/wiki:pages/.test(out), out);
+    assert(/pages\/zz-bad\.md: broken link wiki:page\/nope/.test(out) && !/residual-stream/.test(out) && !/wiki:pages/.test(out) && !/skill:linalg/.test(out), out);
   });
 
   await test('term pages: served with the topic, shown by term show / term pages, checked', async () => {

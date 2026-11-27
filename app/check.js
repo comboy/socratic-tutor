@@ -16,6 +16,7 @@ const TEXT_KINDS = new Set(['message', 'answer', 'ask', 'action', 'start', 'meta
 function linkChecker(slug) {
   const meta = S.loadTopicMeta(slug);
   const skills = new Set(); S.walkSkills(meta.skills, s => skills.add(String(s.id)));
+  for (const f of meta.foundations || []) if (f.id) skills.add(String(f.id));   // skill:linalg links to a foundation (the UI opens it in the tree)
   const forms = new Set(); for (const g of S.readGlossary(slug)) for (const f of [g.term, ...g.aliases]) forms.add(f.toLowerCase());
   let map = null; try { map = S.readJSON(path.join(S.topicDir(slug), 'map.json'), null); } catch {}
   const nodes = new Set((map?.nodes || []).map(n => n.id));
