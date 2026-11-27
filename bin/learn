@@ -116,7 +116,7 @@ bin/learn post --corrects <msg-id> --note "what changed"  < markdown   put right
 bin/learn post --track a|b …             with two threads open: the thread this message belongs to (required then)
 bin/learn post --queue --expect "…" …    a review question prepared ahead (thread b): several stay open at once,
                                          the learner answers in any order, each answer is graded on its own (--grade-of)
-bin/learn track [t] [open "title a" "title b" | close]   two threads (experiment against latency; docs/method.md)
+bin/learn track [t] [open "title a" "title b" | rename a|b "title" | close]   two threads (experiment against latency; docs/method.md)
 bin/learn latency [t] [--days n]         how long the learner waited for replies (and how often two threads hid it)
 bin/learn meta [t] <id>… [--off]         tag past entries as app talk (append-only; --off takes the tag back)
 bin/learn level [t] <skill> <0-5> "reason"
@@ -327,6 +327,26 @@ commands.resume = () => {
   const fmt = n => `  ${n.id}${n.skill ? ` [${fids.has(n.skill) ? '@' : ''}${n.skill}]` : ''} ${n.text}${n.due ? ` (due ${n.due}${n.due <= today ? ', DUE' : ''})` : ''}${n.ref ? ` (msg:${n.ref})` : ''}`;
   const byKind = k => open.filter(n => n.kind === k).sort((a, b) => (a.due || '9') < (b.due || '9') ? -1 : 1).map(fmt).join('\n');
   sec('Notes: spaced review (re-test; close with `bin/learn note done <id> "outcome"`)', byKind('review'));
+  // Skills going stale: checked on one day only and not since. Review questions are drawn from review
+  // notes, and those exist only where something went wrong; a skill that passed its first check never
+  // comes back until a later chapter trips on it (seen: a chapter taught once and untouched for three
+  // days while twelve reviews went elsewhere). The journal has what is needed: grades per skill, dated.
+  {
+    const days = new Map();   // skill -> Map(local date -> number of grades)
+    for (const e of J) if (e.kind === 'grade' && e.skill) { const d = S.localDate(new Date(e.ts)), m = days.get(String(e.skill)) || days.set(String(e.skill), new Map()).get(String(e.skill)); m.set(d, (m.get(d) || 0) + 1); }
+    const noted = new Set(open.filter(n => n.kind === 'review' && n.skill).map(n => String(n.skill)));
+    const ago = d => Math.round((Date.parse(today) - Date.parse(d)) / 86400e3);
+    const stale = [];
+    S.walkSkills(meta.skills, sk => {
+      const m = days.get(String(sk.id));
+      if (!m || m.size !== 1 || sk.children?.length || noted.has(String(sk.id))) return;
+      const [d, n] = [...m][0];
+      if (ago(d) >= 2) stale.push({ sk, d, n });
+    });
+    stale.sort((x, y) => (x.d < y.d ? -1 : x.d > y.d ? 1 : 0));
+    sec('Going stale: checked on one day only, never since (oldest first; no review note asks for them, so nothing else brings them back. Worth a question from a new angle when one fits)',
+      stale.slice(0, 8).map(x => `  ${x.sk.id} ${x.sk.name}: ${x.n} check${x.n > 1 ? 's' : ''} on ${x.d} (${ago(x.d)} days ago), level ${x.sk.level ?? 0}`).join('\n') + (stale.length > 8 ? `\n  … and ${stale.length - 8} more` : ''));
+  }
   sec('Notes: open misconceptions', byKind('misconception'));
   sec('Notes: suspected holes (probe when relevant, not urgent)', byKind('hole'));
   sec('Notes: parked learner questions', byKind('parked'));
@@ -958,8 +978,14 @@ commands.track = async () => {
   } else if (op === 'close') {
     if (!st.open) die('only one thread is open');
     entry = { role: 'tutor', kind: 'tracks', open: false };
-  } else die('usage: track [t] [open "title a" "title b" | close]');
+  } else if (op === 'rename') {
+    // a thread's subject drifts over days: the tab should say what it is about now
+    if (!st.open) die('only one thread is open: nothing to rename');
+    if (!['a', 'b'].includes(a) || !String(b || '').trim()) die('usage: track [t] rename a|b "new title"');
+    entry = { role: 'tutor', kind: 'tracks', open: true, rename: true, titles: { ...st.titles, [a]: String(b).trim() } };
+  } else die('usage: track [t] [open "title a" "title b" | rename a|b "new title" | close]');
   const [saved] = await viaServer('POST', '/api/append', { topic, entries: [entry] }, () => S.appendJournal(topic, [entry]));
+  if (entry.rename) { console.log(`thread ${a} of ${topic} is now "${entry.titles[a]}" (${saved.id}); nothing else changes.`); return; }
   console.log(entry.open ? `two threads open in ${topic} (${saved.id}): a = ${entry.titles.a}, b = ${entry.titles.b}. Post the first thread-b message with --track b; every lesson post now needs --track.`
     : `back to one thread in ${topic} (${saved.id}). Pending questions now: ${S.pendingQuestion(S.readJournal(topic))?.id || 'none'}.`);
 };

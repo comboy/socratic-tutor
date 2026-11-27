@@ -104,7 +104,7 @@ function unanswered(J, since) {
       const e = J[k];
       if (e.role !== 'tutor') continue;
       if (e.kind === 'grade' && e.target === u.id) done = true;
-      else if (e.kind === 'tracks' && u.kind === 'action') done = true;
+      else if (e.kind === 'tracks' && !e.rename && u.kind === 'action') done = true;
       else if (e.kind === 'message') done = e.replyTo === u.id || (!e.meta && (u.kind === 'action' || S.trackOf(e) === S.trackOf(u)));
     }
     if (!done) out.push(u);

@@ -194,6 +194,7 @@ with `--track a`, and post b's first message (self-contained, with its `:::quest
 `--track b`. Every lesson post then names its thread; `wait` prints `track=` on each message.
 `two threads: off` (or your own judgment that it isn't working): `bin/learn track close`, then
 fold b's open threads into a in your reply.
+When a thread's subject has drifted, `bin/learn track rename a|b "new title"` keeps its tab honest.
 
 **The review queue.** The learner's reading of thread b (2026-11-25): it is mostly review of what
 they already met, through questions, and those "can even have multiple questions prepared ahead,

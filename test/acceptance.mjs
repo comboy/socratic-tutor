@@ -236,6 +236,9 @@ async function main() {
     assert(/n1 \[4\.3\] Why the mask/.test(r) && !/Mixed up loss/.test(r), 'open notes only');
     assert(/@linalg/.test(r) && /needs 4\.1,3\.2/.test(r), 'needs and foundations shown');
     assert(/Short gap|day or more|week or more/.test(r), 'gap advice');
+    // skills checked on one day only and never since, oldest first; one with an open review note is not repeated here
+    const stale = (r.match(/## Going stale[^\n]*\n((?:  .*\n)+)/) || [])[1] || '';
+    assert(/^  1\.1 Tokens, IDs & vocabulary: 1 check on 2026-01-05 \(\d+ days ago\), level 2\n/.test(stale) && stale.indexOf('1.1 ') < stale.indexOf('6.1 ') && !/^  4\.3 /m.test(stale), 'going stale: ' + stale);
   });
   await test('commit -- paths commits only those files (a job and a tutor writing at once); a pathless commit warns while a job runs', async () => {
     const G = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-git-'));
@@ -731,6 +734,10 @@ async function main() {
     const idle = await page.waitFor(`document.querySelector('.thread-idle')?.innerText`, { timeout: 8000 });
     assert(/Nothing is waiting for you in thread A/.test(idle) && /Thread B/.test(idle), idle);
     await page.shot('two-threads-idle');
+    // a thread's subject drifts: the tutor renames its tab, nothing else changes
+    assert(/thread b of demo is now "Renamed second"/.test(learn('track', 'demo', 'rename', 'b', 'Renamed second')), 'rename');
+    await page.waitFor(`[...document.querySelectorAll('.track-tab')].some(t => /Renamed second/.test(t.title))`, { timeout: 5000 });
+    assert(/b: Renamed second/.test(learn('track', 'demo')) && journal().filter(e => e.kind === 'tracks').pop().rename, 'renamed in the journal');
     // back to one thread: the bar goes, B's messages stay, marked
     await page.click('#trackInfo');
     await page.click('#oneThreadBtn');

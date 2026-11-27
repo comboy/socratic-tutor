@@ -187,7 +187,7 @@ one too). `post` reminds you when a message has a hand-drawn block. For a big or
     bin/learn commit "message" [-- paths…]          # the data home is its own git repo; paths: only those
                                                     # (pass them while a background job runs: it warns)
     bin/learn meta [t] <id>… [--off]               # tag past entries as app talk (append-only)
-    bin/learn track [t] open "a title" "b title" · track [t] close   # two threads (docs/method.md)
+    bin/learn track [t] open "a title" "b title" · track [t] rename a|b "title" · track [t] close   # two threads (docs/method.md)
     bin/learn latency [t] [--days n]               # how long the learner waited for replies
     bin/learn recent [n] · show <id> [--previous] · grep <regex> · pending · msgs --skill <id> · term show <name>
 

@@ -398,7 +398,7 @@ function drawTyping() {
 export function onEntries(fresh) {
   if (!thread) return;
   // two threads opened or closed: everything changes shape
-  if (fresh.some(e => e.kind === 'tracks')) { drawTrackBar(); drawThread(); drawComposer(); scrollBottom(); markSeen(); return; }
+  if (fresh.some(e => e.kind === 'tracks' && !e.rename)) { drawTrackBar(); drawThread(); drawComposer(); scrollBottom(); markSeen(); return; }
   const sc = $('#threadScroll');
   const nearBottom = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 160;
   const J = app.topic.journal.filter(visible);
