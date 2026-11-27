@@ -21,7 +21,8 @@ visible).
 ## Working through the queue
 
 1. Read `data/feedback.md` (`bin/learn status` prints the data dir): open items are `- [ ]`
-   bullets, oldest first. `docs/roadmap.md` has context and ideas; it's not a queue. Items from
+   bullets, oldest first. Items written by a tutor (`(tutor, <topic>)`) weigh as much as the learner's
+   own: the tutor is the one who sees where the tool held a lesson back. `docs/roadmap.md` has context and ideas; it's not a queue. Items from
    the "About the app" button name their message (`about the app · msg <id>`): the tutor may have
    answered or promised something there (`bin/learn recent --topic <t>` around it).
 2. Before changing an area, read the code around it and the docs for it: `AGENTS.md`,
@@ -34,7 +35,9 @@ visible).
    reload `web/` when the learner is idle, so whatever you commit is what they see next, and
    they'll come back to it mid-lesson.
 4. Mark the item in `data/feedback.md`: `- [ ]` → `- [x]` with ` → done: <one line on what
-   changed> (<commit>)`. For something waiting on the learner, leave it open with
-   ` → question in report <date>`. Commit: `bin/learn commit "feedback: …" -- feedback.md`.
+   changed> (<commit>)`. For something waiting on the learner, ask with
+   `bin/learn ask-learner "question, with your recommendation"` (the tutor brings it up in the
+   conversation; the learner asked for that after finding questions in a report a day late) and
+   leave the item open with ` → asked the learner <date>`. Commit: `bin/learn commit "feedback: …" -- feedback.md`.
 
 If the queue is empty, say so in one line and stop: the planner runs other jobs for other work.

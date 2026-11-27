@@ -13,6 +13,9 @@ ones.
    nothing uses; functions that do too much; missing tests for features the docs promise;
    anything that would embarrass the code if it were shared publicly (personal data, hard-coded
    paths, leftover debugging).
+   Tutors also report where the process itself got heavy ("X grew big, finding Y is slow") in
+   `data/feedback.md` (items marked `(tutor, …)`): the ones about data growing, slow start-up or
+   awkward commands are yours as much as the builder's, so read the open ones.
 3. Fix what's small and clearly better (behaviour unchanged), in separate commits, each with
    `bin/learn test` passing. Keep diffs about one thing (a wholesale reformat hides the real
    change), keep public commands and file formats as they are (tutors and existing data depend on

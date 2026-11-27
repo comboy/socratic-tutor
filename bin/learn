@@ -96,6 +96,7 @@ commands.help = () => {
                                          -c continues the last agent session instead of a fresh one
                                          --host 0.0.0.0 (all addresses) or one IP: reachable from other machines, with an
                                          access token (bin/learn status prints the link; docs/setup.md, "Running on a server")
+bin/learn ask-learner "question + your recommendation"   a job's question for the learner: the tutor asks it in the conversation (--done <n> "answer")
 bin/learn allow [code] [--list]          let in a browser from another machine that is waiting (you type this; never an agent)
 bin/learn doctor                         check this machine has what's needed (Node, git, the agent and its login, Chrome)
 bin/learn serve [--host ip]              web server only (http://localhost:${S.PORT})
@@ -327,6 +328,9 @@ commands.resume = () => {
   const fids = new Set((meta.foundations || []).map(x => x.id));
   const fmt = n => `  ${n.id}${n.skill ? ` [${fids.has(n.skill) ? '@' : ''}${n.skill}]` : ''} ${n.text}${n.due ? ` (due ${n.due}${n.due <= today ? ', DUE' : ''})` : ''}${n.ref ? ` (msg:${n.ref})` : ''}`;
   const byKind = k => open.filter(n => n.kind === k).sort((a, b) => (a.due || '9') < (b.due || '9') ? -1 : 1).map(fmt).join('\n');
+  // (everything else in resume is about this topic; these are about the app, and wait in every topic until asked)
+  sec('Questions for the learner from the background jobs (they are not read in reports: ask each in the conversation with `post --meta`, one short message with the recommendation, at a pause and not on top of an open lesson question; then `bin/learn ask-learner --done <n> "what they said"`)',
+    S.openQuestions().map(q => `  ${q.n}. (${q.by}, ${q.date}) ${q.text}`).join('\n'));
   sec('Notes: spaced review (re-test; close with `bin/learn note done <id> "outcome"`)', byKind('review'));
   // Skills going stale: checked on one day only and not since. Review questions are drawn from review
   // notes, and those exist only where something went wrong; a skill that passed its first check never
@@ -917,6 +921,26 @@ commands.feedback = () => {
   const topic = f.topic || defaultTopic();
   const r = S.appendFeedback(text, topic || '', process.env.LEARN_SESSION ? 'tutor' : 'cli');
   console.log(`added to ${r.file}`);
+};
+
+// A question only the learner can answer, from a background job (app/store.js, questions.md): the
+// tutor sees the open ones in `resume` and asks them in the conversation.
+commands['ask-learner'] = () => {
+  const f = flags(argv, { done: 'string' });
+  const text = f._.join(' ').trim();
+  if (f.done) {
+    if (!text) die('usage: ask-learner --done <n> "what they said (or: asked, no answer yet)"');
+    const q = S.doneQuestion(f.done, text);
+    if (!q) die(`no open question ${f.done} (bin/learn ask-learner lists them)`);
+    console.log(`ticked: ${q.text}\nIf the answer settles work for the builder, pass it on: bin/learn feedback "…"`);
+    return;
+  }
+  if (!text) {
+    const qs = S.openQuestions();
+    console.log(qs.length ? qs.map(q => `${q.n}. (${q.by}, ${q.date}) ${q.text}`).join('\n') : 'no open questions for the learner');
+    return;
+  }
+  console.log(`for the tutor to ask in the conversation: ${S.addQuestion(text, process.env.LEARN_JOB || (process.env.LEARN_SESSION ? 'tutor' : 'cli'))}`);
 };
 
 // Tag past entries as app talk ("meta"): an appended { kind: 'tag', tag: 'meta', ids } entry, never

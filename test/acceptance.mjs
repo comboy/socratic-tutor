@@ -244,6 +244,20 @@ async function main() {
     assert(realFeedback() === real, 'wrote to the real data/feedback.md');
   });
 
+  await test('a job\'s question for the learner: ask-learner queues it, resume shows it to the tutor, --done ticks it', async () => {
+    assert(/no open questions/.test(learn('ask-learner')), 'empty at first');
+    const added = execFileSync(process.execPath, [BIN, 'ask-learner', 'Gear icon or speech bubble for the System page? I recommend the bubble.'], { env: { ...ENV, LEARN_JOB: 'builder' }, encoding: 'utf8' });
+    assert(/for the tutor to ask in the conversation: - \[ \] \d{4}-\d\d-\d\d \(builder\): Gear icon/.test(added), added);
+    learn('ask-learner', 'A second one?');
+    assert(/^1\. \(builder, .*Gear icon[^\n]*\n2\. \(\w+, .*A second one\?/.test(learn('ask-learner')), learn('ask-learner'));
+    const r = learn('resume', 'demo');
+    assert(/## Questions for the learner from the background jobs[^\n]*post --meta[^\n]*\n  1\. \(builder, [^\n]*Gear icon/.test(r), 'resume shows them: ' + r.slice(r.indexOf('## Questions for'), r.indexOf('## Questions for') + 400));
+    assert(/ticked: Gear icon/.test(learn('ask-learner', '--done', '1', 'keep the bubble')), 'done');
+    const file = fs.readFileSync(path.join(HOME, 'questions.md'), 'utf8');
+    assert(/^- \[x\] .*Gear icon.* → \d{4}-\d\d-\d\d: keep the bubble$/m.test(file) && /^1\. \(\w+, .*A second one/.test(learn('ask-learner')), file);
+    learn('ask-learner', '--done', '1', 'asked');
+    assert(!/Questions for the learner/.test(learn('resume', 'demo')), 'nothing open: no section');
+  });
   await test('live updates keep coming when a file is replaced again and again (atomic writes: a Linux watch loses the file after the first)', async () => {
     const ctl = new AbortController(), seen = [];
     const res = await fetch(BASE + '/api/events', { signal: ctl.signal });

@@ -542,6 +542,31 @@ tutor (\`bin/learn feedback\`). The builder job (\`bin/learn away\`, or the "I'm
 through the open items: \`- [ ]\` open, \`- [x]\` done, with a note on what was done.
 
 `;
+// Questions for the learner from background jobs (questions.md in the data home). A job can't ask
+// (nobody is there) and its report gets missed: the learner found two questions in a report a day
+// late and asked that they come up in the conversation instead. So a job leaves the question here,
+// `resume` shows the open ones to the tutor, and the tutor asks them with `post --meta`.
+const QUESTIONS = path.join(ROOT, 'questions.md');
+const QUESTIONS_HEAD = `# Questions for the learner\n\nLeft by background jobs (\`bin/learn ask-learner "question, with a recommendation"\`). The tutor asks them\nin the conversation and ticks them: \`bin/learn ask-learner --done <n> "what they said"\`.\n\n`;
+function openQuestions() {
+  const out = [];
+  readText(QUESTIONS, '').split('\n').forEach((l, i) => { const m = l.match(/^- \[ \] (\d{4}-\d\d-\d\d) \(([^)]*)\): (.*)$/); if (m) out.push({ line: i, date: m[1], by: m[2], text: m[3] }); });
+  return out.map((q, i) => ({ n: i + 1, ...q }));
+}
+function addQuestion(text, by = 'cli') {
+  const cur = readText(QUESTIONS, null);
+  const bullet = `- [ ] ${localDate()} (${by}): ${String(text).replace(/\s+/g, ' ').trim()}`;
+  fs.appendFileSync(QUESTIONS, (cur == null ? QUESTIONS_HEAD : cur && !cur.endsWith('\n') ? '\n' : '') + bullet + '\n');
+  return bullet;
+}
+function doneQuestion(n, answer) {
+  const q = openQuestions().find(x => x.n === Number(n));
+  if (!q) return null;
+  const L = readText(QUESTIONS, '').split('\n');
+  L[q.line] = L[q.line].replace('- [ ]', '- [x]') + ` → ${localDate()}: ${String(answer).replace(/\s+/g, ' ').trim()}`;
+  fs.writeFileSync(QUESTIONS, L.join('\n'));
+  return q;
+}
 function openFeedback() {
   return (readText(FEEDBACK, '').match(/^- \[ \] .*(?:\n {2,}.*)*/gm) || []);
 }
@@ -591,6 +616,7 @@ function setLevelUnlocked(slug, skillId, level, reason) {
 }
 
 module.exports = {
+  QUESTIONS, openQuestions, addQuestion, doneQuestion,
   CODE, ROOT, TOPICS, LEARNER, LEARNER_OUTSIDE, REPORTS, FEEDBACK, CONFIG, STATE, INBOX, PORT, HOST, realish, dataRepo, shown,
   ensureDir, readText, readJSON, writeJSON, withLock, localDate, config, ensureHome, commitData, dataPath,
   listTopics, topicDir, slugify, createTopic, readPages, PAGE_NAME, readTermPages, termPagePath, termPagesDir, termSlug, TERM_PAGE, pageForTerm, MEDIA_NAME, mediaDir, readMedia, loadTopicMeta, saveTopicMeta,

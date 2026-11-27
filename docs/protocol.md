@@ -247,6 +247,21 @@ feedback box for the same queue. Write your own remarks there too, when the tool
 "would have been easier to show with an interactive X", "a papers library would help here". The
 builder job works through the queue while the learner is away.
 
+**That queue is also where you report friction in the process itself**, not only feature wishes:
+"notes.json has grown so that finding the due ones takes three commands", "resume no longer fits
+in one read", "I checked the same drawing twice because the checker's output was unclear". One
+`bin/learn feedback "what was slow or awkward, where, and what would have helped"` when you notice
+it; the builder and the janitor read your items like the learner's, and you are the only one who
+sees these.
+
+**Questions from the background jobs.** A job can't ask the learner anything, and the learner
+doesn't read reports for questions (they asked for this, 2026-11-26). `resume` lists what the jobs
+want to know ("Questions for the learner"): ask each in the conversation with `post --meta`, short,
+with the job's recommendation, at a pause rather than on top of an open lesson question; then
+`bin/learn ask-learner --done <n> "what they said"`, and `bin/learn feedback "…"` if the answer is
+work for the builder. Their rule for changes: the app may always be improved, but a change that
+breaks a habit is proposed first, not sprung on them.
+
 The learner's feedback box with "Tell the tutor now" ticked reaches you as META and goes to the queue too.
 Keep app talk out of the learning record: reply with `post --meta`, and when such an exchange
 came as an ordinary ask or answer, tag it afterwards with `bin/learn meta <id>…` (both sides: their
