@@ -17,6 +17,7 @@ never contains any. Layout:
 | `topics/<slug>/map.json` | concept map: how the subject works, as far as the learner knows | you (or a subagent) |
 | `topics/<slug>/pages/<name>.md` | standalone wiki pages (worked examples, interactive walkthroughs) | you, or the wiki job |
 | `topics/<slug>/terms/<name>.md` | a glossary term's own article: what the learner knows about it | you, right after the reply that taught it; the wiki job catches up |
+| `needs-you.md` | what only the learner can fix (a login, a permission), one `- [ ]` line per item; the UI shows the open ones under the gear | `bin/learn needs-you`; the learner closes items in the UI |
 | `topics/<slug>/tags.json` | extra skill tags for old journal entries | you |
 | `topics/<slug>/media/` | downloaded images + `index.json` (author, licence, source) | `bin/learn image` |
 | `topics/<slug>/visuals/` | drawings and animations prepared ahead: `<name>.js`, the topic's drawing kit `_kit.js`, `STYLE.md`, `requests.md` (the queue), generated `index.json` (`docs/visuals.md`) | the visuals job, you; `bin/learn visuals` |

@@ -32,9 +32,13 @@ humans.
   (implements your feedback, with tests), the reviewer (reads recent sessions with fresh eyes:
   gaps, links between topics, process ideas), the wiki writer, the janitor (code tidying), or an
   open task. The popover shows the plan as it runs; the reports appear there too.
+- **When something needs you:** an agent that runs into what only you can fix (a login that
+  expired, a permission, a tool to install) leaves a line, and the gear button shows a number;
+  the item is on the System page's Status tab, where you mark it done or dismiss it. Everything
+  else the agents decide and fix themselves.
 - The UI picks up code changes by itself when you're idle, or shows an "Updated · reload" button,
   so it never blinks while you read.
-- **Tell it how you learn, and what to change in the app:** the speech-bubble button in the
+- **Tell it how you learn, and what to change in the app:** the gear button in the
   toolbar opens the System page. "How to teach me" is your instructions to every tutor, the
   "In my own words" section of `data/learner/profile.md` in your data repo: yours alone (the
   agents never edit it, and it overrides what they derive), committed when you save, and a running

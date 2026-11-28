@@ -37,7 +37,7 @@ and pick up where you left off.
 
 When you leave, hit **I'm going away**. Agents use the time to review your sessions for gaps and
 misunderstandings, catch up on the wiki, and work through the feedback you left about the app
-(the speech-bubble button). Yes, that means it changes its own code. That's the point: it's a
+(the gear button). Yes, that means it changes its own code. That's the point: it's a
 frontier coding agent sitting in your terminal, so it might as well make the tool fit how you
 learn.
 

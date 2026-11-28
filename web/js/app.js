@@ -18,8 +18,9 @@ import * as system from './system.js';
 export const app = {
   topics: [], topic: null, d: null, status: { phase: 'offline', queued: 0 },
   view: 'learn', args: [], dockStack: [], learner: null,
+  needs: { open: [], closed: [] },   // what only the learner can fix (GET /api/needs)
 };
-// system: the toolbar's speech-bubble page (settings, feedback, instructions, status). `tell` was
+// system: the toolbar's gear page (settings, feedback, instructions, status). `tell` was
 // its name when it had two tabs: old links and bookmarks go on working.
 const VIEWS = { learn, map: mapView, tree, wiki, stats, system, tell: system };
 const VIEW_KEYS = { '1': 'learn', '2': 'map', '3': 'tree', '4': 'wiki', '5': 'stats' };
@@ -105,10 +106,11 @@ async function onEvent(m) {
   else if (m.type === 'topics') { app.topics = await getJSON('/api/topics'); renderTopicSel(); }
   else if (m.type === 'learner') { app.learner = null; VIEWS[app.view]?.onLearner?.(); onJobs(); }
   else if (m.type === 'jobs') onJobs();
+  else if (m.type === 'needs') loadNeeds();
   else if (m.type === 'reload-ui') uiChanged(m.file);
   else if (m.type === 'down') { app.status = { offline: true }; renderStatus(); VIEWS[app.view]?.onStatus?.(); }
   // (re)connected: fetch what was missed while the stream was down
-  else if (m.type === 'up' && app.topic) { const t = await getJSON('/api/topic/' + app.topic.slug).catch(() => null); if (t) ingest(t.journal); }
+  else if (m.type === 'up') { loadNeeds(); if (!app.topic) return; const t = await getJSON('/api/topic/' + app.topic.slug).catch(() => null); if (t) ingest(t.journal); }
 }
 
 // ---------------------------------------------------------------- routing
@@ -139,7 +141,7 @@ async function route() {
   const prev = app.view;
   app.view = view; app.args = args;
   $$('.views button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
-  $('#feedbackBtn')?.classList.toggle('on', VIEWS[view] === system);
+  $('#systemBtn')?.classList.toggle('on', VIEWS[view] === system);
   document.body.dataset.view = view;
   if (switched || prev !== view || !$('#center').firstChild || VIEWS[view].routeAlways) VIEWS[view].render($('#center'), app, args);
   else VIEWS[view].update?.(args);
@@ -164,6 +166,27 @@ export function setTheme(t) {
   b.replaceChildren(icon(t === 'auto' ? 'auto' : t === 'light' ? 'sun' : 'moon'));
   b.title = `Theme: ${t === 'auto' ? 'follows the system' : t} (click to switch)`;
   VIEWS[app.view]?.onTheme?.();
+}
+
+// ---------------------------------------------------------------- "needs you"
+// What only the learner can fix (a login, a permission; app/store.js needs-you.md), left by the
+// agents. The gear button carries the count while anything is open, so it is noticed without
+// interrupting the lesson; the items are on the System page's Status tab (system.js). A new item
+// makes the button open that tab once; after it was seen the button is back to the tab used last.
+export async function loadNeeds() {
+  try { app.needs = await getJSON('/api/needs'); } catch { return; }   // an older server: no mark
+  renderNeedsMark();
+  if (VIEWS[app.view] === system) system.onNeeds();
+}
+export const needsUnseen = () => app.needs.open.some(x => x.n > store.get('needsSeen', 0));
+export function needsSeen() { const top = Math.max(0, ...app.needs.open.map(x => x.n)); if (top > store.get('needsSeen', 0)) store.set('needsSeen', top); }
+export function setNeeds(v) { app.needs = v; renderNeedsMark(); }
+function renderNeedsMark() {
+  const b = $('#systemBtn'), n = app.needs.open.length;
+  if (!b) return;
+  b.querySelector('.badge-n')?.remove();
+  b.title = (n ? `${n === 1 ? 'One thing needs' : n + ' things need'} you (a login, a permission…): click to read. ` : '') + 'System: how the tutors should work with you, changes you want in the app, settings, status';
+  if (n) b.append(h('span', { class: 'badge-n warn', id: 'needsMark', text: String(n) }));
 }
 
 // ---------------------------------------------------------------- left: skills sidebar
@@ -278,10 +301,11 @@ async function boot() {
   $('#status').addEventListener('click', togglePopover);
   // a page, not a popover: the System page (system.js), on the tab used last; again = back
   let beforeTell = null;
-  $('#feedbackBtn')?.addEventListener('click', () => {
+  $('#systemBtn')?.addEventListener('click', () => {
     if (VIEWS[app.view] === system) { if (beforeTell && !/\/(tell|system)(\/|$)/.test(beforeTell)) location.hash = beforeTell; else go('learn'); return; }
     beforeTell = location.hash;
-    go('system', store.get('tellTab', 'instructions'));
+    // something new needs them: that first (Status shows it); otherwise the tab used last
+    if (needsUnseen()) go('system', 'status', 'new'); else go('system', store.get('tellTab', 'instructions'));
   });
   $('#awayBtn')?.addEventListener('click', toggleAway);
   $('#reloadBtn')?.addEventListener('click', reloadKeepingPlace);
@@ -310,6 +334,7 @@ async function boot() {
   renderDock();
   restorePlace();
   onJobs();
+  loadNeeds();
 }
 
 // ---------------------------------------------------------------- UI code changed

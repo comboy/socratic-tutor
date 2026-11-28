@@ -269,6 +269,43 @@ async function main() {
     assert(/^2\. /.test(learn('ask-learner')) && /ticked: A second one/.test(learn('ask-learner', '--done', '2', 'asked')), 'numbers shifted: ' + learn('ask-learner'));
     assert(!/Questions for the learner/.test(learn('resume', 'demo')), 'nothing open: no section');
   });
+  await test('needs-you: an agent records what only the learner can fix, once; --done closes it as resolved; the planner sees it; a failed job is recorded by the runner and closed by its next good run', async () => {
+    const as = (job, ...a) => execFileSync(process.execPath, [BIN, 'needs-you', ...a], { env: { ...ENV, LEARN_JOB: job }, encoding: 'utf8' });
+    assert(/nothing open/.test(learn('needs-you')), 'empty at first');
+    const added = as('builder', 'The code is not being pushed: `git push` asks for a login. In a terminal: `gh auth login`.');
+    assert(/shown to the learner under the gear button \(item 1\)/.test(added), added);
+    assert(/already open as item 1/.test(as('wiki', 'The code is not being pushed: `git push` asks for a login. In a terminal: `gh auth login`.')), 'the same text is not added twice');
+    assert(/^1\. open since \d{4}-\d\d-\d\d \(builder\): The code is not being pushed/.test(learn('needs-you')), learn('needs-you'));
+    assert(/needs the learner: 1 open/.test(learn('status')), 'status counts it');
+    assert(/## Waiting on the learner[^\n]*\n- 1\. open since [^\n]*not being pushed/.test(learn('away', '--snapshot')), 'the planner sees it');
+    assert((await api('/api/needs')).open[0].by === 'builder', 'the app gets it');
+    assert(/closed as resolved/.test(as('builder', '--done', '1', 'pushed fine today')), 'done');
+    const file = () => fs.readFileSync(path.join(HOME, 'needs-you.md'), 'utf8');
+    assert(/^- \[x\] .*gh auth login`\. → \d{4}-\d\d-\d\d resolved \(builder\): pushed fine today$/m.test(file()), file());
+    assert(/nothing open/.test(learn('needs-you')) && /^1\. resolved .*pushed fine today, was \(builder\)/.test(learn('needs-you', '--all')), learn('needs-you', '--all'));
+    assert(/- 1\. resolved \d{4}-\d\d-\d\d \(builder\): pushed fine today, was: The code/.test(learn('away', '--snapshot')), 'closed lately: still told to the agents');
+    // the runner: a job that ended with an error can't say so itself
+    const outcome = (name, exit) => execFileSync(process.execPath, ['-e', `require(${JSON.stringify(path.join(CODE, 'app/jobs.js'))}).noteOutcome(${JSON.stringify(name)}, ${exit})`], { env: ENV, encoding: 'utf8' });
+    outcome('wiki', 1); outcome('wiki', 1); outcome('builder', 0);
+    const o = (await api('/api/needs')).open;
+    assert(o.length === 1 && o[0].by === 'runner' && /“wiki” failed, so/.test(o[0].text), 'one item for the failing job: ' + JSON.stringify(o));
+    outcome('wiki', 0);
+    const n = await api('/api/needs');
+    assert(!n.open.length && n.closed[0].closed.how === 'resolved' && n.closed[0].closed.by === 'runner', JSON.stringify(n));
+    // dismissed by the learner: the same failure is not raised again; a repeated click is not an error
+    outcome('wiki', 1);
+    const w = (await api('/api/needs')).open[0];
+    await api('/api/needs/close', { n: w.n, how: 'dismissed' }); await api('/api/needs/close', { n: w.n, how: 'dismissed' });
+    outcome('wiki', 1);
+    assert(!(await api('/api/needs')).open.length, 'raised again after a dismissal');
+    // a text that quotes a closing, parentheses and arrows: kept whole, and closed where it ends
+    const odd = 'Odd (one): a → b, as in "x → 2026-01-01 dismissed (a)"';
+    const k = Number(as('janitor', odd).match(/item (\d+)/)[1]);
+    assert((await api('/api/needs')).open[0].text === odd && /already open/.test(as('janitor', odd)), 'the text round-trips');
+    as('janitor', '--done', String(k), 'gone');
+    const c = (await api('/api/needs')).closed[0];
+    assert(c.text === odd && c.closed.how === 'resolved' && c.closed.by === 'janitor' && c.closed.note === 'gone', JSON.stringify(c));
+  });
   await test('live updates keep coming when a file is replaced again and again (atomic writes: a Linux watch loses the file after the first)', async () => {
     const ctl = new AbortController(), seen = [];
     const res = await fetch(BASE + '/api/events', { signal: ctl.signal });
@@ -1728,8 +1765,8 @@ async function main() {
     const jl = journal().length;
     await page.nav(`${BASE}/#/demo/learn`, 1000);
     await page.eval(`localStorage['learn:tellTab'] = '"instructions"'`);
-    await page.click('#feedbackBtn');
-    await page.waitFor(`location.hash === '#/demo/system/instructions' && document.activeElement?.id === 'instrBox' && document.querySelector('#feedbackBtn.on') && document.querySelectorAll('.view.system .tab').length === 4`, { timeout: 3000 });
+    await page.click('#systemBtn');
+    await page.waitFor(`location.hash === '#/demo/system/instructions' && document.activeElement?.id === 'instrBox' && document.querySelector('#systemBtn.on') && document.querySelectorAll('.view.system .tab').length === 4`, { timeout: 3000 });
     await page.click('#tellTab-app');
     await page.waitFor(`document.activeElement?.id === 'feedbackBox' && /Save for the builder/.test(document.querySelector('#feedbackSave').textContent)`, { timeout: 3000 });
     await page.type('UI feedback from the box');
@@ -1743,7 +1780,7 @@ async function main() {
     assert(/^- \[ \] \d{4}-\d{2}-\d{2} \(learner, demo · tell\): UI feedback from the box$/m.test(f), f);
     assert(await page.eval(`document.querySelector('#feedbackBox').value === '' && localStorage['learn:draft:feedback'] === '""'`), 'box/draft not cleared');
     assert(journal().length === jl, 'journaled');
-    await page.click('#feedbackBtn');
+    await page.click('#systemBtn');
     await page.waitFor(`location.hash === '#/demo/learn'`, { timeout: 3000 });   // back where it came from (and where the light-theme test reloads)
   });
   await test('System page, Status: the tutor session and its light, tokens from the transcript, delivery (all picked up, none twice), reply times, days, sessions, jobs, server; what is not measured says so; settings switch the theme', async () => {
@@ -1791,7 +1828,7 @@ async function main() {
     await page.waitFor(`/Today: ${sent + 1} messages sent/.test(document.querySelector('#sysDelivery').innerText)`, { timeout: 20000 });
     // a link from before the page was called System, and the tab the button remembers
     await page.nav(`${BASE}/#/demo/tell/app`, 900);
-    await page.waitFor(`document.querySelector('#feedbackBox') && document.querySelector('#tellTab-app.on') && document.querySelector('#feedbackBtn.on')`, { timeout: 3000 });
+    await page.waitFor(`document.querySelector('#feedbackBox') && document.querySelector('#tellTab-app.on') && document.querySelector('#systemBtn.on')`, { timeout: 3000 });
     // settings: the theme, as buttons
     await page.nav(`${BASE}/#/demo/system/settings`, 900);
     await page.eval(`document.querySelector('#setTheme button[data-v="dark"]').click()`);
@@ -1996,6 +2033,31 @@ async function main() {
     await page.click('#reloadBtn');
     await page.waitFor(`document.querySelector('#askBox')?.value === 'half-typed' && document.querySelector('#reloadBtn').hidden`, { timeout: 4000 });
     await page.eval(`document.querySelector('#askBox').value = ''; localStorage['learn:draft:ask:demo'] = '""'`);
+  });
+  await test('needs you: the gear button shows a number when an agent left something only the learner can fix; it opens Status once, where the item can be marked done; the tab used last stays', async () => {
+    await page.nav(`${BASE}/#/demo/learn`, 900);
+    await page.eval(`localStorage['learn:tellTab'] = '"instructions"'`);
+    assert(await page.eval(`!document.querySelector('#needsMark') && !!document.querySelector('#systemBtn .ico')`), 'no mark while nothing is open');
+    execFileSync(process.execPath, [BIN, 'needs-you', 'Pictures cannot be downloaded: the proxy refuses. In a terminal: `export HTTPS_PROXY=…`, then start `bin/learn` again.'], { env: { ...ENV, LEARN_JOB: 'visuals' }, encoding: 'utf8' });
+    await page.waitFor(`document.querySelector('#needsMark')?.textContent === '1' && /One thing needs you/.test(document.querySelector('#systemBtn').title)`, { timeout: 5000 });
+    await page.shot('needs-you-toolbar');
+    await page.click('#systemBtn');
+    await page.waitFor(`location.hash === '#/demo/system/status/new' && [...document.querySelectorAll('#sysNeeds .need code')].some(c => c.textContent === 'bin/learn') && document.querySelector('#tellTab-status .tab-n')?.textContent === '1' && document.querySelector('#sysDelivery')`, { timeout: 5000 });
+    assert(/Pictures cannot be downloaded[\s\S]*from the visuals/.test(await page.eval(`document.querySelector('#sysNeeds .need').innerText`)), 'the item and who left it');
+    assert(await page.eval(`(() => { const a = document.querySelector('#sysNeeds').getBoundingClientRect(), b = document.querySelector('#sysLight').getBoundingClientRect(); return a.bottom <= b.top; })()`), 'above the numbers');
+    await page.shot('needs-you');
+    await page.click('#systemBtn');
+    await page.waitFor(`location.hash === '#/demo/learn'`, { timeout: 3000 });
+    await page.click('#systemBtn');
+    await page.waitFor(`location.hash === '#/demo/system/instructions' && document.querySelector('#needsMark') && document.querySelector('#tellTab-status .tab-n')`, { timeout: 3000 });   // seen: the usual tab again, the number stays
+    await page.click('#tellTab-status');
+    await page.waitFor(`document.querySelector('#sysNeeds .need-acts button')`, { timeout: 3000 });
+    await page.click('#sysNeeds .need-acts .btn-primary');
+    await page.waitFor(`document.querySelector('#needsNone') && !document.querySelector('#needsMark') && !document.querySelector('.tab-n') && /you did it/.test(document.querySelector('.need-closed')?.textContent || '')`, { timeout: 4000 });
+    assert(/^- \[x\] .*Pictures cannot be downloaded.* → \d{4}-\d\d-\d\d done \(learner\)$/m.test(fs.readFileSync(path.join(HOME, 'needs-you.md'), 'utf8')), 'the file says the learner did it');
+    assert(/done \d{4}-\d\d-\d\d \(learner\), was: Pictures/.test(learn('away', '--snapshot')), 'the agents are told');
+    await api('/api/needs/close', { n: 99, how: 'done' }).then(() => assert(false, 'closed an item that is not there'), e => assert(/not open/.test(e.message), e.message));
+    await page.nav(`${BASE}/#/demo/learn`, 900);
   });
   await test("I'm going away: one button; a planner decides the jobs and briefs them; the plan shows while it runs, then the reports", async () => {
     await api('/api/feedback', { text: 'something for the builder', topic: 'demo', view: 'learn' });

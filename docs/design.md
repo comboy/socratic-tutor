@@ -32,7 +32,7 @@ a minimalist "modern web" page.
   buttons sit in its footer (icons only when narrow), and Esc or the chevron hides it to two
   buttons in the corner; `a` / `q` or those buttons bring it back.
 - **The learner thinks about the topic, not the tool.** Anything about the tool is on one page,
-  System (the toolbar's speech bubble, `web/js/system.js`), in four tabs. "Change the app" saves a
+  System (the toolbar's gear, `web/js/system.js`), in four tabs. "Change the app" saves a
   remark for the builder, who works through it while they're away, or with "Tell the tutor now"
   also sends it to the tutor, who answers in the conversation (the UI goes there). "How to teach
   me" is the learner's instructions to every tutor. "Settings" holds the few choices that are
@@ -40,12 +40,22 @@ a minimalist "modern web" page.
   its light, tokens, reply times, delivery, jobs, the server (`app/sysstats.js`). A full page, not
   a popover: the learner asked for room to write (2026-11-26). The button opens the tab used last,
   so the feedback box, which is how they report problems, stays one click away.
+  The gear replaced a speech bubble when the page became more than the feedback box (2026-11-28).
   One place for app remarks: an "About the app" button next to Ask was confusing next to a
   separate feedback box.
   Don't make them configure things; pick good defaults, and add a setting only where people
   really differ. App talk in the conversation (those remarks, the tutor's `--meta` replies,
   tagged entries) is shown dimmed and folded to one line, and kept out of the learning record
   (wiki, sessions, stats).
+- **What needs the learner finds them, quietly.** The agents run the system, so most problems
+  never reach the learner. What only they can fix (a login, a permission, a tool to install;
+  `bin/learn needs-you`, `needs-you.md`) is listed on top of the Status tab, and while any is open
+  the gear and the tab carry the count in amber: visible at a glance, never a popup over the
+  lesson. A new item makes the gear open Status once; after it was seen the gear opens the tab
+  used last again, so an item left open for days doesn't take the feedback box away. Two ways to
+  close one, because the agents act differently on each: "Done" (they check it works and carry
+  on) and "Dismiss" (they stop asking and work around it). The bar for an item is "the learner
+  can act on it": a bug or a design doubt is the agents' own to solve.
 - **Show only what is measured.** The Status tab is what trust in the delivery rests on ("25
   messages sent, all picked up, none had to be delivered again"), so every number on it comes from
   a file that records it (the journal, the agent's transcript, `state/server.log`,

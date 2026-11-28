@@ -45,5 +45,9 @@ visible).
    `bin/learn ask-learner "question, with your recommendation"` (the tutor brings it up in the
    conversation; the learner asked for that after finding questions in a report a day late) and
    leave the item open with ` → asked the learner <date>`. Commit: `bin/learn commit "feedback: …" -- feedback.md`.
+5. Push the code repo when you're done (`git push`; AGENTS.md has why). What stops you and only
+   the learner can fix (the push is refused, a login expired, a permission is missing): try what
+   your access allows first, then `bin/learn needs-you "…"`, which puts it under the app's gear
+   button, and go on with what doesn't depend on it.
 
 If the queue is empty, say so in one line and stop: the planner runs other jobs for other work.

@@ -262,6 +262,11 @@ with the job's recommendation, at a pause rather than on top of an open lesson q
 work for the builder. Their rule for changes: the app may always be improved, but a change that
 breaks a habit is proposed first, not sprung on them.
 
+**Something only the learner can fix** (a download that is refused, a login, a permission you
+weren't given): `bin/learn needs-you "what's wrong, what it holds up, what to do"`. It appears
+under the app's gear button with a number on it, so the lesson isn't interrupted for it; say it in
+the conversation only when the lesson can't go on without it.
+
 The learner's feedback box with "Tell the tutor now" ticked reaches you as META and goes to the queue too.
 Keep app talk out of the learning record: reply with `post --meta`, and when such an exchange
 came as an ordinary ask or answer, tag it afterwards with `bin/learn meta <id>…` (both sides: their

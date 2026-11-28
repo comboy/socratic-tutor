@@ -97,6 +97,8 @@ commands.help = () => {
                                          --host 0.0.0.0 (all addresses) or one IP: reachable from other machines, with an
                                          access token (bin/learn status prints the link; docs/setup.md, "Running on a server")
 bin/learn ask-learner "question + your recommendation"   a job's question for the learner: the tutor asks it in the conversation (--done <n> "answer")
+bin/learn needs-you "what's wrong, what it holds up, what to do"   something only the learner can fix (a login, a permission,
+                                         an install): shown under the app's gear button. No text: list · --done <n> "what you saw": it's fixed
 bin/learn allow [code] [--list]          let in the browser from another machine that is waiting (with several: the code on its page); you type this, never an agent
 bin/learn doctor                         check this machine has what's needed (Node, git, the agent and its login, Chrome)
 bin/learn serve [--host ip]              web server only (http://localhost:${S.PORT})
@@ -943,6 +945,30 @@ commands['ask-learner'] = () => {
   console.log(`for the tutor to ask in the conversation: ${S.addQuestion(text, process.env.LEARN_JOB || (process.env.LEARN_SESSION ? 'tutor' : 'cli'))}`);
 };
 
+// Something only the learner can fix (app/store.js, needs-you.md): the app shows the open ones on
+// the System page (Status) and marks the gear button. For any agent: a job, the tutor, a developer.
+commands['needs-you'] = () => {
+  const f = flags(argv, { done: 'string', all: 'bool' });
+  const text = f._.join(' ').trim();
+  const by = process.env.LEARN_JOB || (process.env.LEARN_SESSION ? 'tutor' : 'cli');
+  if (f.done) {
+    const q = S.closeNeed(f.done, 'resolved', by, text);
+    if (!q) die(`no open item ${f.done} (bin/learn needs-you lists them)`);
+    console.log(`closed as resolved: ${q.text}`);
+    return;
+  }
+  if (!text) {
+    const L = S.needs().filter(x => f.all || x.open);
+    console.log(L.length ? L.map(x => `${x.n}. ${x.open ? `open since ${x.date}` : `${x.closed.how} ${x.closed.date} (${x.closed.by})${x.closed.note ? ': ' + x.closed.note : ''}, was`} (${x.by}): ${x.text}`).join('\n')
+      : `nothing ${f.all ? 'recorded' : 'open'} that needs the learner`);
+    return;
+  }
+  const r = S.addNeed(text, by);
+  console.log(r.added ? `shown to the learner under the gear button (item ${r.n}). When it's fixed: bin/learn needs-you --done ${r.n} "what you saw"`
+    : r.open ? `already open as item ${r.n} (since ${r.date}): not added again`
+    : `the learner dismissed this on ${r.closed.date} (item ${r.n}): not shown again. Work around it.`);
+};
+
 // Tag past entries as app talk ("meta"): an appended { kind: 'tag', tag: 'meta', ids } entry, never
 // an edit. They stay in the journal and the thread (dimmed, collapsed), but out of the learning
 // record: wiki, session pages, stats, msgs, resume. --off appends a tag that takes it back.
@@ -1126,7 +1152,7 @@ commands.status = async () => {
     if (w.length) console.log(`${w.length} browser${w.length > 1 ? 's' : ''} waiting to be let in (${w.map(x => `${x.code}: ${x.browser} at ${x.addr}`).join('; ')}): if that is you, type \`bin/learn allow\` in a terminal`);
   } catch {}
   const inbox = fs.existsSync(S.INBOX) ? fs.readdirSync(S.INBOX).filter(f => f.endsWith('.json')) : [];
-  console.log(`inbox: ${inbox.length} pending · feedback: ${S.openFeedback().length} open`);
+  console.log(`inbox: ${inbox.length} pending · feedback: ${S.openFeedback().length} open${S.openNeeds().length ? ` · needs the learner: ${S.openNeeds().length} open (bin/learn needs-you)` : ''}`);
   for (const slug of S.listTopics()) {
     const m = S.loadTopicMeta(slug);
     const j = S.readJournal(slug);

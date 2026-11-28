@@ -114,6 +114,8 @@ function snapshot() {
     const n = execFileSync('git', ['rev-list', '--count', ...(lastJ ? [`--since=${lastJ}`] : []), 'HEAD'], { cwd: S.CODE, encoding: 'utf8' }).trim();
     out.push('', `## Code: ${n} commit(s) since the last janitor run`);
   } catch {}
+  const nb = S.needsBrief();
+  if (nb) out.push('', '## Waiting on the learner (needs-you.md: shown to them under the gear button)', nb);
   const reps = reports(6);
   if (reps.length) out.push('', '## Latest reports (read the relevant ones: they say what was skipped or left open)', ...reps.map(r => `- reports/${r.file}: ${r.title}`));
   return out.join('\n');
@@ -148,13 +150,31 @@ function promptFor(name, reportFile, step = {}) {
   const brief = step.why || step.brief ? `\n## Why this run\n\nThe planner (an agent that looked at what was waiting before any job started) chose this job.${step.why ? `\nWhy: ${step.why}` : ''}${step.brief ? `\nBrief: ${step.brief}` : ''}\nIt only saw a snapshot; you'll see more, so use your judgement.\n` : '';
   const extra = name === PLANNER ? `\n## Snapshot\n\n${snapshot()}\n\n## Jobs you can schedule\n\n${available().map(j => `- ${j.name}: ${j.desc}`).join('\n')}\n` : '';
   return `You are running as a background job ("${name}") for the learning workspace in ${S.CODE}. The learner said they're away (the "I'm going away" button or \`bin/learn away\`): they aren't using the app for a while. The system is built so agents make the decisions and manage things while the learner focuses on learning (AGENTS.md, "Working here"). Nobody will answer questions during this run, so decide. What truly needs them (their goals, their taste between two good designs): \`bin/learn ask-learner "the question, with your recommendation"\`, one call per question; the tutor then asks it in the conversation, because a question that only sits in a report gets missed (it happened). Mention it in your final message too.
+- When you hit something only the learner can fix at their computer (a login that expired, a push or a download that is refused, a permission you weren't given, a tool to install, a quota), first try what you can with the access you have; if it still stands, \`bin/learn needs-you "what's wrong, what it holds up, and exactly what to do (the command to type)"\`. The app shows it under the gear button with a mark on the button, so it isn't found days later (it happened: a push without credentials, 57 commits). Only what they can act on: a bug, a failing test or a design doubt is yours to solve or to leave for the next run in feedback.md. One short line they can read between two lessons, no jargon. Then go on with the work that doesn't depend on it.
 - Code (shareable, no personal data): ${S.CODE}. Commit code changes there with git, in small commits, so each one can be read and reverted on its own. It's meant to be shared with others who learn their own topics, so personal data (topics, names, notes) never goes there, not even in commit messages.
 - Learner data (personal, versioned apart from the code): ${rel(S.ROOT)}/${S.LEARNER_OUTSIDE ? `; the learner folder (profile.md, knowledge.md, pills/) is ${rel(S.LEARNER)}/` : ''}. Commit with \`bin/learn commit "…" -- <the files you changed>\`: naming your files keeps another agent's half-written ones out of your commit.
 - They're away, so the server restarting itself after code changes is fine. A tutor process may still be alive, idle in \`bin/learn wait\`: ${rel(S.STATE)}/ is its live queue and session state, so leave it and other processes alone, don't post to the learner (they'd find a lesson message from a job), and run the UI only through \`bin/learn test\` / \`bin/learn demo\` (throwaway copies on other ports).
 - AGENTS.md has the layout of the repo and the docs for each role.
 - Your final message is saved verbatim as the report the learner reads when they're back (${rel(reportFile)}). Start it with a "# " title line, then keep it short and concrete: what you did (with commit hashes or file names), what you skipped and why, anything that needs their decision.
-${brief}
+${brief}${name === PLANNER ? '' : needsNote()}
 ${body}${extra}`;
+}
+
+// What is waiting on the learner and what they closed lately, for every job: an open item you can
+// see is fixed gets closed, one they marked done gets checked, one they dismissed isn't raised again.
+function needsNote() {
+  const b = S.needsBrief();
+  return b ? `\n## Waiting on the learner (bin/learn needs-you)\n\n${b}\n\nIf your work touches one of these: an open one that is no longer true, close it (\`bin/learn needs-you --done <n> "what you saw"\`); one they marked done, check that it works now and carry on; one they dismissed, work around it and don't raise it again.\n` : '';
+}
+// A job that ends with an error did nothing, and nearly always for a reason outside the code: the
+// agent isn't logged in, is out of quota, or was refused something. The agent can't report that
+// itself, so the runner does; the next run of that job that ends well closes it.
+const failedLike = name => `The background job “${name}” failed`;
+function noteOutcome(name, exit) {
+  try {
+    if (exit === 0) { for (const x of S.openNeeds()) if (x.text.startsWith(failedLike(name))) S.closeNeed(x.n, 'resolved', 'runner', 'its next run ended well'); }
+    else S.addNeed(`${failedLike(name)}, so its work didn't happen. Often the agent could not run: not logged in, out of quota, or refused a permission. What it said is in its latest report (coffee-cup button); \`bin/learn doctor\` in a terminal checks the setup.`, 'runner', { like: failedLike(name) });
+  } catch {}
 }
 
 // The planner's final message ends with a ```json block: { "plan": [{ "job", "why", "brief" }] }.
@@ -214,6 +234,7 @@ async function runAll(names) {
     }
     s2.history.push({ name, startedAt, endedAt: new Date().toISOString(), exit, report: path.basename(reportFile) });
     s2.history = s2.history.slice(-50);
+    noteOutcome(name, exit);
     s2.current = null;
     writeState(s2);
   }
@@ -263,4 +284,4 @@ function cli(argv) {
   console.log(`started: ${s.queue.join(', ')}${s.queue.join() === PLANNER ? ' (decides which jobs to run, then runs them)' : ''} (reports go to ${path.relative(S.CODE, S.REPORTS)}/)`);
 }
 
-module.exports = { available, status, start, stop, reports, readReport, cli, runAll, snapshot, parsePlan };
+module.exports = { available, status, start, stop, reports, readReport, cli, runAll, snapshot, parsePlan, noteOutcome };

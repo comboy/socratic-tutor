@@ -569,6 +569,75 @@ function doneQuestion(n, answer) {
   fs.writeFileSync(QUESTIONS, L.join('\n'));
   return q;
 }
+// Things only the learner can fix, from any agent (needs-you.md in the data home): a login that
+// expired, a permission the agent wasn't given, something to install or pay for. Not questions
+// about goals or taste (those are asked in the conversation: questions.md above) and not problems
+// an agent can solve itself. The UI shows the open ones on the System page's Status tab and marks
+// the toolbar's gear, so a job that hit a wall doesn't fail silently (57 commits once sat unpushed
+// for two days because a push needed credentials and nothing said so). One line per item:
+//   - [ ] 2026-11-28 (builder): what's wrong, what it holds up, what to do
+//   - [x] … → 2026-11-29 done (learner)            the learner says they did it: check, carry on
+//   - [x] … → 2026-11-29 dismissed (learner)       they won't: don't raise it again, work around it
+//   - [x] … → 2026-11-29 resolved (builder): note  an agent saw that it's no longer true
+const NEEDS = path.join(ROOT, 'needs-you.md');
+const NEEDS_HEAD = `# Needs you\n\nThings only you can fix (a login, a permission, something to install), left by the agents with\n\`bin/learn needs-you "what's wrong, what it holds up, what to do"\`. The app shows the open ones\nunder the gear button (Status). \`- [ ]\` open, \`- [x]\` closed, with how. Keep the lines: an item's\nnumber is its place in this file.\n\n`;
+const NEED_LINE = /^- \[([ x])\] (\d{4}-\d\d-\d\d) \(([^)]*)\): (.*)$/;
+// the closing of a ticked line: the last " → date how (by)" in it (an open item's text may quote one)
+const NEED_CLOSE = /^(.*) → (\d{4}-\d\d-\d\d) (done|dismissed|resolved) \(([^)]*)\)(?:: ((?:(?! → \d{4}-\d\d-\d\d (?:done|dismissed|resolved) \().)*))?$/;
+const NEED_HOW = ['done', 'dismissed', 'resolved'];
+// -> [{ n, line, date, by, text, open, closed: { date, how, by, note } | null }], oldest first.
+// n: the item's place among all ever written, so it stays the same while others are closed or added.
+function needs() {
+  const out = [];
+  readText(NEEDS, '').split('\n').forEach((l, i) => {
+    const m = l.replace(/\r$/, '').match(NEED_LINE); if (!m) return;
+    const open = m[1] === ' ', c = open ? null : m[4].match(NEED_CLOSE);
+    // (a line ticked by hand has no closing: resolved, on the day it was written)
+    out.push({ n: out.length + 1, line: i, date: m[2], by: m[3], text: c ? c[1] : m[4], open, closed: open ? null : { date: c ? c[2] : m[2], how: c ? c[3] : 'resolved', by: c ? c[4] : '', note: (c && c[5]) || '' } });
+  });
+  return out;
+}
+const openNeeds = () => needs().filter(x => x.open);
+// like: the start of the text that makes two items the same problem (default: the whole text).
+// An open item that starts with it is returned instead of a second one being added; so is one the
+// learner dismissed in the last `quiet` days (they said no: asking again each run would be nagging).
+// Writers are many (each job's CLI calls, the runner, a click in the UI), hence the lock.
+function addNeed(text, by = 'cli', { like, quiet = 30 } = {}) {
+  text = String(text).replace(/\s+/g, ' ').trim();
+  if (!text) throw new Error('needs-you: say what is wrong and what to do');
+  by = String(by).replace(/[()\s]+/g, ' ').trim() || 'cli';
+  return withLock(NEEDS, () => {
+    const all = needs(), is = x => like ? x.text.startsWith(like) : x.text === text;
+    const since = localDate(new Date(Date.now() - quiet * 864e5));
+    const same = all.find(x => x.open && is(x)) || all.find(x => !x.open && x.closed.how === 'dismissed' && x.closed.date >= since && is(x));
+    if (same) return { ...same, added: false };
+    const cur = readText(NEEDS, null);
+    ensureDir(ROOT);
+    fs.appendFileSync(NEEDS, (cur == null ? NEEDS_HEAD : cur && !cur.endsWith('\n') ? '\n' : '') + `- [ ] ${localDate()} (${by}): ${text}\n`);
+    return { ...needs().pop(), added: true };
+  });
+}
+function closeNeed(n, how = 'resolved', by = 'cli', note = '') {
+  if (!NEED_HOW.includes(how)) throw new Error(`needs-you: how is one of ${NEED_HOW.join(', ')}`);
+  return withLock(NEEDS, () => {
+    const q = openNeeds().find(x => x.n === Number(n));
+    if (!q) return null;
+    const L = readText(NEEDS, '').split('\n');
+    note = String(note || '').replace(/\s+/g, ' ').trim();
+    L[q.line] = L[q.line].replace(/\r$/, '').replace('- [ ]', '- [x]') + ` → ${localDate()} ${how} (${String(by).replace(/[()]/g, '')})${note ? ': ' + note : ''}`;
+    fs.writeFileSync(NEEDS, L.join('\n'));
+    return q;
+  });
+}
+// For an agent's prompt: what is waiting on the learner, and what they closed lately (so "done"
+// gets checked and "dismissed" isn't raised again). '' when there is nothing to say.
+function needsBrief(days = 14) {
+  const all = needs(), since = localDate(new Date(Date.now() - days * 864e5));
+  const open = all.filter(x => x.open), closed = all.filter(x => !x.open && (x.closed.date || '') >= since).slice(-6);
+  if (!open.length && !closed.length) return '';
+  return [...open.map(x => `- ${x.n}. open since ${x.date} (${x.by}): ${x.text}`),
+    ...closed.map(x => `- ${x.n}. ${x.closed.how} ${x.closed.date} (${x.closed.by})${x.closed.note ? ': ' + x.closed.note : ''}, was: ${x.text}`)].join('\n');
+}
 function openFeedback() {
   return (readText(FEEDBACK, '').match(/^- \[ \] .*(?:\n {2,}.*)*/gm) || []);
 }
@@ -619,6 +688,7 @@ function setLevelUnlocked(slug, skillId, level, reason) {
 
 module.exports = {
   QUESTIONS, openQuestions, addQuestion, doneQuestion,
+  NEEDS, needs, openNeeds, addNeed, closeNeed, needsBrief,
   CODE, ROOT, TOPICS, LEARNER, LEARNER_OUTSIDE, REPORTS, FEEDBACK, CONFIG, STATE, INBOX, PORT, HOST, realish, dataRepo, shown,
   ensureDir, readText, readJSON, writeJSON, withLock, localDate, config, ensureHome, commitData, dataPath,
   listTopics, topicDir, slugify, createTopic, readPages, PAGE_NAME, readTermPages, termPagePath, termPagesDir, termSlug, TERM_PAGE, pageForTerm, MEDIA_NAME, mediaDir, readMedia, loadTopicMeta, saveTopicMeta,

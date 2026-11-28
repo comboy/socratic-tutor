@@ -1,4 +1,4 @@
-// The two writing tabs of the System page (system.js; the toolbar's speech-bubble button):
+// The two writing tabs of the System page (system.js; the toolbar's gear button):
 //  - How to teach me: the learner's instructions to every tutor, the "In my own words" section of
 //    learner/profile.md in the data folder (POST /api/instructions). Tutors read it first and it
 //    overrides what they derive; a running tutor gets the new version with the next message.

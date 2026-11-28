@@ -1,4 +1,4 @@
-// The System page (the toolbar's speech-bubble button): everything about the tool rather than the
+// The System page (the toolbar's gear button): everything about the tool rather than the
 // topic, in one place, as four tabs.
 //  - How to teach me, Change the app: the two writing tabs (tell.js), as they were when this was
 //    the "Tell" page. The button opens the tab used last, so the feedback box is where it was.
@@ -6,10 +6,13 @@
 //    browser, like the drafts and the panel sizes.
 //  - Status: what the machinery is doing and has done (GET /api/system, app/sysstats.js):
 //    the tutor session and its status light, tokens, reply times, delivery, sessions, background
-//    jobs, the server. Only what is measured; what isn't says so.
+//    jobs, the server. Only what is measured; what isn't says so. On top, "Needs you": what only
+//    the learner can fix (a login, a permission), left by the agents (app/store.js needs-you.md,
+//    GET /api/needs); the gear and this tab carry the count while anything is open.
 import { h, $, store, fmtTime, fmtDate } from './util.js';
 import { icon } from './icons.js';
-import { app, go, getJSON, THEMES, getTheme, setTheme } from './app.js';
+import { app, go, getJSON, postJSON, THEMES, getTheme, setTheme, needsSeen, setNeeds, loadNeeds } from './app.js';
+import { rich } from './rich.js';
 import { instructionsTab, appTab, leaveTab, onLearner as tellLearner } from './tell.js';
 import { completeOn, setCompleteOn } from './complete.js';
 import { healthOf, handoff, LIGHT } from './tutor.js';
@@ -22,19 +25,29 @@ let tab = null, timer = null;
 
 export function render(center, _app, args) {
   tab = FILL[args[0]] ? args[0] : 'instructions';
-  store.set('tellTab', tab);
+  // (…/status/new: the gear brought them here for something that needs them; the tab they use stays the one it opens)
+  if (args[1] !== 'new') store.set('tellTab', tab);
   const body = h('div', { class: 'view-body' });
   center.replaceChildren(h('div', { class: 'view tell system' },
     h('div', { class: 'view-bar tabbed' }, h('div', { class: 'tabs' }, ...TABS.map(([id, label, ic]) =>
       h('button', { class: 'tab' + (tab === id ? ' on' : ''), id: 'tellTab-' + id, title: TIPS[id], onclick: () => go('system', id) }, icon(ic), label)))),
     body));
+  tabMark();
   leaveTab();
-  clearInterval(timer); timer = null; statusEl = null;
+  clearInterval(timer); timer = null; statusEl = null; needsEl = null; needsNote = '';
   FILL[tab](body);
 }
 export function onLearner() { tellLearner(); }
 // the tutor's status changed (a reply, a handoff): the light and the context follow at once, the numbers after a fetch
 export function onStatus() { if (statusEl) { if (data) drawStatus(); soon(); } }
+// the list of what needs the learner changed (an agent added one, one was closed)
+export function onNeeds() { tabMark(); drawNeeds(); }
+function tabMark() {
+  const t = $('#tellTab-status'), n = app.needs.open.length;
+  if (!t) return;
+  t.querySelector('.tab-n')?.remove();
+  if (n) t.append(h('span', { class: 'tab-n', title: `${n === 1 ? 'One thing needs' : n + ' things need'} you`, text: String(n) }));
+}
 export function onTheme() { if (tab === 'settings' && $('.sys-page')) settingsTab($('.view.system .view-body')); }
 
 const page = (...kids) => h('div', { class: 'tell-page sys-page' }, ...kids);
@@ -66,6 +79,35 @@ function settingsTab(body) {
       h('button', { class: 'linkish', onclick: () => go('system', 'instructions') }, 'How to teach me'), ' tab; two threads are switched in the conversation, where they are used.')));
 }
 
+// ---------------------------------------------------------------- needs you
+// Drawn from what the app already holds (app.needs), so it is there before the numbers below load.
+let needsEl = null, needsNote = '';
+const HOW = { done: 'you did it', dismissed: 'you dismissed it', resolved: 'no longer needed' };
+function drawNeeds() {
+  if (!needsEl?.isConnected) return;
+  const { open, closed } = app.needs;
+  if (!document.hidden) needsSeen();
+  const wasOpen = !!needsEl.querySelector('.need-closed[open]');
+  const close = (x, how) => async e => {
+    e.currentTarget.closest('.need-acts').querySelectorAll('button').forEach(b => { b.disabled = true; });
+    try { setNeeds(await postJSON('/api/needs/close', { n: x.n, how })); needsNote = ''; }
+    catch (err) { needsNote = 'Could not save that: ' + err.message; loadNeeds(); }
+    onNeeds();
+  };
+  const sec = panel('Needs you', open.length ? 'only you can do these; everything else goes on meanwhile' : null,
+    needsNote ? h('div', { class: 'pop-warn need-note', text: needsNote }) : null,
+    ...(open.length ? open.map(x => h('div', { class: 'need', 'data-n': String(x.n) }, h('span', { class: 'lamp' }),
+      h('div', { class: 'need-b' }, rich(x.text, 'need-text', { terms: false }), h('div', { class: 'need-meta', text: `from the ${x.by === 'runner' ? 'job runner' : x.by === 'cli' ? 'agents' : x.by} · ${fmtDate(x.date)}` })),
+      h('div', { class: 'need-acts' },
+        h('button', { class: 'btn btn-small btn-primary', title: 'You did it. The agents check that it works now and carry on.', onclick: close(x, 'done') }, icon('check'), 'Done'),
+        h('button', { class: 'btn btn-small', title: 'You won’t do this. The agents stop asking and work around it.', onclick: close(x, 'dismissed') }, 'Dismiss'))))
+      : [h('div', { class: 'empty-row', id: 'needsNone', text: 'Nothing. When an agent runs into something only you can fix (a login that expired, a permission, a tool to install), it is listed here and the gear button shows a number.' })]),
+    closed.length ? h('details', { class: 'need-closed', open: wasOpen || null }, h('summary', { text: `Closed lately (${closed.length})` }),
+      ...closed.map(x => h('div', { class: 'need-was' }, h('span', { class: 'need-how', text: `${HOW[x.closed.how] || x.closed.how}${x.closed.date ? ' · ' + fmtDate(x.closed.date) : ''}` }), h('span', { text: x.text + (x.closed.note ? ` (${x.closed.note})` : '') })))) : null);
+  sec.classList.add('needs-panel'); sec.classList.toggle('has', open.length > 0);
+  needsEl.replaceChildren(sec);
+}
+
 // ---------------------------------------------------------------- status & usage
 let statusEl = null, data = null, loading = false, later = null, failed = '';
 const tok = n => n == null ? '—' : n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M' : n >= 1000 ? Math.round(n / 1000) + 'k' : String(n);
@@ -83,8 +125,10 @@ function table(heads, rows, cls = '') {
 }
 
 function statusTab(body) {
-  statusEl = page(h('div', { class: 'sys-loading muted', text: 'Reading…' }));
-  body.replaceChildren(statusEl);
+  needsEl = h('div', { id: 'sysNeeds' });
+  statusEl = h('div', {}, h('div', { class: 'sys-loading muted', text: 'Reading…' }));
+  body.replaceChildren(page(needsEl, statusEl));
+  drawNeeds();
   data = null; failed = '';
   load();
   timer = setInterval(() => { if (!document.hidden && statusEl?.isConnected) load(); }, 15000);

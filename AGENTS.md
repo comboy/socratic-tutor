@@ -91,8 +91,8 @@ What the setup depends on, and why:
 - Push this repo after you commit to it (`git push`), when the clone has a remote it can push
   to: the owner reads the project on the remote and expects it to be current, and has had to ask
   more than once (2026-11-28, when 57 commits sat local for two days). Check that the push went
-  through (`git status -sb` shows no "ahead"); if it fails, say so in your report rather than
-  leaving it silent.
+  through (`git status -sb` shows no "ahead"); if it fails and you can't cure it with the access
+  you have, `bin/learn needs-you "…"` (below) rather than leaving it silent.
 - Everything durable goes in files in these repos, never in an agent's private memory (Claude
   Code's auto-memory, or any other agent's), about the project or about the learner: the system
   moves between machines and agents, and memory outside the repos is lost or silently stale
@@ -100,6 +100,12 @@ What the setup depends on, and why:
   fact to the right file here instead. Learner preferences: `data/learner/profile.md` (its "In my
   own words" section is the learner's own voice, the only part that isn't derived). Process
   ideas: `docs/roadmap.md` or `data/feedback.md`.
+- Two ways to reach the learner, both kept narrow so their attention stays on learning. A question
+  only they can answer (goals, taste): `bin/learn ask-learner`, which the tutor asks in the
+  conversation. Something only they can fix at the computer (a login, a permission, a tool to
+  install): `bin/learn needs-you "what's wrong, what it holds up, what to do"`, which the app
+  shows under the gear button with a number on it. Try what your own access allows first, and
+  keep both for what they can act on: everything else is yours to decide or to solve.
 - The journal is the append-only record that the UI, stats and wiki are built from, so it's
   changed only through `bin/learn` commands. `data/state/` is a live tutor's queue and session
   files, and a tutor session you didn't start is someone's lesson: leave both alone.

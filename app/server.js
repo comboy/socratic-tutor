@@ -175,6 +175,11 @@ function learnerPayload() {
     topics: S.listTopics().map(slug => { const m = S.loadTopicMeta(slug); return { slug, title: m.title, goal: m.goal || null, foundations: m.foundations || [] }; }),
   };
 }
+// closed: the last few, newest first, so the learner sees what became of an item
+function needsPayload() {
+  const all = S.needs();
+  return { open: all.filter(x => x.open), closed: all.filter(x => !x.open).slice(-5).reverse() };
+}
 function safe(fn) { try { return fn(); } catch (e) { return { error: e.message }; } }
 
 // ---------- http ----------
@@ -221,6 +226,21 @@ const routes = {
     broadcast({ type: 'topics' });
     announce(slug, [saved]);
     return { slug, title, entry: saved };
+  },
+  // "Needs you" (app/store.js, needs-you.md): what only the learner can fix, shown on the System
+  // page's Status tab and counted on the gear button; they close an item there as done or dismissed.
+  'GET /api/needs': () => needsPayload(),
+  'POST /api/needs/close': async (req) => {
+    const b = await readBody(req);
+    if (!['done', 'dismissed'].includes(b.how)) throw new Error('how: done or dismissed');
+    const q = S.closeNeed(b.n, b.how, 'learner');
+    // the browser repeats a send whose answer it didn't get: closed that way already is not an error
+    if (!q && S.needs().some(x => x.n === Number(b.n) && !x.open && x.closed.how === b.how && x.closed.by === 'learner')) return needsPayload();
+    if (!q) throw new Error('that item is not open any more');
+    log(`needs-you: item ${q.n} ${b.how} by the learner`);
+    try { S.commitData(`Needs you: item ${q.n} ${b.how} in the UI`, [S.NEEDS]); } catch (e) { log('needs-you commit: ' + e.message); }
+    broadcast({ type: 'needs' });
+    return needsPayload();
   },
   'GET /api/jobs': () => J.status(),
   'POST /api/away': async (req) => { const b = await readBody(req); const st = J.start(b.jobs); broadcast({ type: 'jobs' }); return st; },
@@ -484,8 +504,9 @@ function watch() {
     else if (/\.(json|md)$/.test(rel) && !rel.endsWith('.tmp')) debounce('t:' + slug + parts[1], () => broadcast({ type: 'topic', topic: slug, part: parts[1] }));
   });
   // learner files, feedback, reports, job state: tell browsers (the Away popover, the "You" page)
-  watchTree(S.ROOT, () => ['feedback.md', 'state', path.join('state', 'jobs.json'), ...walk(S.ROOT, 3, r => !/^(learner|reports)(\/|\\|$)/.test(r))], rel => {
+  watchTree(S.ROOT, () => ['feedback.md', 'needs-you.md', 'state', path.join('state', 'jobs.json'), ...walk(S.ROOT, 3, r => !/^(learner|reports)(\/|\\|$)/.test(r))], rel => {
     if (rel === path.join('state', 'jobs.json')) debounce('jobs', () => broadcast({ type: 'jobs' }), 150);
+    else if (rel === 'needs-you.md') debounce('needs', () => broadcast({ type: 'needs' }), 150);
     else if (rel.startsWith('learner') || rel === 'feedback.md' || rel.startsWith('reports')) debounce('learner', () => broadcast({ type: 'learner' }), 200);
   });
   // the learner folder, when config.json keeps it outside the data home
